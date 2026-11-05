@@ -236,7 +236,7 @@ mod dismiss {
                 frame.size.width,
                 frame.size.height,
             );
-            match rules::decide(&session, rules::now_ms(), panel, trigger) {
+            match rules::decide(&session, rules::monotonic_ms(), panel, trigger) {
                 Decision::Dismiss(reason) => {
                     dismissed.set(true);
                     defer(on_dismiss.clone(), reason);
@@ -254,7 +254,7 @@ mod dismiss {
         remove();
         let front = frontmost();
         let session = Session {
-            shown_at_ms: rules::now_ms(),
+            shown_at_ms: rules::monotonic_ms(),
             frontmost_pid: front.as_ref().map(|app| app.processIdentifier()),
             own_pid: Some(NSRunningApplication::currentApplication().processIdentifier()),
             tray_icon: TRAY_ICON.get(),
@@ -626,5 +626,18 @@ mod tests {
     #[test]
     fn click_on_hidden_popover_shows_it() {
         assert_eq!(click_action(false, REOPEN_GUARD_MS + 1), ClickAction::Show);
+    }
+
+    #[test]
+    fn the_first_click_after_launch_opens_the_popover() {
+        use crate::popover_dismiss::{elapsed_since, monotonic_ms, NEVER};
+        assert_eq!(
+            click_action(false, elapsed_since(NEVER, monotonic_ms())),
+            ClickAction::Show
+        );
+        assert_eq!(
+            click_action(false, elapsed_since(NEVER, 0)),
+            ClickAction::Show
+        );
     }
 }

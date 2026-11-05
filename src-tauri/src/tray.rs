@@ -9,7 +9,7 @@ use tauri_plugin_global_shortcut::{
 };
 
 use crate::platform::{self, ClickAction};
-use crate::popover_dismiss::{now_ms, HideReason};
+use crate::popover_dismiss::{elapsed_since, monotonic_ms, HideReason, NEVER};
 use crate::popover_log as log;
 use crate::usage_icon;
 
@@ -17,7 +17,7 @@ const MAIN_WINDOW: &str = "main";
 const QUIT_ID: &str = "quit";
 const TRAY_ID: &str = "main";
 
-static LAST_AUTO_HIDE_MS: AtomicU64 = AtomicU64::new(0);
+static LAST_AUTO_HIDE_MS: AtomicU64 = AtomicU64::new(NEVER);
 
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
     if window.label() != MAIN_WINDOW {
@@ -37,7 +37,7 @@ fn hide_popover(app: &AppHandle, reason: HideReason) {
     };
     platform::release_popover(&window);
     if reason.guards_reopen() {
-        LAST_AUTO_HIDE_MS.store(now_ms(), Ordering::SeqCst);
+        LAST_AUTO_HIDE_MS.store(monotonic_ms(), Ordering::SeqCst);
     }
     log::write(&format!("hide reason={}", reason.as_str()));
     let _ = window.hide();
@@ -62,7 +62,7 @@ fn toggle_popover(app: &AppHandle, icon: Option<Rect>) {
         return;
     };
     let visible = window.is_visible().unwrap_or(false);
-    let since_auto_hide = now_ms().saturating_sub(LAST_AUTO_HIDE_MS.load(Ordering::SeqCst));
+    let since_auto_hide = elapsed_since(LAST_AUTO_HIDE_MS.load(Ordering::SeqCst), monotonic_ms());
     let action = platform::click_action(visible, since_auto_hide);
     log::write(&format!(
         "tray-click rect={} visible={visible} since_auto_hide_ms={since_auto_hide} action={action:?}",

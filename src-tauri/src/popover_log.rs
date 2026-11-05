@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use crate::popover_dismiss::now_ms;
+use crate::popover_dismiss::wall_clock_ms;
 
 pub const FILE_NAME: &str = "popover.log";
 pub const MAX_BYTES: u64 = 100 * 1024;
@@ -26,7 +26,7 @@ pub fn write(message: &str) {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     append(
         path,
-        &format!("{} {message}\n", format_timestamp(now_ms())),
+        &format!("{} {message}\n", format_timestamp(wall_clock_ms())),
         MAX_BYTES,
     );
 }
@@ -103,7 +103,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "clawdmeter-popover-log-{}-{}",
             std::process::id(),
-            now_ms()
+            wall_clock_ms()
         ));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join(FILE_NAME);
