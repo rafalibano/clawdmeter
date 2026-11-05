@@ -263,7 +263,7 @@ describe('configuração de skills', () => {
   it('rejeita ferramentas que o Rust barraria', () => {
     const accepted = (allowedTools: unknown[]) =>
       parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', allowedTools }] }).length === 1;
-    expect(accepted(['Read', 'Bash(git diff:*)'])).toBe(true);
+    expect(accepted(['Read(./**)', 'Bash(gh pr diff:*)'])).toBe(true);
     expect(accepted(['--dangerously-skip-permissions'])).toBe(false);
     expect(accepted(['Read', '-x'])).toBe(false);
     expect(accepted(['Bash;rm'])).toBe(false);
@@ -281,6 +281,16 @@ describe('configuração de skills', () => {
     expect(rust.length).toBeGreaterThan(0);
     expect([...ALLOWED_CLAUDE_TOOLS]).toEqual(rust);
     expect(DEFAULT_ALLOWED_TOOLS.every((tool) => ALLOWED_CLAUDE_TOOLS.includes(tool))).toBe(true);
+    expect(DEFAULT_ALLOWED_TOOLS.some((tool) => tool.startsWith('mcp__'))).toBe(false);
+  });
+
+  it('git diff, git log e git status ficam fora da lista, e Read é restrito ao cwd', () => {
+    for (const tool of ['Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Read']) {
+      expect(ALLOWED_CLAUDE_TOOLS).not.toContain(tool);
+      expect(findDisallowedTools([tool])).toEqual([tool]);
+    }
+    expect(ALLOWED_CLAUDE_TOOLS).toContain('Bash(gh pr diff:*)');
+    expect(ALLOWED_CLAUDE_TOOLS).toContain('Read(./**)');
   });
 
   it('o padrão não concede Bash amplo, escrita nem edição', () => {
@@ -290,9 +300,9 @@ describe('configuração de skills', () => {
   });
 
   it('ferramenta fora da lista invalida a skill com mensagem clara', () => {
-    for (const tool of ['Bash', 'Bash(*)', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash(git:*)', 'Bash(gh:*)', 'mcp__srv__tool']) {
-      expect(findDisallowedTools(['Read', tool])).toEqual([tool]);
-      expect(() => buildClaudeArgs({ ...SKILL, allowedTools: ['Read', tool] })).toThrow(
+    for (const tool of ['Bash', 'Bash(*)', 'Read', 'Bash(git diff:*)', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash(git:*)', 'Bash(gh:*)', 'mcp__srv__tool']) {
+      expect(findDisallowedTools(['Grep', tool])).toEqual([tool]);
+      expect(() => buildClaudeArgs({ ...SKILL, allowedTools: ['Read(./**)', tool] })).toThrow(
         `A skill "${SKILL.name}" usa ferramenta não permitida: ${tool}`,
       );
     }
@@ -300,7 +310,7 @@ describe('configuração de skills', () => {
   });
 
   it('monta os argumentos do claude sem shell, com stream-json e verbose', () => {
-    expect(buildClaudeArgs({ ...SKILL, allowedTools: ['Read', 'Bash(git log:*)'] })).toEqual([
+    expect(buildClaudeArgs({ ...SKILL, allowedTools: ['Read(./**)', 'Bash(gh pr diff:*)'] })).toEqual([
       '-p',
       '/demo',
       '--output-format',
@@ -309,7 +319,7 @@ describe('configuração de skills', () => {
       '--max-budget-usd',
       '1.5',
       '--allowedTools',
-      'Read,Bash(git log:*)',
+      'Read(./**),Bash(gh pr diff:*)',
     ]);
     expect(buildClaudeArgs({ ...SKILL, allowedTools: [] })).not.toContain('--allowedTools');
   });

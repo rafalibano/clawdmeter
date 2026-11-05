@@ -74,7 +74,7 @@ describe('RunSkill', () => {
   });
 
   it('skill com ferramenta fora da lista não abre processo e explica o motivo', async () => {
-    const config = new FakeSkillsConfigStore(parseSkillsConfig(null).map((skill) => ({ ...skill, allowedTools: ['Read', 'Write'] })));
+    const config = new FakeSkillsConfigStore(parseSkillsConfig(null).map((skill) => ({ ...skill, allowedTools: ['Read(./**)', 'Write'] })));
     const guarded = createSkills({ config, runs: store, runner, terminal, urls, notifier }, clock, connections);
     await expect(guarded.run.execute('acabativa')).rejects.toThrow('usa ferramenta não permitida: Write');
     expect(runner.processes).toHaveLength(0);

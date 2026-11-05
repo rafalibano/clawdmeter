@@ -30,7 +30,7 @@ const DEMO_SKILLS: SkillDefinition[] = [
     name: 'Resumo dos PRs',
     prompt: '/prs',
     maxBudgetUsd: 1,
-    allowedTools: ['Read', 'Bash(gh pr list:*)'],
+    allowedTools: ['Read(./**)', 'Bash(gh pr list:*)'],
     cwd: null,
   },
 ];

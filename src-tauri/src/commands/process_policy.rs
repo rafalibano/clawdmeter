@@ -7,15 +7,13 @@ const MAX_ARGS: usize = 64;
 const MAX_ARG_BYTES: usize = 8_192;
 const MAX_ALLOWED_TOOLS_BYTES: usize = 1_024;
 pub const ALLOWED_CLAUDE_TOOLS: &[&str] = &[
-    "Read",
+    "Read(./**)",
     "Grep",
     "Glob",
-    "Bash(git log:*)",
-    "Bash(git diff:*)",
-    "Bash(git status:*)",
     "Bash(gh pr list:*)",
     "Bash(gh pr view:*)",
     "Bash(gh pr checks:*)",
+    "Bash(gh pr diff:*)",
     "Bash(gh search prs:*)",
     "mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql",
     "mcp__plugin_atlassian_atlassian__getJiraIssue",
@@ -303,7 +301,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read,Grep,Bash(git diff:*)",
+            "Read(./**),Grep,Bash(gh pr diff:*)",
         ];
         assert!(validate_invocation("claude", &args(&with_tools)).is_ok());
     }
@@ -319,7 +317,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read,Grep,Glob,Bash(git log:*),Bash(git diff:*),Bash(git status:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh search prs:*)",
+            "Read(./**),Grep,Glob,Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh pr diff:*),Bash(gh search prs:*)",
         ];
         assert!(validate_invocation("claude", &args(&argv)).is_ok());
         let without_tools = [
@@ -355,7 +353,13 @@ mod tests {
             "Bash(git:*)",
             "Bash(gh:*)",
             "Bash(git log)",
-            "Bash(git log:*) ",
+            "Bash(git log:*)",
+            "Bash(git diff:*)",
+            "Bash(git status:*)",
+            "Read",
+            "Read(**)",
+            "Read(~/.ssh/**)",
+            "Bash(gh pr diff:*) ",
             "Bash(git -c core.sshCommand=x log:*)",
             "Bash(gh api:*)",
             "Bash(gh pr merge:*)",

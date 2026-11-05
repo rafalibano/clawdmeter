@@ -10,20 +10,27 @@ export interface SkillDefinition {
 export const SKILLS_SCHEMA_VERSION = 1;
 export const DEFAULT_MAX_BUDGET_USD = 2;
 export const ALLOWED_CLAUDE_TOOLS: readonly string[] = [
-  'Read',
+  'Read(./**)',
   'Grep',
   'Glob',
-  'Bash(git log:*)',
-  'Bash(git diff:*)',
-  'Bash(git status:*)',
   'Bash(gh pr list:*)',
   'Bash(gh pr view:*)',
   'Bash(gh pr checks:*)',
+  'Bash(gh pr diff:*)',
   'Bash(gh search prs:*)',
   'mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql',
   'mcp__plugin_atlassian_atlassian__getJiraIssue',
 ];
-export const DEFAULT_ALLOWED_TOOLS: readonly string[] = ALLOWED_CLAUDE_TOOLS.slice(0, 10);
+export const DEFAULT_ALLOWED_TOOLS: readonly string[] = [
+  'Read(./**)',
+  'Grep',
+  'Glob',
+  'Bash(gh pr list:*)',
+  'Bash(gh pr view:*)',
+  'Bash(gh pr checks:*)',
+  'Bash(gh pr diff:*)',
+  'Bash(gh search prs:*)',
+];
 
 export const DEFAULT_SKILLS: readonly SkillDefinition[] = [
   {
@@ -109,7 +116,7 @@ export function assertAllowedTools(skill: SkillDefinition): void {
   const disallowed = findDisallowedTools(skill.allowedTools);
   if (disallowed.length > 0) {
     throw new Error(
-      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
+      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Atualize o skills.json (ex.: "Read" virou "Read(./**)" e "Bash(git diff|log|status:*)" saiu da lista; use "Bash(gh pr diff:*)"). Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
     );
   }
 }
