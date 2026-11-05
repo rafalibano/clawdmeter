@@ -32,6 +32,8 @@ export const MAX_RUN_HISTORY = 20;
 export const NEEDS_AUTH_STATUS = 'needs-auth';
 export const MCP_PROBLEM_STATUSES: readonly string[] = [NEEDS_AUTH_STATUS, 'pending', 'failed'];
 
+export const TRUNCATED_STREAM_ERROR = 'Saída truncada: um evento do Claude passou de 4 MiB e foi cortado.';
+
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export function isRunning(run: SkillRun): boolean {
@@ -97,6 +99,8 @@ export function applyStreamEvent(run: SkillRun, event: StreamEvent): SkillRun {
         status: event.isError ? 'failed' : 'succeeded',
         error: event.isError ? (event.text ?? event.subtype ?? 'A execução falhou.') : null,
       };
+    case 'truncated':
+      return { ...run, error: TRUNCATED_STREAM_ERROR };
     case 'other':
       return run;
   }
@@ -113,7 +117,7 @@ export function finishRun(run: SkillRun, exit: RunExit): SkillRun {
   const finished: SkillRun = { ...run, endedAt: exit.now };
   if (exit.cancelled) return { ...finished, status: 'cancelled', error: null };
   if (run.status !== 'running') return finished;
-  const detail = exit.stderrTail.trim();
+  const detail = run.error ?? exit.stderrTail.trim();
   return {
     ...finished,
     status: 'failed',

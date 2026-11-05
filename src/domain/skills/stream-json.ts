@@ -17,7 +17,10 @@ export type StreamEvent =
       costUsd: number | null;
       durationMs: number | null;
     }
+  | { type: 'truncated' }
   | { type: 'other' };
+
+export const LINE_TRUNCATED_MARK = '…[linha truncada]';
 
 type Json = Record<string, unknown>;
 
@@ -55,6 +58,7 @@ function parseBlocks(message: unknown): StreamBlock[] {
 export function parseStreamLine(line: string): StreamEvent | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith('{')) return null;
+  if (trimmed.endsWith(LINE_TRUNCATED_MARK)) return { type: 'truncated' };
   let raw: unknown;
   try {
     raw = JSON.parse(trimmed);

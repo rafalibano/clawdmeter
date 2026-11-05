@@ -20,7 +20,8 @@ const POLL_INTERVAL_MS: u64 = 25;
 const READER_JOIN_LIMIT_MS: u64 = 2_000;
 const MAX_CONCURRENT_PROCESSES: usize = 4;
 const MAX_CAPTURE_BYTES: usize = 1_048_576;
-const MAX_LINE_BYTES: usize = 65_536;
+const MAX_STDOUT_LINE_BYTES: usize = 4_194_304;
+const MAX_STDERR_LINE_BYTES: usize = 65_536;
 const CAPTURE_TRUNCATED_MARK: &str = "\n[saída truncada]";
 const LINE_TRUNCATED_MARK: &str = " …[linha truncada]";
 pub const OUTPUT_EVENT: &str = "process-output";
@@ -405,9 +406,10 @@ fn stream_lines(
     pid: u32,
     stream: &'static str,
     source: impl Read + Send + 'static,
+    max_line: usize,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        read_bounded_lines(source, MAX_LINE_BYTES, |line| {
+        read_bounded_lines(source, max_line, |line| {
             let _ = app.emit(OUTPUT_EVENT, OutputEvent { pid, stream, line });
         });
     })
@@ -485,10 +487,22 @@ pub fn process_spawn(
     }
     let mut readers = Vec::new();
     if let Some(out) = child.stdout.take() {
-        readers.push(stream_lines(app.clone(), pid, "stdout", out));
+        readers.push(stream_lines(
+            app.clone(),
+            pid,
+            "stdout",
+            out,
+            MAX_STDOUT_LINE_BYTES,
+        ));
     }
     if let Some(err) = child.stderr.take() {
-        readers.push(stream_lines(app.clone(), pid, "stderr", err));
+        readers.push(stream_lines(
+            app.clone(),
+            pid,
+            "stderr",
+            err,
+            MAX_STDERR_LINE_BYTES,
+        ));
     }
     watch_exit(app, child, pid, readers);
     Ok(pid)
@@ -795,9 +809,42 @@ mod tests {
     #[test]
     fn a_huge_last_line_without_newline_is_still_bounded() {
         let input = vec![b'y'; 1_000_000];
-        let lines = lines_of(&input, MAX_LINE_BYTES);
+        let lines = lines_of(&input, MAX_STDERR_LINE_BYTES);
         assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].len(), MAX_LINE_BYTES + LINE_TRUNCATED_MARK.len());
+        assert_eq!(
+            lines[0].len(),
+            MAX_STDERR_LINE_BYTES + LINE_TRUNCATED_MARK.len()
+        );
+    }
+
+    #[test]
+    fn stdout_lines_allow_four_mebibytes_while_stderr_stays_at_sixty_four_kib() {
+        assert_eq!(MAX_STDOUT_LINE_BYTES, 4 * 1_048_576);
+        assert_eq!(MAX_STDERR_LINE_BYTES, 65_536);
+        let mut event = br#"{"type":"result","result":""#.to_vec();
+        event.extend(std::iter::repeat_n(b'a', 1_000_000));
+        event.extend_from_slice(b"\"}\n");
+        let kept = lines_of(&event, MAX_STDOUT_LINE_BYTES);
+        assert_eq!(kept.len(), 1);
+        assert!(!kept[0].ends_with(LINE_TRUNCATED_MARK));
+        assert!(kept[0].ends_with("\"}"));
+        let cut = lines_of(&event, MAX_STDERR_LINE_BYTES);
+        assert!(cut[0].ends_with(LINE_TRUNCATED_MARK));
+    }
+
+    #[test]
+    fn a_stdout_line_over_four_mebibytes_is_cut_with_the_mark_the_ui_looks_for() {
+        let mut input = vec![b'{'; MAX_STDOUT_LINE_BYTES + 10];
+        input.extend_from_slice(b"\nok\n");
+        let lines = lines_of(&input, MAX_STDOUT_LINE_BYTES);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines[0].len(),
+            MAX_STDOUT_LINE_BYTES + LINE_TRUNCATED_MARK.len()
+        );
+        assert!(lines[0].ends_with(LINE_TRUNCATED_MARK));
+        assert_eq!(lines[1], "ok");
+        assert_eq!(LINE_TRUNCATED_MARK, " …[linha truncada]");
     }
 
     #[test]

@@ -16,6 +16,7 @@ import {
   MAX_RUN_HISTORY,
   applyStreamEvent,
   finishRun,
+  TRUNCATED_STREAM_ERROR,
   isResumableSession,
   parseRunHistory,
   runDurationMs,
@@ -135,6 +136,34 @@ describe('applyStreamEvent', () => {
     }
     expect(run.log).toHaveLength(MAX_LOG_ENTRIES);
     expect(run.log.at(-1)?.text).toBe(`m${MAX_LOG_ENTRIES + 4}`);
+  });
+});
+
+describe('linha truncada pelo Rust', () => {
+  const MARK = ' …[linha truncada]';
+  const cut = (text: string) => `${text}${MARK}`;
+
+  it('o parser reconhece a marca e não tenta ler JSON cortado', () => {
+    expect(parseStreamLine(cut('{"type":"result","result":"aaaa'))).toEqual({ type: 'truncated' });
+    expect(parseStreamLine(cut('{"type":"assistant"'))).toEqual({ type: 'truncated' });
+    expect(parseStreamLine('texto solto …[linha truncada]')).toBeNull();
+  });
+
+  it('result truncado vira erro claro em vez de "encerrou sem resultado"', () => {
+    let run = startRun('r', SKILL, 1_000);
+    for (const line of [SUCCESS_STREAM[0]!, cut('{"type":"result","subtype":"success","result":"aaaa')]) {
+      const event = parseStreamLine(line);
+      if (event) run = applyStreamEvent(run, event);
+    }
+    const done = finishRun(run, { code: 0, cancelled: false, stderrTail: '', now: 2_000 });
+    expect(done).toMatchObject({ status: 'failed', error: TRUNCATED_STREAM_ERROR });
+    expect(done.error).toContain('truncada');
+    expect(done.error).not.toContain('sem resultado');
+  });
+
+  it('evento truncado no meio não derruba uma run que termina com result válido', () => {
+    const run = replay([SUCCESS_STREAM[0]!, cut('{"type":"assistant","message":{"content":[{"type":"text","text":"xx'), SUCCESS_STREAM[5]!]);
+    expect(run).toMatchObject({ status: 'succeeded', error: null });
   });
 });
 
