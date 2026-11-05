@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "^19.2",
-    "@angular/cli": "^19.2",
+    "@angular/cli": "^22.2",
     "@angular/compiler-cli": "^19.2",
     "@eslint/js": "^9",
     "@tauri-apps/cli": "^2",
