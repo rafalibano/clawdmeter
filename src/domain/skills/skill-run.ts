@@ -117,7 +117,7 @@ export function finishRun(run: SkillRun, exit: RunExit): SkillRun {
   const finished: SkillRun = { ...run, endedAt: exit.now };
   if (exit.cancelled) return { ...finished, status: 'cancelled', error: null };
   if (run.status !== 'running') return finished;
-  const detail = run.error ?? exit.stderrTail.trim();
+  const detail = [run.error ?? '', exit.stderrTail.trim()].filter((part) => part !== '').join('\n');
   return {
     ...finished,
     status: 'failed',

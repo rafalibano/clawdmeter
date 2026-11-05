@@ -161,6 +161,17 @@ describe('linha truncada pelo Rust', () => {
     expect(done.error).not.toContain('sem resultado');
   });
 
+  it('result truncado mostra a marca e, em seguida, o stderr do processo', () => {
+    let run = startRun('r', SKILL, 1_000);
+    for (const line of [SUCCESS_STREAM[0]!, cut('{"type":"result","subtype":"success","result":"aaaa')]) {
+      const event = parseStreamLine(line);
+      if (event) run = applyStreamEvent(run, event);
+    }
+    const done = finishRun(run, { code: 1, cancelled: false, stderrTail: 'Error: out of memory\n', now: 2_000 });
+    expect(done.status).toBe('failed');
+    expect(done.error).toBe(`${TRUNCATED_STREAM_ERROR}\nError: out of memory`);
+  });
+
   it('evento truncado no meio não derruba uma run que termina com result válido', () => {
     const run = replay([SUCCESS_STREAM[0]!, cut('{"type":"assistant","message":{"content":[{"type":"text","text":"xx'), SUCCESS_STREAM[5]!]);
     expect(run).toMatchObject({ status: 'succeeded', error: null });
@@ -183,6 +194,16 @@ describe('finishRun', () => {
       error: 'boom',
     });
     expect(finishRun(running, { code: 2, cancelled: false, stderrTail: '', now: 2_000 }).error).toContain('código 2');
+  });
+
+  it('código diferente de zero sem result mostra o stderr inteiro, sem espaços nas pontas', () => {
+    const done = finishRun(running, { code: 137, cancelled: false, stderrTail: '\n  linha 1\nlinha 2  \n', now: 2_000 });
+    expect(done).toMatchObject({ status: 'failed', error: 'linha 1\nlinha 2' });
+  });
+
+  it('com result já definido o stderr não altera o erro da run', () => {
+    const failed = replay(BUDGET_EXCEEDED_STREAM);
+    expect(finishRun(failed, { code: 1, cancelled: false, stderrTail: 'ruído', now: 9_000 }).error).toBe('error_max_budget_usd');
   });
 
   it('mantém o status definido pelo resultado', () => {
