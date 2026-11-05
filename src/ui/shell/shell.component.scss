@@ -52,6 +52,14 @@
   color: var(--dp-accent-fg);
 }
 
+.error {
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--dp-border);
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  font-size: 12px;
+}
+
 .content {
   flex: 1;
   min-height: 0;
