@@ -31,10 +31,9 @@ const DENIED_CLAUDE_FLAGS: &[&str] = &[
     "--disallowedTools",
     "--disallowed-tools",
 ];
-const CLAUDE_HARDENING_ARGS: [&str; 5] = [
+const CLAUDE_HARDENING_ARGS: [&str; 4] = [
     "--setting-sources",
     "user",
-    "--strict-mcp-config",
     "--disallowedTools",
     "Write,Edit,MultiEdit,NotebookEdit",
 ];
@@ -461,10 +460,9 @@ mod tests {
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
 
-    const HARDENING: [&str; 5] = [
+    const HARDENING: [&str; 4] = [
         "--setting-sources",
         "user",
-        "--strict-mcp-config",
         "--disallowedTools",
         "Write,Edit,MultiEdit,NotebookEdit",
     ];
