@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Dev Pulse",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "com.mottu.devpulse",
   "build": {
     "beforeDevCommand": "yarn start",
-    "devUrl": "http://localhost:4200",
+    "devUrl": "http://127.0.0.1:4200",
     "beforeBuildCommand": "yarn build",
     "frontendDist": "../dist/dev-pulse/browser"
   },
@@ -28,7 +28,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:4200 ws://127.0.0.1:4200"
     }
   },
   "bundle": {
@@ -43,7 +44,8 @@
     ],
     "category": "DeveloperTool",
     "macOS": {
-      "minimumSystemVersion": "14.0"
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-"
     }
   }
 }
