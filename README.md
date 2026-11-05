@@ -1,6 +1,6 @@
 # Dev Pulse
 
-App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje: Claude usage, Sessões, Agenda e uma página de exemplo; PRs, Reviews e Skills entram nas próximas fases).
+App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (Claude usage, Sessões, PRs, Reviews, Agenda, Skills e uma página de exemplo).
 
 Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (standalone + signals).
 
@@ -18,11 +18,13 @@ infrastructure ────────┘   (implementa as portas da applicatio
 
 ```
 src/
-├─ domain/            TS puro: modelos e regras (settings, connections, calendar, ...)
+├─ domain/            TS puro: modelos e regras (settings, connections, usage, sessions, pull-requests, skills, calendar, ...)
 ├─ application/
 │  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, SecretStore, ...)
 │  ├─ use-cases/      um arquivo por caso de uso, um método execute() (connections/ tem os de conexão)
 │  ├─ connections/    ConnectionMonitor, ConnectionRunner e createConnections (liga casos de uso e adapters)
+│  ├─ pull-requests/  createPullRequests, GitHubSession e o dado das páginas PRs/Reviews
+│  ├─ skills/         createSkills e SkillRunBoard (runs ao vivo e histórico)
 │  ├─ pages/          PageModule (contrato) e PageRegistry
 │  ├─ scheduler/      PollingScheduler: só agenda páginas ligadas
 │  └─ testing/        fakes das portas, usados só nos testes
@@ -31,7 +33,7 @@ src/
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
 │  ├─ anthropic/      AnthropicUsageGateway (GET /api/oauth/usage)
 │  ├─ claude-code/    TauriSessionDirectory (lê ~/.claude/sessions via plugin-fs)
-│  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway
+│  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
 │  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
 │  └─ demo/           adapters fakes do modo demo, com cenários por query param
@@ -143,6 +145,22 @@ Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.js
 
 O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita CORS do WebView), com allowlist de URLs na capability.
 
+### Claude usage
+
+Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` lê o access token do Claude Code pela `ClaudeCredentialSource` e chama `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`) por `AnthropicUsageGateway`; o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
+
+- **Histórico:** `usage-history.json` ao lado do `settings.json`. Pontos brutos por 7 dias; do 8º ao 30º dia, agregados em baldes de 15 min pelo máximo; nada passa de 30 dias (`domain/usage/retention.ts`). Arquivo ilegível recomeça vazio.
+- **Gráficos:** ECharts via `ngx-echarts` (carregado sob demanda, fora do bundle inicial), uma série para a janela de 5 h e outra para a semanal, com marca em 100% e em "agora". Seletor `1h · 12h · 1d · 7d · 30d` comum aos dois.
+- **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada tracejada a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%). A previsão aparece em linha separada: `Previsão no reset (17:00): ~78%` ou `100% · estoura às 15:40, 1h20 antes`; com menos de 3 pontos no ciclo, `Previsão: coletando dados…`. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
+
+### Sessões
+
+Página `sessions` (poll de 5 s, sem conexão). `TauriSessionDirectory` lê `<home>/.claude/sessions/*.json` (`homeDir()` do Tauri: `~` no macOS, `%USERPROFILE%` no Windows) e `LoadSessions` mantém só os pids vivos (`process_is_alive`, command Rust da F2). Cada sessão mostra nome (ou pasta), pasta curta, status (`busy`/`idle`/`shell`) e há quanto tempo está nele (`statusUpdatedAt`, senão `updatedAt`). Fica destacada a sessão `idle` há mais de 5 min ("Aguardando input") ou `busy` há mais de 30 min ("Parada no mesmo estado"); os limiares estão em `DEFAULT_ATTENTION_CONFIG` (`domain/sessions/attention.ts`) e são injetados em `LoadSessions` pelo composition root.
+
+A capability dá ao plugin-fs só `exists` e `read-dir` em `$HOME/.claude/sessions` e `read-text-file` em `$HOME/.claude/sessions/*.json`; o allowlist do plugin-http e o `connect-src` do CSP incluem `https://api.anthropic.com`.
+
+No modo demo as duas páginas usam dados falsos (histórico de 30 dias gerado por um modelo determinístico, cinco sessões em estados diferentes e uma morta). `?demo=claude:claude-expired` (e os demais cenários de conexão) mostra o estado de erro da página de usage com o botão de conserto.
+
 ### Página Agenda
 
 Reuniões de hoje do Outlook/Teams, ligada à conexão Microsoft, com poll de 5 min.
@@ -153,6 +171,47 @@ Reuniões de hoje do Outlook/Teams, ligada à conexão Microsoft, com poll de 5 
 - **Entrar** abre `onlineMeeting.joinUrl` pelo `OpenUrl`, só se for `https` em `teams.microsoft.com` ou `teams.live.com` (validado em `teamsJoinUrl`, no mapeamento do Graph e de novo no caso de uso `JoinMeeting`).
 - 401/403 do Graph ou token vencido viram `microsoft-expired`: a página mostra o aviso e o botão "Refazer login da Microsoft"; depois do conserto ela recarrega na hora (`PollingScheduler.refresh`).
 - A allowlist do `plugin-http` e o `connect-src` do CSP incluem `https://graph.microsoft.com`.
+
+### PRs e Reviews
+
+Duas páginas (`prs` e `reviews`, pollando a cada 2 min), cada uma com uma única requisição `POST https://api.github.com/graphql` (várias buscas aliasadas, `first: 50` cada) usando o token da conexão GitHub (`GitHubTokenResolver`). O acesso passa pelo `tauri-plugin-http`; a capability já libera `https://api.github.com/*` e `tools/capabilities.spec.ts` garante que `/graphql` está coberto (o `connect-src` da CSP não entra, o plugin não usa o WebView).
+
+| Página | Buscas |
+|---|---|
+| PRs | `author:@me is:open is:pr` |
+| Reviews: para revisar | `review-requested:@me is:open is:pr` |
+| Reviews: revisados | `reviewed-by:@me -author:@me` abertos + fechados/mergeados nos últimos 30 dias |
+
+- Agrupados por repo; `k8s` e `k8s-prod` formam o grupo **Deploy**, recolhido por padrão.
+- Selos por PR: rascunho, CI (`statusCheckRollup`), decisão de review, conflito e idade. Clicar abre no navegador (`OpenUrl`).
+- Limite de 50 por busca; quando há mais, a seção mostra "Mostrando X de Y" e um link para a busca no GitHub.
+- Erros viram `ConnectionProblem` (401 → `github-unauthorized`; 403 com `x-github-sso` ou erro SAML → `github-org-access`; `INSUFFICIENT_SCOPES` → `github-missing-scope`; GitHub não conectado → `github-unauthorized`) e a página mostra o botão de conserto da conexão (`FIX_FOR`) mais "Tentar de novo". O scheduler repassa o `problem` no `PageUpdate` de erro e tem `refresh(pageId)` para recarregar logo após o conserto.
+
+### Skills (runs)
+
+A página `skills` não faz polling: só roda no clique em **Rodar**. As skills vêm de `skills.json` ao lado do `settings.json` (somente leitura; ausente ou inválido usa o padrão `/acabativa`):
+
+```json
+{
+  "schemaVersion": 1,
+  "skills": [
+    {
+      "id": "acabativa",
+      "name": "Acabativa",
+      "prompt": "/acabativa",
+      "maxBudgetUsd": 2,
+      "allowedTools": ["Read", "Grep", "Glob", "Bash(gh:*)", "Bash(git:*)"],
+      "cwd": null
+    }
+  ]
+}
+```
+
+- Comando: `claude -p "<prompt>" --output-format stream-json --verbose --max-budget-usd <valor> --allowedTools <tools…>` via `process_spawn` (sem shell). `--verbose` é exigido pelo `stream-json` em modo `-p`. Prompt começando com `-` é rejeitado.
+- O stream é lido linha a linha (`process-output`/`process-exit`) e interpretado no `domain/skills` (`parseStreamLine` + `applyStreamEvent`): mensagens do assistant, `result` com custo/duração e `session_id`.
+- **Cancelar** mata o grupo do processo (`process_kill`). O histórico (últimas 20 runs, sem o log ao vivo) fica em `runs.json` no `appConfigDir`.
+- **Continuar no terminal** abre `claude --resume <session_id>` (o id precisa ser UUID).
+- Problemas com botão de conserto: MCP sem autenticação (`mcp_servers[].status == "needs-auth"` no `init`) → **Reconectar MCP** (Terminal com `claude /mcp`); Claude Code ausente → **Instalar Claude Code**.
 
 ### Modo demo: cenários de conexão
 
@@ -166,6 +225,8 @@ http://127.0.0.1:4200/?demo=errors
 A agenda do demo usa só títulos genéricos (Daily do time, 1:1, Planejamento) ancorados no horário atual; `microsoft:microsoft-expired` e `microsoft:unexpected` exercitam os estados de erro da página.
 
 Valores: `ok` (padrão do Claude e das notificações), `disconnected`, qualquer `ConnectionProblem` da tabela, e `github:ok` / `microsoft:ok`. `errors` liga um erro em cada conexão. No demo, o token `ghp_…` é aceito como PAT válido.
+
+PRs e Reviews no demo precisam do GitHub conectado: use `?demo=github:ok` (os repos são genéricos, `acme/*`). Os problemas do GitHub (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) também aparecem nas duas páginas, e o botão de conserto resolve. A página Skills roda uma run simulada com stream; `?demo=skills:mcp-needs-auth` e `?demo=skills:claude-code-missing` mostram os problemas de run com **Reconectar MCP** e **Instalar Claude Code**.
 
 ## Comandos
 
@@ -222,19 +283,5 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 - Sem assinatura de código (macOS e Windows) e sem updater. No macOS o bundle usa assinatura ad-hoc (`signingIdentity: "-"`), que não substitui o Developer ID.
 - A CSP do app (`src-tauri/tauri.conf.json`) só libera `self` e IPC; hosts de API das próximas fases precisam entrar em `connect-src`. Não foi validada rodando o app Tauri.
 - O comportamento no Windows (posição do popover, ocultar ao perder o foco) não foi validado em máquina Windows; o CI só compila e roda testes.
-
-### Claude usage
-
-Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` lê o access token do Claude Code pela `ClaudeCredentialSource` e chama `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`) por `AnthropicUsageGateway`; o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
-
-- **Histórico:** `usage-history.json` ao lado do `settings.json`. Pontos brutos por 7 dias; do 8º ao 30º dia, agregados em baldes de 15 min pelo máximo; nada passa de 30 dias (`domain/usage/retention.ts`). Arquivo ilegível recomeça vazio.
-- **Gráficos:** ECharts via `ngx-echarts` (carregado sob demanda, fora do bundle inicial), uma série para a janela de 5 h e outra para a semanal, com marca em 100% e em "agora". Seletor `1h · 12h · 1d · 7d · 30d` comum aos dois.
-- **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada tracejada a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%). A previsão aparece em linha separada: `Previsão no reset (17:00): ~78%` ou `100% · estoura às 15:40, 1h20 antes`; com menos de 3 pontos no ciclo, `Previsão: coletando dados…`. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
-
-### Sessões
-
-Página `sessions` (poll de 5 s, sem conexão). `TauriSessionDirectory` lê `<home>/.claude/sessions/*.json` (`homeDir()` do Tauri: `~` no macOS, `%USERPROFILE%` no Windows) e `LoadSessions` mantém só os pids vivos (`process_is_alive`, command Rust da F2). Cada sessão mostra nome (ou pasta), pasta curta, status (`busy`/`idle`/`shell`) e há quanto tempo está nele (`statusUpdatedAt`, senão `updatedAt`). Fica destacada a sessão `idle` há mais de 5 min ("Aguardando input") ou `busy` há mais de 30 min ("Parada no mesmo estado"); os limiares estão em `DEFAULT_ATTENTION_CONFIG` (`domain/sessions/attention.ts`) e são injetados em `LoadSessions` pelo composition root.
-
-A capability dá ao plugin-fs só `exists` e `read-dir` em `$HOME/.claude/sessions` e `read-text-file` em `$HOME/.claude/sessions/*.json`; o allowlist do plugin-http e o `connect-src` do CSP incluem `https://api.anthropic.com`.
-
-No modo demo as duas páginas usam dados falsos (histórico de 30 dias gerado por um modelo determinístico, cinco sessões em estados diferentes e uma morta). `?demo=claude:claude-expired` (e os demais cenários de conexão) mostra o estado de erro da página de usage com o botão de conserto.
+- As runs de skills nunca foram executadas com o `claude` real nesta fase: o formato do `stream-json` (incluindo `mcp_servers[].status` no `init`) segue a documentação e as fixtures de `domain/skills/stream-fixtures.ts`. Um `claude` instalado via npm depende de `node` no `PATH`, que um app aberto pelo Finder pode não ter; o instalador nativo (`~/.local/bin/claude`) não tem esse problema.
+- Notificação ao fim da run ainda não existe.

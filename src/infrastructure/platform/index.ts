@@ -9,3 +9,4 @@ export * from './tauri-process-probe';
 export * from './tauri-process-runner';
 export * from './tauri-secret-store';
 export * from './tauri-system-actions';
+export * from './tauri-streaming-process-runner';

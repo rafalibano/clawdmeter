@@ -1,13 +1,27 @@
 import { createApplication, type Application } from './application/application';
 import type { ConnectionAdapters } from './application/connections/connection-adapters';
+import { GitHubTokenResolver } from './application/connections/github-token-resolver';
+import { createPullRequests } from './application/pull-requests';
+import { createSkills } from './application/skills';
 import { LoadSessions, LoadUsage } from './application/use-cases';
 import type { ConnectionId } from './domain/connections';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import { AnthropicUsageGateway } from './infrastructure/anthropic';
 import { TauriSessionDirectory } from './infrastructure/claude-code';
-import { GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway } from './infrastructure/github';
+import {
+  GhCliTokenSource,
+  GitHubDeviceFlowAuthorizer,
+  GitHubGraphqlGateway,
+  GitHubRestAccountGateway,
+} from './infrastructure/github';
 import { GraphCalendarGateway, PkceMicrosoftAuthorizer } from './infrastructure/microsoft';
-import { JsonConnectionPrefsStore, JsonSettingsStore, JsonUsageHistoryStore } from './infrastructure/persistence';
+import {
+  JsonConnectionPrefsStore,
+  JsonSettingsStore,
+  JsonSkillRunStore,
+  JsonSkillsConfigStore,
+  JsonUsageHistoryStore,
+} from './infrastructure/persistence';
 import {
   SystemClock,
   TauriClaudeCredentialSource,
@@ -18,13 +32,17 @@ import {
   TauriProcessProbe,
   TauriProcessRunner,
   TauriSecretStore,
+  TauriStreamingProcessRunner,
   TauriSystemSettings,
   TauriTerminalLauncher,
   TauriUrlOpener,
   tauriFetch,
 } from './infrastructure/platform';
 import { createExamplePage } from './ui/pages/example/example.page';
+import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
+import { createReviewsPage } from './ui/pages/reviews/reviews.page';
 import { createSessionsPage } from './ui/pages/sessions/sessions.page';
+import { createSkillsPage } from './ui/pages/skills/skills.page';
 import { createTeamsPage } from './ui/pages/teams/teams.page';
 import { createUsagePage } from './ui/pages/usage/usage.page';
 
@@ -59,11 +77,30 @@ export function createComposition(): Application {
     terminal: new TauriTerminalLauncher(commands),
   };
 
+  const pullRequests = createPullRequests(
+    {
+      prefs: connectionAdapters.prefs,
+      tokens: new GitHubTokenResolver(connectionAdapters.githubCli, secrets),
+      gateway: new GitHubGraphqlGateway(tauriFetch),
+    },
+    clock,
+  );
+
   const application: Application = createApplication({
     clock,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
-    pages: ({ connections }) => [
+    skills: createSkills(
+      {
+        config: new JsonSkillsConfigStore(new TauriJsonFile('skills.json')),
+        runs: new JsonSkillRunStore(new TauriJsonFile('runs.json')),
+        runner: new TauriStreamingProcessRunner(commands),
+        terminal: connectionAdapters.terminal,
+        urls,
+      },
+      clock,
+    ),
+    pages: ({ connections, skills }) => [
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
@@ -82,12 +119,15 @@ export function createComposition(): Application {
           DEFAULT_ATTENTION_CONFIG,
         ),
       }),
-      createExamplePage({ clock, requiredConnections: CONNECTIONS_FOR_EXAMPLE }),
+      createPullRequestsPage({ pullRequests }),
+      createReviewsPage({ pullRequests }),
       createTeamsPage({
         clock,
         calendar: new GraphCalendarGateway({ fetcher: tauriFetch, authorizer: microsoft }),
         reporter: { execute: (id, problem, message) => application.connections.report.execute(id, problem, message) },
       }),
+      createSkillsPage({ skills }),
+      createExamplePage({ clock, requiredConnections: CONNECTIONS_FOR_EXAMPLE }),
     ],
   });
   return application;

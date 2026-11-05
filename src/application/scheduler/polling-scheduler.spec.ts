@@ -261,3 +261,48 @@ describe('PollingScheduler', () => {
     expect(fast).not.toHaveBeenCalled();
   });
 });
+
+describe('PollingScheduler: problemas de conexão e refresh', () => {
+  it('preserva o problema quando o load lança ConnectionProblemError', async () => {
+    const clock = new FakeClock();
+    const registry = new PageRegistry([
+      fakePage({
+        id: 'prs',
+        load: async () => {
+          throw new ConnectionProblemError('github-org-access', 'SSO pendente');
+        },
+      }),
+      fakePage({
+        id: 'net',
+        load: async () => {
+          throw new Error('sem rede');
+        },
+      }),
+    ]);
+    const scheduler = new PollingScheduler(registry, clock);
+    const updates: PageUpdate[] = [];
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(updates.find((update) => update.pageId === 'prs')).toMatchObject({
+      status: 'error',
+      error: 'SSO pendente',
+      problem: 'github-org-access',
+    });
+    expect(updates.find((update) => update.pageId === 'net')).not.toHaveProperty('problem');
+  });
+
+  it('refresh recarrega uma página ligada na hora e ignora páginas desligadas', async () => {
+    const clock = new FakeClock();
+    const load = vi.fn(async () => 'ok');
+    const scheduler = new PollingScheduler(new PageRegistry([fakePage({ id: 'prs', load })]), clock);
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    await scheduler.refresh('prs');
+    expect(load).toHaveBeenCalledTimes(2);
+    await scheduler.refresh('inexistente');
+    scheduler.sync({ ...createDefaultSettings(), enabledPages: { prs: false } });
+    await scheduler.refresh('prs');
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+});

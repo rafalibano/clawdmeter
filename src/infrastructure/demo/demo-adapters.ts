@@ -218,7 +218,10 @@ class DemoUrlOpener implements UrlOpener {
   constructor(private readonly world: DemoWorld) {}
 
   async open(url: string): Promise<void> {
-    if (url === CLAUDE_CODE_INSTALL_URL) this.world.claude.missing = false;
+    if (url === CLAUDE_CODE_INSTALL_URL) {
+      this.world.claude.missing = false;
+      this.world.skills.claudeMissing = false;
+    }
     if (url === GITHUB_ORG_SSO_URL || url === GITHUB_ORG_URL) this.world.github.orgAccess = 'ok';
   }
 }
@@ -229,6 +232,7 @@ class DemoTerminal implements TerminalLauncher {
   async run(command: TerminalCommand): Promise<void> {
     const line = command.args.join(' ');
     if (command.program === 'claude' && line === '/login') this.world.claude.expired = false;
+    if (command.program === 'claude' && line === '/mcp') this.world.skills.mcpNeedsAuth = false;
     if (command.program === 'gh' && line.startsWith('auth login')) this.world.github.unauthorized = false;
     if (command.program === 'gh' && line.startsWith('auth refresh')) this.world.github.missingScope = false;
   }
