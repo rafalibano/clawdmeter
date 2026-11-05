@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::{home_dir, protected_dirs};
+use super::home::{home_dir, protected_dirs, skill_workdir};
 use super::process::resolve_program;
 use super::process_policy::{
     validate_args, validate_cwd, validate_program, validate_terminal_invocation,
@@ -135,7 +135,31 @@ pub fn terminal_run(
     args: Vec<String>,
     cwd: Option<String>,
 ) -> CommandResult<()> {
-    run_terminal(&program, &args, cwd.as_deref(), &protected_dirs(&app)?)
+    let workdir = skill_workdir(&app)?;
+    run_terminal(
+        &program,
+        &args,
+        cwd.as_deref(),
+        &protected_dirs(&app)?,
+        Some(&workdir),
+    )
+}
+
+fn terminal_dir(
+    program: &str,
+    args: &[String],
+    cwd: Option<&str>,
+    protected: &[PathBuf],
+    default_dir: Option<&Path>,
+) -> CommandResult<Option<PathBuf>> {
+    let resumes = program == "claude" && args.first().map(String::as_str) == Some("--resume");
+    match default_dir {
+        Some(dir) if cwd.is_none() && resumes => {
+            validate_terminal_path(dir)?;
+            Ok(Some(dir.to_path_buf()))
+        }
+        _ => validate_terminal_cwd(cwd, home_dir().as_deref(), protected),
+    }
 }
 
 fn run_terminal(
@@ -143,11 +167,12 @@ fn run_terminal(
     args: &[String],
     cwd: Option<&str>,
     protected: &[PathBuf],
+    default_dir: Option<&Path>,
 ) -> CommandResult<()> {
     let program = validate_program(program)?;
     validate_terminal_args(args)?;
     validate_terminal_invocation(program, args)?;
-    let dir = validate_terminal_cwd(cwd, home_dir().as_deref(), protected)?;
+    let dir = terminal_dir(program, args, cwd, protected, default_dir)?;
     let executable = resolve_program(program)?;
     validate_terminal_path(&executable)?;
     launch(&executable, args, dir.as_deref())
@@ -291,20 +316,38 @@ mod tests {
             &args(&["--dangerously-skip-permissions"]),
             None,
             &[],
+            None,
         )
         .unwrap_err();
         assert_eq!(denied.kind, ErrorKind::InvalidArgument);
-        let other = run_terminal("gh", &args(&["auth", "token"]), None, &[]).unwrap_err();
+        let other = run_terminal("gh", &args(&["auth", "token"]), None, &[], None).unwrap_err();
         assert_eq!(other.kind, ErrorKind::InvalidArgument);
     }
 
     #[test]
     fn rejects_programs_outside_the_allowlist() {
         assert_eq!(
-            run_terminal("bash", &args(&["-c"]), None, &[])
+            run_terminal("bash", &args(&["-c"]), None, &[], None)
                 .unwrap_err()
                 .kind,
             ErrorKind::ProgramNotAllowed
         );
+    }
+
+    #[test]
+    fn resume_without_a_cwd_reopens_in_the_skill_workdir() {
+        let workdir = Path::new("/Users/dev/Library/Caches/com.fake.devpulse/skill-cwd");
+        let resume = args(&["--resume", "3f2a9c1e-0000-4000-8000-123456789abc"]);
+        assert_eq!(
+            terminal_dir("claude", &resume, None, &[], Some(workdir)).unwrap(),
+            Some(workdir.to_path_buf())
+        );
+        assert_eq!(
+            terminal_dir("claude", &args(&["/login"]), None, &[], Some(workdir)).unwrap(),
+            None
+        );
+        assert!(terminal_dir("claude", &resume, Some("relativo"), &[], Some(workdir)).is_err());
+        let quoted = Path::new("/Users/o'brien/Library/Caches/x/skill-cwd");
+        assert!(terminal_dir("claude", &resume, None, &[], Some(quoted)).is_err());
     }
 }

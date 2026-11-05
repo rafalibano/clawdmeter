@@ -11,8 +11,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::{home_dir, protected_dirs};
-use super::process_policy::{prepare_invocation, validate_cwd, validate_program};
+use super::home::{home_dir, protected_dirs, skill_workdir};
+use super::process_policy::{prepare_invocation, resolve_working_dir, validate_program, GH_ENV};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
 const MAX_RUN_TIMEOUT_MS: u64 = 120_000;
@@ -211,16 +211,14 @@ fn build_command(
     args: &[String],
     cwd: Option<&str>,
     protected: &[PathBuf],
+    default_dir: Option<&Path>,
 ) -> CommandResult<Command> {
     let argv = prepare_invocation(program, args)?;
-    let home = home_dir();
-    let effective = cwd
-        .map(str::to_string)
-        .or_else(|| home.as_ref().map(|dir| dir.to_string_lossy().into_owned()));
-    let dir = validate_cwd(effective.as_deref(), home.as_deref(), protected)?;
+    let dir = resolve_working_dir(cwd, home_dir().as_deref(), protected, default_dir)?;
     let mut command = Command::new(resolve_program(program)?);
     command
         .args(&argv)
+        .envs(GH_ENV.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -318,7 +316,7 @@ fn run_to_completion(
             "process_run só executa o gh",
         ));
     }
-    let mut child = build_command(program, args, None, &[])?
+    let mut child = build_command(program, args, None, &[], None)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
@@ -479,7 +477,8 @@ pub fn process_spawn(
 ) -> CommandResult<u32> {
     registry.ensure_capacity()?;
     let protected = protected_dirs(&app)?;
-    let mut child = build_command(&program, &args, cwd.as_deref(), &protected)?
+    let workdir = skill_workdir(&app)?;
+    let mut child = build_command(&program, &args, cwd.as_deref(), &protected, Some(&workdir))?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let pid = child.id();

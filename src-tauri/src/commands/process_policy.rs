@@ -38,7 +38,13 @@ const CLAUDE_DISALLOWED_TOOLS: &[&str] = &[
     "NotebookEdit",
     "WebFetch",
     "WebSearch",
+    "Read(~/.ssh/**)",
+    "Read(~/.aws/**)",
+    "Read(~/.config/gh/**)",
+    "Read(~/.claude/**)",
+    "Read(~/.gnupg/**)",
 ];
+pub const GH_ENV: &[(&str, &str)] = &[("GH_PROMPT_DISABLED", "1")];
 const CLAUDE_PERMISSION_MODE: &str = "dontAsk";
 
 fn invalid(message: impl Into<String>) -> CommandError {
@@ -229,6 +235,19 @@ fn validate_claude(args: &[String]) -> CommandResult<()> {
         ["--resume", id] if is_uuid(id) => Ok(()),
         ["-p", prompt, ..] => validate_claude_print(prompt, &args[2..]),
         _ => Err(invalid("argumentos do claude não permitidos")),
+    }
+}
+
+pub fn resolve_working_dir(
+    cwd: Option<&str>,
+    home: Option<&Path>,
+    protected: &[PathBuf],
+    default_dir: Option<&Path>,
+) -> CommandResult<Option<PathBuf>> {
+    match (cwd, default_dir) {
+        (None, Some(dir)) => Ok(Some(dir.to_path_buf())),
+        (None, None) => validate_cwd(home.and_then(Path::to_str), home, protected),
+        (Some(_), _) => validate_cwd(cwd, home, protected),
     }
 }
 
@@ -474,13 +493,15 @@ mod tests {
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
 
+    const DISALLOWED: &str = "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Read(~/.ssh/**),Read(~/.aws/**),Read(~/.config/gh/**),Read(~/.claude/**),Read(~/.gnupg/**)";
+
     const HARDENING: [&str; 6] = [
         "--setting-sources",
         "user",
         "--permission-mode",
         "dontAsk",
         "--disallowedTools",
-        "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch",
+        DISALLOWED,
     ];
 
     #[test]
@@ -516,7 +537,7 @@ mod tests {
                 "--permission-mode",
                 "dontAsk",
                 "--disallowedTools",
-                "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch",
+                DISALLOWED,
             ])
         );
         assert_eq!(prepare_invocation("claude", &args(&from_ts)).unwrap(), argv);
@@ -533,6 +554,30 @@ mod tests {
         )
         .unwrap();
         assert!(without_tools.ends_with(&args(&HARDENING)));
+    }
+
+    #[test]
+    fn sensitive_reads_are_denied_and_never_collide_with_the_allowlist() {
+        let denied: Vec<&str> = DISALLOWED.split(',').collect();
+        for path in [
+            "~/.ssh/**",
+            "~/.aws/**",
+            "~/.config/gh/**",
+            "~/.claude/**",
+            "~/.gnupg/**",
+        ] {
+            assert!(denied.contains(&format!("Read({path})").as_str()), "{path}");
+        }
+        assert_eq!(denied, CLAUDE_DISALLOWED_TOOLS.to_vec());
+        assert!(denied
+            .iter()
+            .all(|tool| !ALLOWED_CLAUDE_TOOLS.contains(tool)));
+        assert!(DISALLOWED.len() < MAX_ARG_BYTES);
+    }
+
+    #[test]
+    fn gh_runs_never_prompt() {
+        assert_eq!(GH_ENV, &[("GH_PROMPT_DISABLED", "1")]);
     }
 
     #[test]
@@ -973,5 +1018,65 @@ mod tests {
         let link = home.join("atalho");
         std::os::unix::fs::symlink(tree.root.join("outside"), &link).unwrap();
         assert!(validate_cwd(link.to_str(), Some(&home), &[]).is_err());
+    }
+
+    #[test]
+    fn without_a_cwd_the_run_starts_in_the_app_workdir_not_in_the_home() {
+        let tree = TempTree::new("workdir");
+        let home = tree.home();
+        let workdir = tree.root.join("cache").join("skill-cwd");
+        std::fs::create_dir_all(&workdir).unwrap();
+        let resolved = resolve_working_dir(None, Some(&home), &[], Some(&workdir)).unwrap();
+        assert_eq!(resolved, Some(workdir.clone()));
+        assert_ne!(resolved, home.canonicalize().ok());
+    }
+
+    #[test]
+    fn an_explicit_cwd_is_still_validated_even_with_a_default_workdir() {
+        let tree = TempTree::new("workdir-explicit");
+        let home = tree.home();
+        let workdir = tree.root.join("cache").join("skill-cwd");
+        std::fs::create_dir_all(&workdir).unwrap();
+        let inside = home.join("work");
+        let ok = resolve_working_dir(inside.to_str(), Some(&home), &[], Some(&workdir)).unwrap();
+        assert_eq!(ok, Some(inside.canonicalize().unwrap()));
+        let outside = tree.root.join("outside");
+        assert!(resolve_working_dir(outside.to_str(), Some(&home), &[], Some(&workdir)).is_err());
+        assert!(resolve_working_dir(Some("relativo"), Some(&home), &[], Some(&workdir)).is_err());
+    }
+
+    #[test]
+    fn without_a_default_workdir_the_home_is_still_the_fallback() {
+        let tree = TempTree::new("workdir-home");
+        let home = tree.home();
+        let resolved = resolve_working_dir(None, Some(&home), &[], None).unwrap();
+        assert_eq!(resolved, Some(home.canonicalize().unwrap()));
+        assert_eq!(resolve_working_dir(None, None, &[], None).unwrap(), None);
+    }
+
+    #[test]
+    fn the_webview_fs_scope_never_reaches_the_cache_or_the_home() {
+        let capabilities: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/default.json")).unwrap();
+        let mut paths = Vec::new();
+        for permission in capabilities["permissions"].as_array().unwrap() {
+            let is_fs = permission["identifier"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("fs:"));
+            if let (true, Some(allow)) = (is_fs, permission["allow"].as_array()) {
+                paths.extend(allow.iter().filter_map(|entry| entry["path"].as_str()));
+            }
+        }
+        assert!(!paths.is_empty());
+        for path in paths {
+            assert!(
+                path.starts_with("$APPCONFIG") || path.starts_with("$HOME/.claude/sessions"),
+                "{path} fora do escopo esperado do webview"
+            );
+        }
+        let raw = include_str!("../../capabilities/default.json");
+        assert!(
+            !raw.contains("APPCACHE") && !raw.contains("$APPLOCALDATA") && !raw.contains("$TEMP")
+        );
     }
 }
