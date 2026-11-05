@@ -10,3 +10,4 @@ pub mod process_policy;
 pub mod secrets;
 pub mod terminal;
 pub mod tray_usage;
+pub mod updater;

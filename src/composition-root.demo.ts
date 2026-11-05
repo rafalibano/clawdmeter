@@ -17,6 +17,7 @@ import {
   DemoUsageHistoryStore,
   DemoUsageIndicator,
   DemoUsageModel,
+  DemoUpdateChecker,
   createDemoConnectionAdapters,
   createDemoSkillAdapters,
   createDemoWorld,
@@ -54,6 +55,7 @@ export function createComposition(): Application {
     language,
     settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings')),
     connectionAdapters,
+    updateChecker: new DemoUpdateChecker(world.update),
     skills: ({ connections }) =>
       createSkills(
         createDemoSkillAdapters(world, {

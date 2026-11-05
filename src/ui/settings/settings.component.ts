@@ -20,10 +20,11 @@ import { SettingsSectionComponent } from './settings-section.component';
 import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { ConnectionsComponent } from './connections/connections.component';
+import { UpdateSettingsComponent } from '../updates/update-settings.component';
 
 @Component({
   selector: 'cm-settings',
-  imports: [ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent],
+  imports: [ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent, UpdateSettingsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

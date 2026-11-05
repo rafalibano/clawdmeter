@@ -5,6 +5,7 @@ import { createFakeConnectionWorld } from './testing/fake-connection-adapters';
 import { createFakeSkills } from './testing/fake-skills';
 import { fakePage } from './testing/fake-page';
 import { FakeSettingsStore } from './testing/fake-settings-store';
+import { FakeUpdateChecker } from './testing/fake-update-checker';
 
 function deps() {
   const clock = new FakeClock();
@@ -12,6 +13,7 @@ function deps() {
     clock,
     settingsStore: new FakeSettingsStore(),
     connectionAdapters: createFakeConnectionWorld().adapters,
+    updateChecker: new FakeUpdateChecker(),
     skills: createFakeSkills(clock),
   };
 }

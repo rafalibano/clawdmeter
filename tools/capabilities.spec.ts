@@ -66,6 +66,28 @@ describe('capability default', () => {
     expect(shortcut).toEqual([]);
   });
 
+  it('updates go only through the app updater commands, never the updater plugin API', () => {
+    for (const permission of ['allow-updater-check', 'allow-updater-install', 'allow-updater-restart']) {
+      expect(capability.permissions).toContain(permission);
+    }
+    const plugin = capability.permissions.filter((permission) =>
+      (typeof permission === 'string' ? permission : (permission.identifier ?? '')).startsWith('updater:'),
+    );
+    expect(plugin).toEqual([]);
+  });
+
+  it('the updater config carries the public key and requires the signed version', () => {
+    const config = JSON.parse(readFileSync(join(__dirname, '../src-tauri/tauri.conf.json'), 'utf8')) as {
+      bundle: { createUpdaterArtifacts?: boolean };
+      plugins?: { updater?: { pubkey?: string; requireSignedVersion?: boolean; endpoints?: unknown } };
+    };
+    const updater = config.plugins?.updater;
+    expect(config.bundle.createUpdaterArtifacts).toBe(true);
+    expect(updater?.requireSignedVersion).toBe(true);
+    expect(updater?.endpoints).toBeUndefined();
+    expect(Buffer.from(updater?.pubkey ?? '', 'base64').toString('utf8')).toMatch(/^untrusted comment: minisign public key: [0-9A-F]+\n\S+\n?$/);
+  });
+
   describe('ClaudeUsageBar history', () => {
     const FS_PERMISSION = /^fs:/;
     const HISTORY = '/home/dev/.config/claude-usage-bar/history.json';

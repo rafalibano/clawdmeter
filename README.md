@@ -38,6 +38,15 @@ The `.dmg` is for Macs with an Apple chip (M1 or newer). You need Claude Code in
 
 ![ClawdMeter Settings](docs/images/settings.png)
 
+## Updates
+
+ClawdMeter updates itself from the Releases of its GitHub repository. For that you need:
+
+- **Access to the repository** with your GitHub account (it is private).
+- **GitHub connected** in **Settings > Connections** (gh CLI, browser or token). Without it, Settings > Updates shows "Connect GitHub to receive updates" and the app does not check.
+
+The app checks when it opens and every 6 hours. When there is a new version, a "New version X · Update" bar appears at the top of the panel: click **Update**, wait for the download and choose **Restart** (or **Later**). Settings > Updates shows the current version, the last check and a **Check now** button. Every update is signed, and the app refuses a file whose signature does not match.
+
 ## Privacy and security
 
 Everything stays on your computer. There is no ClawdMeter server, nothing is sent to Mottu and there is no telemetry.
@@ -51,7 +60,7 @@ What the app reads:
 Who the app talks to over the internet, and only these:
 
 - `api.anthropic.com`: your Claude consumption.
-- `api.github.com`: your PRs and Reviews.
+- `api.github.com`: your PRs and Reviews, and the app updates (the download itself comes from GitHub's file storage, `release-assets.githubusercontent.com`).
 - `graph.microsoft.com`: the agenda (tab under maintenance).
 
 The GitHub token, if you use one, is kept in the Keychain. Skills, when they come back, will only be able to run a closed list of read commands.

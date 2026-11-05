@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Automatic updates from the GitHub Releases of the app's repository: checks on launch and every 6 hours with the connected GitHub account, shows "New version X · Update" at the top of the panel, downloads with progress, verifies the signature, installs and asks before restarting. Settings has a new **Updates** section with the current version, the last check and **Check now**. Without GitHub connected the app does not check and says so.
+- The release workflow signs the updater artifacts, publishes `latest.json` and no longer leaves the release as a draft; Windows also gets an NSIS installer.
+
 ## 0.1.0
 
 First internally distributed version.

@@ -10,6 +10,7 @@ pub mod usage_icon;
 
 use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
+use commands::updater::PendingUpdate;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,8 +25,10 @@ pub fn run() {
         )
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ProcessRegistry::default())
         .manage(LoopbackRegistry::default())
+        .manage(PendingUpdate::default())
         .invoke_handler(tauri::generate_handler![
             commands::secrets::secret_get,
             commands::secrets::secret_set,
@@ -44,6 +47,9 @@ pub fn run() {
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
             commands::tray_usage::tray_set_usage,
+            commands::updater::updater_check,
+            commands::updater::updater_install,
+            commands::updater::updater_restart,
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir();

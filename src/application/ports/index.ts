@@ -16,3 +16,4 @@ export * from './system-actions';
 export * from './translator';
 export * from './usage-gateway';
 export * from './usage-indicator';
+export * from './update-checker';

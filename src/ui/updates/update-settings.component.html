@@ -1,0 +1,35 @@
+<cm-settings-section name="updates" [heading]="i18n.t('settings.updates')">
+  <span summary>{{ summary() }}</span>
+
+  <dl class="facts">
+    <dt>{{ i18n.t('updates.current') }}</dt>
+    <dd data-current-version>{{ snapshot().currentVersion ?? '—' }}</dd>
+    <dt>{{ i18n.t('updates.lastCheck') }}</dt>
+    <dd>{{ lastCheck() }}</dd>
+  </dl>
+
+  <p class="status" [attr.data-state]="status().state">{{ statusLine() }}</p>
+
+  <div class="actions">
+    @switch (status().state) {
+      @case ('available') {
+        <button type="button" class="btn primary" data-action="install" (click)="install()">
+          {{ i18n.t('updates.banner.update') }}
+        </button>
+      }
+      @case ('installed') {
+        <button type="button" class="btn primary" data-action="restart" (click)="restart()">
+          {{ i18n.t('updates.banner.restart') }}
+        </button>
+      }
+      @case ('error') {
+        <button type="button" class="btn primary" data-action="retry" (click)="retry()">
+          {{ i18n.t('common.retry') }}
+        </button>
+      }
+    }
+    <button type="button" class="btn" data-action="check" [disabled]="!canCheck()" (click)="checkNow()">
+      {{ i18n.t('updates.checkNow') }}
+    </button>
+  </div>
+</cm-settings-section>
