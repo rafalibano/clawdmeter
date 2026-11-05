@@ -4,5 +4,7 @@
 <dict>
   <key>LSUIElement</key>
   <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>O Dev Pulse usa o Terminal para você refazer o login do Claude e do GitHub.</string>
 </dict>
 </plist>

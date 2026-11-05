@@ -18,6 +18,9 @@ const ACCEPT_POLL_MS: u64 = 40;
 const READ_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 const MAX_TIMEOUT_MS: u64 = 600_000;
+const LISTENER_TTL_MS: u64 = MAX_TIMEOUT_MS + 5_000;
+
+type ListenerMap = Arc<Mutex<HashMap<String, Arc<LoopbackListener>>>>;
 
 pub struct LoopbackListener {
     socket: TcpListener,
@@ -27,15 +30,29 @@ pub struct LoopbackListener {
 #[derive(Default)]
 pub struct LoopbackRegistry {
     next_id: AtomicU64,
-    listeners: Mutex<HashMap<String, Arc<LoopbackListener>>>,
+    listeners: ListenerMap,
 }
 
 impl LoopbackRegistry {
     fn insert(&self, listener: LoopbackListener) -> String {
+        self.insert_with_ttl(listener, Duration::from_millis(LISTENER_TTL_MS))
+    }
+
+    fn insert_with_ttl(&self, listener: LoopbackListener, ttl: Duration) -> String {
         let id = (self.next_id.fetch_add(1, Ordering::SeqCst) + 1).to_string();
+        let shared = Arc::new(listener);
         if let Ok(mut listeners) = self.listeners.lock() {
-            listeners.insert(id.clone(), Arc::new(listener));
+            listeners.insert(id.clone(), Arc::clone(&shared));
         }
+        let listeners = Arc::clone(&self.listeners);
+        let expiring = id.clone();
+        thread::spawn(move || {
+            thread::sleep(ttl);
+            shared.cancelled.store(true, Ordering::SeqCst);
+            if let Ok(mut listeners) = listeners.lock() {
+                listeners.remove(&expiring);
+            }
+        });
         id
     }
 
@@ -279,6 +296,28 @@ mod tests {
         assert!(same_state("abc", "abc"));
         assert!(!same_state("abc", "abd"));
         assert!(!same_state("abc", "abcd"));
+    }
+
+    #[test]
+    fn unused_listeners_expire_without_wait_or_cancel() {
+        let registry = LoopbackRegistry::default();
+        let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        let id = registry.insert_with_ttl(
+            LoopbackListener {
+                socket,
+                cancelled: AtomicBool::new(false),
+            },
+            Duration::from_millis(60),
+        );
+        let kept = registry.get(&id).unwrap();
+        assert!(!kept.cancelled.load(Ordering::SeqCst));
+        thread::sleep(Duration::from_millis(250));
+        assert!(registry.get(&id).is_none());
+        assert!(kept.cancelled.load(Ordering::SeqCst));
+        drop(kept);
+        thread::sleep(Duration::from_millis(50));
+        assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
     }
 
     #[test]
