@@ -1,10 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import {
   APP_LANGUAGES,
   THEME_MODES,
   isMaintenancePage,
   isPageEnabled,
-  isValidUsageThresholds,
   type AppLanguage,
   type ThemeMode,
 } from '../../domain/settings';
@@ -27,19 +26,12 @@ export class SettingsComponent {
   private readonly facade = inject(SettingsFacade);
   private readonly theme = inject(ThemeService);
   protected readonly i18n = inject(I18n);
-  private readonly warningDraft = signal<string | null>(null);
-  private readonly criticalDraft = signal<string | null>(null);
 
   protected readonly settings = this.facade.settings;
   protected readonly accentPresets = ACCENT_PRESETS;
   protected readonly backgroundPresets = BACKGROUND_PRESETS;
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
-  protected readonly warningText = computed(() => this.warningDraft() ?? String(this.settings().usageThresholds.warning));
-  protected readonly criticalText = computed(() => this.criticalDraft() ?? String(this.settings().usageThresholds.critical));
-  protected readonly thresholdsInvalid = computed(
-    () => !isValidUsageThresholds({ warning: Number(this.warningText()), critical: Number(this.criticalText()) }),
-  );
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
@@ -78,18 +70,6 @@ export class SettingsComponent {
 
   protected setLanguage(language: AppLanguage): void {
     this.facade.update({ language });
-  }
-
-  protected setThreshold(field: 'warning' | 'critical', event: Event): void {
-    const text = (event.target as HTMLInputElement).value;
-    (field === 'warning' ? this.warningDraft : this.criticalDraft).set(text);
-    const warning = Number(field === 'warning' ? text : this.warningText());
-    const critical = Number(field === 'critical' ? text : this.criticalText());
-    if (text.trim() !== '' && isValidUsageThresholds({ warning, critical })) {
-      this.facade.update({ usageThresholds: { warning, critical } });
-      this.warningDraft.set(null);
-      this.criticalDraft.set(null);
-    }
   }
 
   protected checkedOf(event: Event): boolean {

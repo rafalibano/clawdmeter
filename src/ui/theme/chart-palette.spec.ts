@@ -32,7 +32,6 @@ describe('chartPalette', () => {
   it('alerta em alert-base, atenção em amarelo e a fonte é Helvetica', () => {
     const palette = chartPalette('#00b131', null, 'dark');
     expect(palette.danger).toBe('#ff5449');
-    expect(palette.attention).toBe('#ffc700');
     expect(palette.fontFamily).toBe('"Helvetica Neue", Helvetica, Arial, sans-serif');
   });
 

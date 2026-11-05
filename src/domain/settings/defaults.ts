@@ -1,4 +1,4 @@
-import { DEFAULT_LANGUAGE, DEFAULT_USAGE_THRESHOLDS, type AppSettings } from './app-settings';
+import { DEFAULT_LANGUAGE, type AppSettings } from './app-settings';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
 
@@ -14,6 +14,5 @@ export function createDefaultSettings(): AppSettings {
       theme: 'system',
     },
     language: DEFAULT_LANGUAGE,
-    usageThresholds: { ...DEFAULT_USAGE_THRESHOLDS },
   };
 }

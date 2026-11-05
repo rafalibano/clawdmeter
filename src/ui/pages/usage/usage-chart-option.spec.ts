@@ -7,9 +7,7 @@ import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type
 import { buildChartOption as buildOption, tooltipFormatter } from './usage-chart-option';
 
 const PT = new Localizer('pt-BR');
-const THRESHOLDS = { warning: 70, critical: 90 };
-const buildChartModel = (inputs: WindowInput[], range: ReturnType<typeof usageRange>, now: number, thresholds = THRESHOLDS) =>
-  buildModel(inputs, range, now, thresholds);
+const buildChartModel = buildModel;
 const buildChartOption = (model: ReturnType<typeof buildChartModel>, palette: ReturnType<typeof chartPalette>, l = PT) =>
   buildOption(model, palette, l);
 
@@ -82,8 +80,8 @@ describe('buildChartModel', () => {
 
   it('fora do Ciclo a tendência termina onde cruza 100%', () => {
     for (const id of ['1h', '6h', '1d', '7d', '30d'] as const) {
-      const model = buildChartModel(inputs(ready(5000)), usageRange(id), NOW);
-      const end = model.windows[0]!.trend![1]!;
+      const model = buildChartModel(inputs(ready(5000), ready(5000)), usageRange(id), NOW);
+      const end = model.windows[id === '7d' || id === '30d' ? 1 : 0]!.trend![1]!;
       expect(end[1]).toBe(100);
       expect(end[0]).toBeLessThan(model.xMax);
       expect(model.yMax).toBe(100);
@@ -100,7 +98,7 @@ describe('buildChartModel', () => {
   it('reset antes da borda: a tendência termina no reset', () => {
     const forecast = ready(40);
     const near = { ...forecast, trend: { ...(forecast as { trend: object }).trend, toAt: NOW + 5 * MINUTE_MS, toValue: 31 } } as Forecast;
-    expect(buildChartModel(inputs(near), usageRange('30d'), NOW).windows[0]!.trend?.[1]).toEqual([NOW + 5 * MINUTE_MS, 31]);
+    expect(buildChartModel(inputs(near), usageRange('1d'), NOW).windows[0]!.trend?.[1]).toEqual([NOW + 5 * MINUTE_MS, 31]);
   });
 });
 
@@ -165,7 +163,7 @@ describe('buildChartOption', () => {
     expect(option.series.map((series) => series.name)).toEqual(['5h', '7d', '5h tendência', '7d tendência']);
     const en = buildChartOption(model, palette, new Localizer('en')) as unknown as typeof option;
     expect(en.series.map((series) => series.name)).toEqual(['5h', '7d', '5h trend', '7d trend']);
-    expect(option.series[0]!.smooth).toBe(true);
+    expect(option.series[0]!.smooth).toBe(false);
     expect(option.series[2]!.lineStyle).toMatchObject({ type: 'dashed', width: 1.2 });
     expect(option.series[2]!.lineStyle.width).toBeLessThan(option.series[0]!.lineStyle.width);
     expect(option.series[2]!.data[0]).toEqual([NOW, 29]);
@@ -241,30 +239,12 @@ describe('buildChartOption', () => {
     expect(high.series[1]!.lineStyle.color).toBe('#767676');
   });
 
-  it('a faixa vale só para a projeção: tendência 7d cinza < alerta, amarela >= alerta, vermelha >= crítico', () => {
-    const colorOf = (projected: number) => {
-      const built = buildChartOption(buildChartModel(inputs(ready(40), ready(projected)), usageRange('1h'), NOW), palette) as unknown as typeof option;
-      return built.series[3]!.lineStyle.color;
+  it('a tendência tem sempre a cor da série, qualquer que seja o valor projetado', () => {
+    const colors = (five: number, seven: number) => {
+      const built = buildChartOption(buildChartModel(inputs(ready(five), ready(seven)), usageRange('1h'), NOW), palette) as unknown as typeof option;
+      return [built.series[2]!.lineStyle.color, built.series[3]!.lineStyle.color];
     };
-    expect(colorOf(50)).toBe('#767676');
-    expect(colorOf(70)).toBe('#ffc700');
-    expect(colorOf(89)).toBe('#ffc700');
-    expect(colorOf(90)).toBe('#ff5449');
-    expect(colorOf(140)).toBe('#ff5449');
-  });
-
-  it('os limiares editados mudam a cor da tendência na hora', () => {
-    const model = buildChartModel(inputs(ready(40), ready(60)), usageRange('1h'), NOW, { warning: 50, critical: 55 });
-    const built = buildChartOption(model, palette) as unknown as typeof option;
-    expect(built.series[3]!.lineStyle.color).toBe('#ff5449');
-  });
-
-  it('a tendência 5h é verde e só fica vermelha se estourar 100%', () => {
-    const at = (projected: number) =>
-      (buildChartOption(buildChartModel(inputs(ready(projected)), usageRange('1h'), NOW), palette) as unknown as typeof option).series[2]!.lineStyle.color;
-    expect(at(95)).toBe('#00b131');
-    expect(at(100)).toBe('#ff5449');
-    expect(at(160)).toBe('#ff5449');
+    for (const value of [50, 75, 95, 100, 160]) expect(colors(value, value)).toEqual(['#00b131', '#767676']);
   });
 
   it('a 5h segue verde mesmo sem o 7d na tendência', () => {
@@ -274,7 +254,7 @@ describe('buildChartOption', () => {
   });
 
   it('em períodos longos a linha real afina, e a tendência continua mais fina que ela', () => {
-    const long = buildChartOption(buildChartModel(inputs(ready(60)), usageRange('30d'), NOW), palette) as unknown as typeof option;
+    const long = buildChartOption(buildChartModel(inputs(ready(60), ready(60)), usageRange('30d'), NOW), palette) as unknown as typeof option;
     expect(long.series[0]!.lineStyle.width).toBe(1.5);
     expect(long.series[2]!.lineStyle.width).toBeLessThan(1.5);
   });
@@ -302,8 +282,9 @@ describe('período Reset (ciclo semanal)', () => {
   it('eixo vai de (reset semanal - 7d) até o reset semanal e só traz pontos desse ciclo', () => {
     const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
     expect(model).toMatchObject({ cycle: true, xMin: WEEKLY_RESET - CYCLE_MS, xMax: WEEKLY_RESET, rangeMs: CYCLE_MS });
-    expect(model.windows[0]!.points.map((point) => point[1])).toEqual([5, 20, 30]);
-    expect(model.windows[0]!.points.some((point) => point[1] === 90)).toBe(false);
+    const values = model.windows[0]!.points.map((point) => point[1]).filter((value) => value !== null);
+    expect(values).toEqual([5, 20, 30]);
+    expect(values.includes(90)).toBe(false);
   });
 
   it('no Reset a projeção do 5h não aparece e a do 7d vai até o reset semanal', () => {
@@ -328,72 +309,28 @@ describe('período Reset (ciclo semanal)', () => {
   });
 
   it('períodos comuns mantêm a regressão e a projeção do 5h', () => {
-    const model = buildChartModel(cycleInputs(), usageRange('7d'), NOW);
-    expect(model.windows[0]!.trend).not.toBeNull();
-    expect(model.windows[1]!.days).toEqual([]);
+    const model1d = buildChartModel(cycleInputs(), usageRange('1d'), NOW);
+    expect(model1d.windows[0]!.trend).not.toBeNull();
+    expect(model1d.windows[1]!.trend).not.toBeNull();
   });
 
-  describe('pontos por dia', () => {
-    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
-    const days = model.windows[1]!.days;
+  it('7d e 30d só projetam o 7d; o 5h fica sem tendência', () => {
+    for (const id of ['7d', '30d']) {
+      const model = buildChartModel(cycleInputs(), usageRange(id), NOW);
+      expect(model.windows[0]!.trend).toBeNull();
+      expect(model.windows[1]!.trend).not.toBeNull();
+    }
+    for (const id of ['1h', '6h', '1d']) {
+      expect(buildChartModel(cycleInputs(), usageRange(id), NOW).windows[0]!.trend).not.toBeNull();
+    }
+  });
 
-    it('um ponto em cada 00:00 local entre agora e o reset, mais o ponto no reset', () => {
-      const expected: number[] = [];
-      const cursor = new Date(NOW);
-      cursor.setHours(24, 0, 0, 0);
-      while (cursor.getTime() < WEEKLY_RESET) {
-        expected.push(cursor.getTime());
-        cursor.setDate(cursor.getDate() + 1);
-        cursor.setHours(0, 0, 0, 0);
-      }
-      expect(days.map((day) => day.at)).toEqual([...expected, WEEKLY_RESET]);
-      days.slice(0, -1).forEach((day) => expect(new Date(day.at).getHours()).toBe(0));
-    });
-
-    it('cada valor está sobre a reta da projeção', () => {
-      const trend = model.windows[1]!.trend!;
-      for (const day of days) {
-        const expected = trend[0]![1] + ((trend[1]![1] - trend[0]![1]) * (day.at - NOW)) / (WEEKLY_RESET - NOW);
-        expect(day.value).toBeCloseTo(expected, 5);
-      }
-    });
-
-    it('a cor segue as faixas dos limiares: cinza, amarelo e vermelho', () => {
-      const withRate = (perDay: number) => {
-        const history: UsagePoint[] = [
-          { at: NOW - 3 * DAY_MS, utilization: 0, resetsAt: null },
-          { at: NOW, utilization: 3 * perDay, resetsAt: null },
-        ];
-        const input = [
-          { kind: 'fiveHour' as const, label: '5h', points: [], forecast: { status: 'collecting' } as Forecast, resetsAt: null },
-          { kind: 'sevenDay' as const, label: '7d', points: history, forecast: { status: 'collecting' } as Forecast, resetsAt: NOW + 3 * DAY_MS },
-        ];
-        return buildChartModel(input, usageRange('cycle'), NOW).windows[1]!.days;
-      };
-      expect(withRate(10).at(-1)!.tone).toBe('base');
-      expect(withRate(12).at(-1)!.tone).toBe('attention');
-      expect(withRate(15).at(-1)!.tone).toBe('danger');
-      expect(withRate(40).at(-1)!.tone).toBe('danger');
-      expect(withRate(12).map((day) => day.tone)).toContain('base');
-    });
-
-    it('o eixo expande para a projeção do Reset e a série de pontos leva cor e tooltip, sem rótulo', () => {
-      const steep = steepCycle(4);
-      const built = buildChartModel(steep, usageRange('cycle'), NOW);
+  describe('projeção no Reset', () => {
+    it('não há bolinhas diárias, só a linha tracejada e a sonda do tooltip', () => {
+      const built = buildChartModel(steepCycle(4), usageRange('cycle'), NOW);
       expect(built.yMax).toBeGreaterThan(100);
-      const out = buildChartOption(built, palette, PT) as unknown as {
-        series: {
-          type: string;
-          data: { value: number[]; itemStyle: { color: string }; label?: unknown }[];
-          tooltip?: { formatter: (params: { value: number[] }) => string };
-        }[];
-      };
-      const scatter = out.series.find((series) => series.type === 'scatter')!;
-      expect(scatter.data).toHaveLength(built.windows[1]!.days.length);
-      const last = scatter.data.at(-1)!;
-      expect(last.itemStyle.color).toBe('#ff5449');
-      expect(last.label).toBeUndefined();
-      expect(scatter.tooltip!.formatter({ value: last.value })).toMatch(/^\S+ \d{2}\/\d{2} \d{2}:\d{2}<br\/>Projetado \d+%$/);
+      const out = buildChartOption(built, palette, PT) as unknown as { series: { type: string }[] };
+      expect(out.series.some((series) => series.type === 'scatter')).toBe(false);
     });
 
     it('tooltip live: no futuro mostra só a projeção calculada no instante; no passado, os valores reais', () => {
@@ -402,18 +339,61 @@ describe('período Reset (ciclo semanal)', () => {
       const project = built.windows[1]!.projectAt!;
       const mid = NOW + 30 * HOUR_MS + 17 * MINUTE_MS;
       const future = format([{ axisValue: mid, seriesIndex: 0, marker: '', seriesName: '5h', value: [NOW, 5] }]);
-      expect(future).toBe(`${PT.weekday(mid)} ${PT.axisTick(mid, CYCLE_MS)} ${PT.clock(mid)}<br/><span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${palette.danger}"></span>Projetado ${Math.round(project(mid).value)}%`);
+      expect(future).toBe(`${PT.weekday(mid)} ${PT.axisTick(mid, CYCLE_MS)} ${PT.clock(mid)}<br/><span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${palette.series.sevenDay.line}"></span>Projetado ${Math.round(project(mid))}%`);
       expect(future).not.toContain('5h');
-      expect(project(mid).value).toBeGreaterThan(project(NOW + HOUR_MS).value);
+      expect(project(mid)).toBeGreaterThan(project(NOW + HOUR_MS));
       const past = NOW - 2 * HOUR_MS;
       const text = format([{ axisValue: past, seriesIndex: 1, marker: '', seriesName: '7d', value: [past, 42.4] }]);
       expect(text).toContain('7d 42%');
       expect(text).not.toContain('Projetado');
     });
+  });
 
-    it('fora do Reset não há série de pontos', () => {
-      const other = buildChartOption(buildChartModel(cycleInputs(), usageRange('7d'), NOW), palette) as unknown as { series: { type: string }[] };
-      expect(other.series.some((series) => series.type === 'scatter')).toBe(false);
+  describe('histórico misto e lacunas', () => {
+    const mixed = (): UsagePoint[] => [
+      { at: NOW - 20 * DAY_MS, utilization: 10, resetsAt: null, imported: true },
+      { at: NOW - 6 * DAY_MS - 30 * MINUTE_MS, utilization: 12, resetsAt: null },
+      { at: NOW - 6 * DAY_MS, utilization: 15, resetsAt: null, imported: true },
+      { at: NOW - 5 * DAY_MS, utilization: 16, resetsAt: null },
+      { at: NOW - 5 * DAY_MS + 10 * MINUTE_MS, utilization: 17, resetsAt: null },
+      { at: NOW - HOUR_MS, utilization: 30, resetsAt: null },
+      { at: NOW - 50 * MINUTE_MS, utilization: 31, resetsAt: null },
+    ];
+    const run = (id: string) =>
+      buildChartModel(
+        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
+        usageRange(id),
+        NOW,
+      ).windows[0]!.points;
+
+    it('7d traz brutos, agregados e importados dentro do intervalo', () => {
+      expect(run('7d').filter((point) => point[1] !== null).map((point) => point[0])).toEqual([
+        NOW - 6 * DAY_MS - 30 * MINUTE_MS,
+        NOW - 6 * DAY_MS,
+        NOW - 5 * DAY_MS,
+        NOW - 5 * DAY_MS + 10 * MINUTE_MS,
+        NOW - HOUR_MS,
+        NOW - 50 * MINUTE_MS,
+      ]);
+    });
+
+    it('30d inclui também o trecho antigo', () => {
+      expect(run('30d').filter((point) => point[1] !== null)).toHaveLength(7);
+    });
+
+    it('lacuna maior que 30 min no bruto quebra a linha; menor mantém', () => {
+      const points = run('7d');
+      const breaks = points.filter((point) => point[1] === null);
+      expect(breaks).toHaveLength(2);
+      expect(points.some((point) => point[0] === NOW - 5 * DAY_MS + 10 * MINUTE_MS + 1)).toBe(true);
+    });
+
+    it('a série não é suavizada e não liga lacunas', () => {
+      const out = buildChartOption(
+        buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange('7d'), NOW),
+        palette,
+      ) as unknown as { series: { smooth: boolean; connectNulls: boolean }[] };
+      expect(out.series[0]).toMatchObject({ smooth: false, connectNulls: false });
     });
   });
 

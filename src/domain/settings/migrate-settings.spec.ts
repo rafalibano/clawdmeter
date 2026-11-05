@@ -39,7 +39,6 @@ describe('migrateSettings', () => {
       enabledPages: { example: true },
       appearance: { accentColor: '#22C55E', popoverBackground: '#101010', theme: 'light' },
       language: 'es-MX',
-      usageThresholds: { warning: 60, critical: 85 },
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
@@ -83,11 +82,11 @@ describe('migrateSettings', () => {
     expect(createDefaultSettings().appearance.accentColor).toBe('#00b131');
   });
 
-  it('arquivo da versão 2 sem idioma nem faixas ganha pt-BR e 70/90', () => {
+  it('arquivo da versão 2 sem idioma ganha pt-BR', () => {
     const migrated = migrateSettings({ schemaVersion: 2, enabledPages: { usage: true }, appearance: { theme: 'dark' } });
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.language).toBe('pt-BR');
-    expect(migrated.usageThresholds).toEqual({ warning: 70, critical: 90 });
+    expect(migrated).not.toHaveProperty('usageThresholds');
     expect(migrated.appearance.theme).toBe('dark');
   });
 
@@ -98,21 +97,10 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ schemaVersion: 3, language: 42 }).language).toBe('pt-BR');
   });
 
-  it('faixas inválidas (alerta >= crítico, fora de 0..100, não numéricas) voltam ao padrão', () => {
-    for (const usageThresholds of [
-      { warning: 90, critical: 70 },
-      { warning: 80, critical: 80 },
-      { warning: 0, critical: 50 },
-      { warning: 50, critical: 101 },
-      { warning: '50', critical: 90 },
-      'x',
-    ]) {
-      expect(migrateSettings({ schemaVersion: 3, usageThresholds }).usageThresholds).toEqual({ warning: 70, critical: 90 });
-    }
-    expect(migrateSettings({ schemaVersion: 3, usageThresholds: { warning: 50, critical: 100 } }).usageThresholds).toEqual({
-      warning: 50,
-      critical: 100,
-    });
+  it('a versão 4 com limiares descarta o campo', () => {
+    const migrated = migrateSettings({ schemaVersion: 4, usageThresholds: { warning: 60, critical: 85 } });
+    expect(migrated).not.toHaveProperty('usageThresholds');
+    expect(migrated.schemaVersion).toBe(5);
   });
 
   it('só roda as migrações pendentes', () => {
@@ -142,7 +130,7 @@ describe('migração 3 -> 4 (páginas em manutenção)', () => {
   it('só atua uma vez: religar depois é respeitado', () => {
     const current = migrateSettings({ schemaVersion: 4, enabledPages: { teams: true, skills: false } });
     expect(current.enabledPages).toEqual({ teams: true, skills: false });
-    expect(current.schemaVersion).toBe(4);
+    expect(current.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('o padrão de settings novos já vem com as duas desligadas', () => {

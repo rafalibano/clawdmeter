@@ -23,7 +23,6 @@ export interface ChartPalette {
   grid: string;
   now: string;
   danger: string;
-  attention: string;
   tooltipBackground: string;
   tooltipBorder: string;
   fontFamily: string;
@@ -52,7 +51,6 @@ export function chartPalette(accent: string, popoverBackground: string | null, t
     grid: withAlpha(text, 0.06),
     now: withAlpha(text, 0.3),
     danger: MOTTU.alert.base,
-    attention: MOTTU.amarelo1,
     tooltipBackground: popoverBackground ?? SOFT_SURFACES[theme].card,
     tooltipBorder: withAlpha(text, 0.12),
     fontFamily: CHART_FONT_FAMILY,

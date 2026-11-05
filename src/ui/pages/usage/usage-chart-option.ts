@@ -3,8 +3,7 @@ import { DAY_MS, HOUR_MS } from '../../../domain/time';
 import { EXHAUSTION_LEVEL } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
-import { BASE_AXIS_MAX, CYCLE_MS, type ChartPoint, type ProjectedValue, type UsageChartModel, type WindowSeries } from './usage-chart-model';
-import type { UsageTone } from './usage-tone';
+import { BASE_AXIS_MAX, CYCLE_MS, type ChartPoint, type UsageChartModel, type WindowSeries } from './usage-chart-model';
 
 const COMPACT_AXIS_MAX = 200;
 const REFERENCE_ALPHA = 0.4;
@@ -51,19 +50,14 @@ function strokeColor(colors: SeriesColors, width: number, type?: string, color: 
   return { lineStyle, itemStyle: { color } };
 }
 
-function toneColor(tone: UsageTone, colors: SeriesColors, palette: ChartPalette): string {
-  if (tone === 'danger') return palette.danger;
-  return tone === 'attention' ? palette.attention : colors.line;
-}
-
 function realSeries(window: WindowSeries, palette: ChartPalette, width: number, withMarkers: unknown) {
   const colors = palette.series[window.kind];
   return {
     name: window.label,
     type: 'line',
-    smooth: true,
+    smooth: false,
     showSymbol: false,
-    sampling: 'lttb',
+    connectNulls: false,
     data: window.points,
     ...strokeColor(colors, width),
     areaStyle: fade(colors),
@@ -79,7 +73,7 @@ function trendSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) 
     showSymbol: false,
     silent: true,
     data: window.trend,
-    ...strokeColor(colors, 1.2, 'dashed', toneColor(window.trendTone, colors, palette)),
+    ...strokeColor(colors, 1.2, 'dashed'),
     tooltip: { show: false },
     z: 3,
   };
@@ -89,32 +83,13 @@ function projectionDate(at: number, l: Localizer): string {
   return `${l.weekday(at)} ${l.axisTick(at, CYCLE_MS)} ${l.clock(at)}`;
 }
 
-function daysSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) {
-  const colors = palette.series[window.kind];
-  return {
-    name: l.t('usage.trend', { label: window.label }),
-    type: 'scatter',
-    symbolSize: 6,
-    z: 4,
-    data: window.days.map((day) => {
-      const color = toneColor(day.tone, colors, palette);
-      return { value: [day.at, day.value], itemStyle: { color } };
-    }),
-    tooltip: {
-      trigger: 'item',
-      formatter: (params: { value: [number, number] }) =>
-        `${projectionDate(params.value[0], l)}<br/>${l.t('usage.projected', { value: Math.round(params.value[1]) })}`,
-    },
-  };
-}
-
 const PROJECTION_STEP_MS = HOUR_MS;
 
 function projectionProbe(window: WindowSeries, model: UsageChartModel) {
-  const project = window.projectAt as (at: number) => ProjectedValue;
+  const project = window.projectAt as (at: number) => number;
   const data: ChartPoint[] = [];
-  for (let at = model.now; at < model.xMax; at += PROJECTION_STEP_MS) data.push([at, project(at).value]);
-  data.push([model.xMax, project(model.xMax).value]);
+  for (let at = model.now; at < model.xMax; at += PROJECTION_STEP_MS) data.push([at, project(at)]);
+  data.push([model.xMax, project(model.xMax)]);
   return { type: 'line', silent: true, symbol: 'none', lineStyle: { opacity: 0 }, data, z: 0 };
 }
 
@@ -135,12 +110,12 @@ export function tooltipFormatter(model: UsageChartModel, palette: ChartPalette, 
     const header = projectionDate(at, l);
     if (at > model.now) {
       if (!projecting?.projectAt) return '';
-      const { value, tone } = projecting.projectAt(at);
-      const dot = `<span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${toneColor(tone, palette.series[projecting.kind], palette)}"></span>`;
+      const value = projecting.projectAt(at);
+      const dot = `<span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${palette.series[projecting.kind].line}"></span>`;
       return `${header}<br/>${dot}${l.t('usage.projected', { value: Math.round(value) })}`;
     }
     const lines = params
-      .filter((param) => param.seriesIndex < model.windows.length)
+      .filter((param) => param.seriesIndex < model.windows.length && (param.value as Array<number | null>)[1] != null)
       .map((param) => `${param.marker}${param.seriesName} ${Math.round(Number((param.value as number[])[1]))}%`);
     return [header, ...lines].join('<br/>');
   };
@@ -202,7 +177,6 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
     series: [
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
       ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette, l)])),
-      ...model.windows.flatMap((window) => (window.days.length === 0 ? [] : [daysSeries(window, palette, l)])),
       ...model.windows.flatMap((window) => (window.projectAt === null ? [] : [projectionProbe(window, model)])),
     ],
   };

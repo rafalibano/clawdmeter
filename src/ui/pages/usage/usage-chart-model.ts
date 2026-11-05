@@ -3,7 +3,6 @@ import {
   dailyAverageForecast,
   isCycleAvailable,
   pointsInRange,
-  projectionDays,
   trendValueAt,
   usageRange,
   type Forecast,
@@ -11,9 +10,8 @@ import {
   type UsageRange,
   type UsageWindowKind,
 } from '../../../domain/usage';
-import { DAY_MS, MINUTE_MS } from '../../../domain/time';
-import type { UsageThresholds } from '../../../domain/settings';
-import { projectionTone, type UsageTone } from './usage-tone';
+import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
+import { RAW_RETENTION_MS } from '../../../domain/usage/retention';
 
 export const FUTURE_SHARE = 0.15;
 export const CYCLE_MS = 7 * DAY_MS;
@@ -22,6 +20,11 @@ export const MAX_AXIS_MAX = 300;
 export const AXIS_STEP = 25;
 
 export type ChartPoint = [at: number, value: number];
+export type SeriesPoint = [at: number, value: number | null];
+
+export const RAW_GAP_MS = 30 * MINUTE_MS;
+export const AGGREGATED_GAP_MS = HOUR_MS;
+export const FIVE_HOUR_PROJECTION_MAX_MS = DAY_MS;
 
 export interface WindowInput {
   kind: UsageWindowKind;
@@ -31,25 +34,12 @@ export interface WindowInput {
   resetsAt: number | null;
 }
 
-export interface ProjectionMarker {
-  at: number;
-  value: number;
-  tone: UsageTone;
-}
-
-export interface ProjectedValue {
-  value: number;
-  tone: UsageTone;
-}
-
 export interface WindowSeries {
   kind: UsageWindowKind;
   label: string;
-  points: ChartPoint[];
+  points: SeriesPoint[];
   trend: ChartPoint[] | null;
-  days: ProjectionMarker[];
-  trendTone: UsageTone;
-  projectAt: ((at: number) => ProjectedValue) | null;
+  projectAt: ((at: number) => number) | null;
   resetsAt: number | null;
 }
 
@@ -81,23 +71,24 @@ export function axisMaxFor(values: readonly number[]): number {
   return Math.min(MAX_AXIS_MAX, (Math.floor(peak / AXIS_STEP) + 1) * AXIS_STEP);
 }
 
-function projectionMarkers(forecast: Forecast, kind: UsageWindowKind, thresholds: UsageThresholds): ProjectionMarker[] {
-  if (forecast.status !== 'ready') return [];
-  const days = projectionDays(forecast.trend).filter((day) => day.value <= MAX_AXIS_MAX);
-  return days.map((day) => ({ at: day.at, value: day.value, tone: projectionTone(kind, day.value, thresholds) }));
-}
-
-function trendToneOf(kind: UsageWindowKind, forecast: Forecast, thresholds: UsageThresholds): UsageTone {
-  return forecast.status === 'ready' ? projectionTone(kind, forecast.valueAtReset, thresholds) : 'base';
-}
-
-export function projector(forecast: Forecast, kind: UsageWindowKind, thresholds: UsageThresholds): ((at: number) => ProjectedValue) | null {
+export function projector(forecast: Forecast): ((at: number) => number) | null {
   if (forecast.status !== 'ready') return null;
   const { trend } = forecast;
-  return (at) => {
-    const value = trendValueAt(trend, at);
-    return { value, tone: projectionTone(kind, value, thresholds) };
-  };
+  return (at) => trendValueAt(trend, at);
+}
+
+export function withGaps(points: readonly ChartPoint[], now: number): SeriesPoint[] {
+  const result: SeriesPoint[] = [];
+  const rawFrom = now - RAW_RETENTION_MS;
+  points.forEach((point, index) => {
+    const previous = points[index - 1];
+    if (previous !== undefined) {
+      const limit = previous[0] < rawFrom ? AGGREGATED_GAP_MS : RAW_GAP_MS;
+      if (point[0] - previous[0] > limit) result.push([previous[0] + 1, null]);
+    }
+    result.push(point);
+  });
+  return result;
 }
 
 function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: number): number[] {
@@ -109,8 +100,8 @@ function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: n
   return [...seen.values()].sort((a, b) => a - b);
 }
 
-function forecastFor(input: WindowInput, cycle: boolean, now: number): Forecast {
-  if (!cycle) return input.forecast;
+function forecastFor(input: WindowInput, cycle: boolean, now: number, durationMs: number): Forecast {
+  if (!cycle) return input.kind === 'fiveHour' && durationMs > FIVE_HOUR_PROJECTION_MAX_MS ? { status: 'unavailable' } : input.forecast;
   if (input.kind === 'fiveHour') return { status: 'unavailable' };
   return dailyAverageForecast(input.points, now, input.resetsAt) ?? input.forecast;
 }
@@ -119,7 +110,6 @@ export function buildChartModel(
   inputs: readonly WindowInput[],
   range: UsageRange,
   now: number,
-  thresholds: UsageThresholds,
 ): UsageChartModel {
   const weeklyResetsAt = inputs.find((input) => input.kind === 'sevenDay')?.resetsAt ?? null;
   const cycle = range.cycle === true && isCycleAvailable(weeklyResetsAt, now);
@@ -129,18 +119,19 @@ export function buildChartModel(
   const fiveHour = inputs.find((input) => input.kind === 'fiveHour');
   const ahead = fiveHour?.resetsAt != null && fiveHour.resetsAt > now && fiveHour.resetsAt <= xMax ? [fiveHour.resetsAt] : [];
   const windows = inputs.map((input): WindowSeries => {
-    const forecast = forecastFor(input, cycle, now);
+    const forecast = forecastFor(input, cycle, now, effective.durationMs);
     return {
       kind: input.kind,
       label: input.label,
-      points: (cycle
-        ? input.points.filter((point) => point.at >= xMin && point.at <= now)
-        : pointsInRange(input.points, effective, now)
-      ).map((point): ChartPoint => [point.at, point.utilization]),
+      points: withGaps(
+        (cycle
+          ? input.points.filter((point) => point.at >= xMin && point.at <= now)
+          : pointsInRange(input.points, effective, now)
+        ).map((point): ChartPoint => [point.at, point.utilization]),
+        now,
+      ),
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
-      days: cycle && input.kind === 'sevenDay' ? projectionMarkers(forecast, input.kind, thresholds) : [],
-      trendTone: trendToneOf(input.kind, forecast, thresholds),
-      projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast, input.kind, thresholds) : null,
+      projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast) : null,
       resetsAt: input.resetsAt,
     };
   });

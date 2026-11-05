@@ -61,15 +61,6 @@
 
 .bar {
   --series: var(--dp-series-five);
-  --tone: var(--series);
-}
-
-[data-tone='attention'] {
-  --tone: var(--dp-series-attention);
-}
-
-[data-tone='danger'] {
-  --tone: var(--dp-danger);
 }
 
 .bar[data-window='sevenDay'] {
@@ -105,7 +96,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: var(--dp-radius-pill);
-  background: var(--tone);
+  background: var(--series);
 }
 
 .projection {
@@ -115,7 +106,7 @@
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
-  background: var(--tone);
+  background: var(--series);
 }
 
 .projection[data-exhausts='true'] {
@@ -138,12 +129,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+.projected[data-alert='true'] {
+  color: var(--dp-danger-text);
+}
+
 .projected::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--tone);
+  background: var(--series);
 }
 
 .chart-card {

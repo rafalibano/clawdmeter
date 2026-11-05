@@ -15,6 +15,12 @@ const ORIGIN = new Date(2026, 10, 5, 14, 30).getTime();
 describe('modelo de usage do demo', () => {
   const model = new DemoUsageModel(ORIGIN);
 
+  it('histórico tem uma lacuna entre 4d e 2,5d atrás para exercitar a quebra da linha', () => {
+    const points = model.history(ORIGIN).sevenDay;
+    expect(points.some((point) => point.at > ORIGIN - 4 * DAY_MS + MINUTE_MS && point.at < ORIGIN - 2.5 * DAY_MS - MINUTE_MS)).toBe(false);
+    expect(points.some((point) => point.at < ORIGIN - 7 * DAY_MS)).toBe(true);
+  });
+
   it('histórico cobre ~30 dias, em ordem e sem passar de 30 dias', () => {
     const history = model.history(ORIGIN);
     for (const points of [history.fiveHour, history.sevenDay]) {

@@ -23,6 +23,8 @@ const HIGH_WEEKLY_SHARE = 0.21;
 const HIGH_CURRENT_WINDOW_TOTAL = 195;
 const IDLE_BELOW = 8;
 const SAMPLE_STEP_MS = MINUTE_MS;
+const GAP_START_AGO_MS = 4 * DAY_MS;
+const GAP_END_AGO_MS = 2.5 * DAY_MS;
 
 function hash(index: number, salt: number): number {
   let value = Math.imul(index + 100_000, 0x9e3779b1) ^ Math.imul(salt + 1, 0x85ebca6b);
@@ -70,6 +72,7 @@ export class DemoUsageModel {
     const history = createEmptyHistory();
     const from = Math.ceil((now - 30 * DAY_MS) / SAMPLE_STEP_MS) * SAMPLE_STEP_MS;
     for (let at = from; at < now; at += SAMPLE_STEP_MS) {
+      if (at > now - GAP_START_AGO_MS && at < now - GAP_END_AGO_MS) continue;
       const { fiveHour, sevenDay } = this.snapshotAt(at);
       history.fiveHour.push({ at, utilization: fiveHour!.utilization, resetsAt: fiveHour!.resetsAt });
       history.sevenDay.push({ at, utilization: sevenDay!.utilization, resetsAt: sevenDay!.resetsAt });
