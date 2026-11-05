@@ -39,15 +39,12 @@ export class UsageComponent {
     return chartPalette(accentColor, popoverBackground, this.theme.resolved());
   });
 
-  protected readonly cards = computed(() => {
+  protected readonly view = computed(() => {
     const update = this.update();
     const data = update?.status === 'ok' ? update.data : this.lastData();
     if (data === undefined) return null;
-    const palette = this.palette();
-    return toUsageView(data, this.rangeId()).map((view) => ({
-      ...view,
-      option: buildChartOption(view.chart, palette),
-    }));
+    const usage = toUsageView(data, this.rangeId());
+    return { bars: usage.bars, option: buildChartOption(usage.chart, this.palette()) };
   });
 
   protected readonly error = computed(() => {

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MOTTU } from '../src/ui/theme/mottu-tokens';
+import { SOFT_SURFACES } from '../src/ui/theme/soft-surfaces';
 
 const SRC = join(__dirname, '..', 'src');
 const FONT = "'Helvetica Neue', Helvetica, Arial, sans-serif";
@@ -33,6 +34,7 @@ describe('snapshot dos tokens --me-*', () => {
     expect(token('alert-90')).toBe(MOTTU.alert.light);
     expect(token('warning-60')).toBe(MOTTU.warning.base);
     expect(token('info-60')).toBe(MOTTU.info.base);
+    expect(token('info-70')).toBe(MOTTU.info.alt);
     expect(token('neutral-0')).toBe(MOTTU.neutral.black);
     expect(token('neutral-10')).toBe(MOTTU.neutral.extraDark);
     expect(token('neutral-20')).toBe(MOTTU.neutral.dark);
@@ -50,6 +52,52 @@ describe('snapshot dos tokens --me-*', () => {
   it('o amarelo do SLA é o Amarelo 1 da paleta oficial', () => {
     expect(MOTTU.amarelo1).toBe('#ffc700');
     expect(readFileSync(join(SRC, 'ui/theme/theme.scss'), 'utf8')).toContain('--dp-sla-attention: #ffc700;');
+  });
+});
+
+function rgb(hex: string): number[] {
+  return [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16));
+}
+
+describe('superfícies suaves', () => {
+  const theme = readFileSync(join(SRC, 'ui/theme/theme.scss'), 'utf8');
+  const dark = /:root\[data-theme='dark'\] \{([^}]+)\}/.exec(theme)![1]!;
+
+  it('o escuro fica entre neutral-10 e neutral-20 do DS, sem preto puro', () => {
+    const low = rgb(token('neutral-10'));
+    const high = rgb(token('neutral-20'));
+    for (const hex of [SOFT_SURFACES.dark.popover, SOFT_SURFACES.dark.card]) {
+      rgb(hex).forEach((value, index) => {
+        expect(value).toBeGreaterThanOrEqual(low[index]!);
+        expect(value).toBeLessThanOrEqual(high[index]!);
+      });
+    }
+    expect(SOFT_SURFACES.dark.popover).not.toBe('#000000');
+  });
+
+  it('o card do escuro é um passo mais claro que o popover; no claro, popover neutral-99 e card branco', () => {
+    expect(rgb(SOFT_SURFACES.dark.card).reduce((a, b) => a + b)).toBeGreaterThan(rgb(SOFT_SURFACES.dark.popover).reduce((a, b) => a + b));
+    expect(SOFT_SURFACES.light).toEqual({ popover: token('neutral-99'), card: token('neutral-100') });
+  });
+
+  it('theme.scss usa os mesmos hex das constantes', () => {
+    expect(dark).toContain(`--dp-bg: ${SOFT_SURFACES.dark.popover};`);
+    expect(dark).toContain(`--dp-surface: ${SOFT_SURFACES.dark.card};`);
+    expect(theme).toContain('--dp-bg: var(--me-neutral-99);');
+    expect(theme).toContain('--dp-surface: var(--me-neutral-100);');
+  });
+
+  it('bordas e separadores são translúcidos (6% nos cards) e os cantos da janela, 12px', () => {
+    expect(dark).toContain('--dp-border: rgba(255, 255, 255, 0.06);');
+    expect(theme).toContain('--dp-border: rgba(0, 0, 0, 0.06);');
+    expect(theme).toContain('--dp-radius-window: 12px;');
+    expect(theme).toContain('--dp-radius-md: 12px;');
+  });
+
+  it('o canvas da página não pinta: html e body transparentes e color-scheme só fora do root', () => {
+    const styles = readFileSync(join(SRC, 'styles.scss'), 'utf8');
+    expect(/html,\s*body \{[^}]*background: transparent;/.test(styles)).toBe(true);
+    expect(/:root\s*\{[^}]*color-scheme/.test(styles + theme)).toBe(false);
   });
 });
 

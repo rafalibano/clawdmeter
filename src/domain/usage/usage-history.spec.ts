@@ -37,6 +37,18 @@ describe('serialização', () => {
     expect(parseHistory(JSON.parse(JSON.stringify(serializeHistory(history))))).toEqual(history);
   });
 
+  it('a marca de importado sobrevive à ida e volta e pontos antigos continuam válidos', () => {
+    const history = {
+      fiveHour: [
+        { at: 1, utilization: 2, resetsAt: null, imported: true as const },
+        { at: 2, utilization: 3, resetsAt: 9 },
+      ],
+      sevenDay: [],
+    };
+    expect(parseHistory(JSON.parse(JSON.stringify(serializeHistory(history))))).toEqual(history);
+    expect(parseHistory({ fiveHour: [[5, 1, null, 0]], sevenDay: [] }).fiveHour).toEqual([{ at: 5, utilization: 1, resetsAt: null }]);
+  });
+
   it('parse tolerante: lixo vira histórico vazio ou descarta entradas inválidas', () => {
     expect(parseHistory(null)).toEqual(createEmptyHistory());
     expect(parseHistory({ fiveHour: 'x' })).toEqual(createEmptyHistory());
@@ -49,8 +61,8 @@ describe('serialização', () => {
 });
 
 describe('seletor de período', () => {
-  it('oferece 1h, 12h, 1d, 7d e 30d', () => {
-    expect(USAGE_RANGES.map((range) => range.id)).toEqual(['1h', '12h', '1d', '7d', '30d']);
+  it('oferece 1h, 6h, 1d, 7d e 30d', () => {
+    expect(USAGE_RANGES.map((range) => range.id)).toEqual(['1h', '6h', '1d', '7d', '30d']);
   });
 
   it('id desconhecido cai no primeiro período', () => {

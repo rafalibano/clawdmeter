@@ -8,7 +8,7 @@ Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (stand
 
 | Página | Id | Polling | Conexões | O que mostra |
 |---|---|---|---|---|
-| Usage | `usage` | 60 s | Claude | consumo das janelas de 5 h e semanal, gráfico de 30 dias, tendência e previsão |
+| Usage | `usage` | 60 s | Claude | barras das janelas de 5 h e 7 d com a previsão no reset, e um gráfico de até 30 dias com as duas séries e a tendência |
 | Sessões | `sessions` | 5 s | nenhuma | sessões abertas do Claude Code e as que pedem atenção |
 | PRs | `prs` | 2 min | GitHub | meus PRs abertos por repo |
 | Reviews | `reviews` | 2 min | GitHub | PRs para revisar e revisados (abertos e dos últimos 30 dias) |
@@ -46,6 +46,7 @@ src/
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
 │  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: o GET /api/oauth/usage roda no Rust)
 │  ├─ claude-code/    TauriSessionDirectory (lê ~/.claude/sessions via plugin-fs)
+│  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (lê só ~/.config/claude-usage-bar/history.json)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
 │  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
@@ -122,14 +123,16 @@ A fonte da verdade das cores é o DS externo da Mottu (`@mottu-ops/ds-core-exter
 
 `theme.scss` define as vars do app (`--dp-*`) em cima dos tokens via `var(--me-*)`. Componentes usam só `--dp-*`; hex fora de `src/ui/theme` e de `domain` é barrado por teste.
 
-| Tema | Fundo | Superfície | Texto |
-|---|---|---|---|
-| Escuro | `background-change` `#000` | `component-change` `#121212` | `text-change` `#fff` |
-| Claro | `neutral-100` | `neutral-99`, borda `neutral-90` | `neutral-10` |
+| Tema | Popover | Cards | Texto | Texto secundário |
+|---|---|---|---|---|
+| Escuro | `#1a1a1a` (entre `neutral-10` e `neutral-20`) | `#202022` | `neutral-95` | `neutral-70` |
+| Claro | `neutral-99` | `neutral-100` | `neutral-10` | `neutral-40` |
+
+Visual suave: a janela do Tauri é `transparent: true` (no macOS exige `app.macOSPrivateApi: true` e a feature `macos-private-api` do crate `tauri`) e o `.popover` desenha os cantos de 12 px (`--dp-radius-window`) com borda de 1 px translúcida (`--dp-edge`, 8% do texto) e a sombra nativa da janela (`shadow: true`; uma sombra CSS seria cortada na borda da janela). `html` e `body` são transparentes e o `color-scheme` fica em `dp-root`, nunca no `:root`, senão o navegador pinta o canvas e os cantos voltam a ser retos. Cards, controles e separadores usam bordas translúcidas (`--dp-border` 6%, `--dp-control-border` 14% só em botões e campos), raio de 12 px nos cards (`--dp-radius-md`) e de 8 px nos controles; abas e seletores de período são pills com o segmento ativo em verde. Fundo personalizado recalcula essas variáveis a partir do texto (`BACKGROUND_OVERRIDES` em `theme-style.ts`). Os hex do escuro (`soft-surfaces.ts`) ficam entre `neutral-10` e `neutral-20` do DS, e `tools/theme-tokens.spec.ts` confere isso.
 
 - **Destaque = verde Mottu** (`--dp-accent`, padrão `#00b131` = `primary-base`): aba ativa, botões primários (receita do `me-button`: radius 2px, `:active` em `primary-dark`), seletor de período, foco, checkbox, "agora" e "próxima" da agenda. Texto e linhas finas usam `--dp-accent-text`: `primary-alt` (`#1bd60b`) no escuro, `primary-50` no claro. O texto sobre o destaque é escolhido por contraste WCAG (escuro `#121212` ou branco, o que passar de AA); no verde base sai escuro. Uma cor de destaque personalizada vale para tudo isso, inclusive os gráficos.
 - **Semânticos:** erro = `alert`, aviso = `warning`, info = `info`, sucesso = `primary` (`--dp-danger`, `--dp-warning`, `--dp-info`, `--dp-ok`; as variantes `*-text` usam o passo do DS com contraste em cada tema).
-- **Usage:** série e área (opacidade 0,12) em `primary-base`, tendência tracejada em `primary-alt`, linha de 100% em `alert-base`, números grandes em verde. A previsão fica verde abaixo de 80%, `warning` de 80 a 99% e `alert` quando estoura (`chart-palette.ts`).
+- **Usage:** 5h em `primary-alt` no escuro e `primary-base` no claro (ou a cor de destaque escolhida), 7d em `info-70` no escuro e `info-60` no claro (`--dp-series-five` e `--dp-series-seven`). A linha de 100% é `alert-base` a 50% tracejada; trecho previsto na barra estourando fica em `alert` translúcido (`chart-palette.ts`).
 - **SLA nos PRs (PRs e Reviews):** selo de idade e marca na borda esquerda da linha, pela idade desde a abertura de PRs abertos (`domain/pull-requests/sla.ts`): menos de 3 dias neutro, 3 a 6d23h amarelo `#FFC700` (Amarelo 1 da paleta oficial; o DS externo não tem amarelo) com texto escuro, 7 dias ou mais `alert-base`. Em Reviews a referência também é a abertura: o modelo de PR não traz a data do pedido de review. Vermelho nessas páginas só aparece para CI falhando e conflito; "Mudanças pedidas" usa `info`.
 - **Fonte:** `"Helvetica Neue", Helvetica, Arial, sans-serif` em todo o app (`--dp-font-family`) e no `textStyle` do ECharts. Não há outra fonte.
 - **Migração:** `schemaVersion` 2 troca o destaque antigo `#6366f1` (índigo, antigo padrão) por `#00b131`. Quem escolheu outra cor mantém a sua; quem tinha escolhido o índigo de propósito também é migrado, porque o valor é igual ao do padrão antigo.
@@ -183,9 +186,10 @@ O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita COR
 Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` chama o `AnthropicUsageGateway`, que invoca o command `claude_usage_fetch`: o Rust lê a credencial do Claude Code e faz o `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`), então o token não chega ao TypeScript; a resposta é limitada a 256 KiB (o `Content-Length` é checado antes e o corpo é lido em pedaços, cortando ao passar do limite, mesmo sem `Content-Length`); o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
 
 - **Histórico:** `usage-history.json` ao lado do `settings.json`. Pontos brutos por 7 dias; do 8º ao 30º dia, agregados em baldes de 15 min pelo máximo; nada passa de 30 dias (`domain/usage/retention.ts`). Fica em memória depois da primeira leitura e é gravado em série por arquivo temporário + `rename` (`fs:allow-rename` só em `$APPCONFIG`). Arquivo ilegível vira `usage-history.json.corrupt` e o histórico recomeça vazio, sem sobrescrever o original.
+- **Histórico do ClaudeUsageBar:** a cada carga, `ImportExternalUsageHistory` lê `~/.config/claude-usage-bar/history.json` (`{"dataPoints":[{"timestamp","pct5h","pct7d"}]}`, frações 0–1) pela porta `ExternalUsageHistorySource` (adapter `TauriClaudeUsageBarHistorySource`; no demo, um fake vazio) e mescla no histórico antes da retenção: fração vira %, pontos a até 1 min de um ponto existente (ou entre si) são descartados e o ponto nosso vence, nada com mais de 30 dias ou no futuro entra, e a retenção normal (brutos 7 d, baldes de 15 min até 30 d) vale para os importados. O parse é tolerante (entrada sem timestamp válido ou sem percentual é ignorada). Arquivo ausente, ilegível ou acima de 8 MiB é ignorado em silêncio. O ponto importado não tem `resets_at`: ele carrega a marca `imported` (4º elemento do ponto em `usage-history.json`) e a detecção de ciclo ignora a comparação de `resets_at` nos pares com um ponto importado, então só uma queda de utilização abre ciclo novo (`domain/usage/forecast.ts`). A capability dá ao plugin-fs só `read-text-file` em `$HOME/.config/claude-usage-bar/history.json`: sem `exists`, `read-dir`, escrita, nem o `credentials.json` da mesma pasta (`tools/capabilities.spec.ts` verifica o escopo). Não há toggle em Ajustes: a importação fica ligada quando o arquivo existe.
 - **Erro transitório:** se uma atualização falha (rede, 5xx), a página mantém o último dado e mostra o banner de erro por cima, com "Mostrando os últimos dados carregados".
-- **Gráficos:** ECharts via `ngx-echarts` (carregado sob demanda, fora do bundle inicial), uma série para a janela de 5 h e outra para a semanal, com marca em 100% e em "agora". Seletor `1h · 12h · 1d · 7d · 30d` comum aos dois.
-- **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada tracejada a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%). A previsão aparece em linha separada: `Previsão no reset (17:00): ~78%` ou `100% · estoura às 15:40, 1h20 antes`; com menos de 3 pontos no ciclo, `Previsão: coletando dados…`. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
+- **Layout:** no topo, duas barras (`5h` e `7d`) com o percentual à direita e "reseta em 2h06" embaixo; o trecho translúcido da barra vai do percentual atual até o previsto no reset, com um tique no fim (até o fim da barra, em `alert`, se estoura; sem trecho com menos de 3 pontos no ciclo). Abaixo, o seletor `1h · 6h · 1d · 7d · 30d` (controle segmentado, padrão 6h) e um único gráfico ECharts (via `ngx-echarts`, carregado sob demanda) com as duas séries no mesmo eixo de 0 a 100% (eixo Y à direita, de 25 em 25), linhas suaves com área bem leve, grade tracejada, marcas verticais tracejadas em "agora" e nos resets que cabem no eixo, linha de 100% e legenda `● 5h ● 7d`. Não há frases de previsão nem títulos longos.
+- **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada, em cada série, como linha tracejada mais fina a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%) e, na barra, como o trecho previsto. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
 
 ### Ícone de usage na bandeja
 

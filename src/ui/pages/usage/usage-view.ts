@@ -1,26 +1,27 @@
 import type { ConnectionAction } from '../../../domain/connections';
-import {
-  EXHAUSTION_LEVEL,
-  USAGE_WINDOWS,
-  usageRange,
-  type Forecast,
-  type UsageWindowKind,
-} from '../../../domain/usage';
+import { EXHAUSTION_LEVEL, USAGE_WINDOWS, usageRange, type Forecast, type UsageWindowKind } from '../../../domain/usage';
 import type { UsageData } from '../../../application/use-cases';
-import { formatDayClock, formatSpan } from '../../format/time';
+import { formatSpan } from '../../format/time';
 import type { ConnectionRowView } from '../../settings/connections/connection-view';
 import { buildChartModel, type UsageChartModel } from './usage-chart-model';
 
-export type ForecastTone = 'muted' | 'ok' | 'warn' | 'danger';
+export interface UsageProjectionView {
+  from: number;
+  to: number;
+  exhausts: boolean;
+}
 
-export interface UsageWindowView {
+export interface UsageBarView {
   kind: UsageWindowKind;
-  title: string;
-  hasData: boolean;
-  current: string;
+  label: string;
+  percent: string;
+  fill: number;
   reset: string;
-  forecast: string;
-  tone: ForecastTone;
+  projection: UsageProjectionView | null;
+}
+
+export interface UsageView {
+  bars: UsageBarView[];
   chart: UsageChartModel;
 }
 
@@ -29,53 +30,46 @@ export interface UsageErrorView {
   actions: ConnectionAction[];
 }
 
-const WARN_LEVEL = 80;
+const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
-export function forecastText(forecast: Forecast, now: number): { text: string; tone: ForecastTone } {
-  switch (forecast.status) {
-    case 'collecting':
-      return { text: 'Previsão: coletando dados…', tone: 'muted' };
-    case 'unavailable':
-      return { text: 'Previsão indisponível: sem janela ativa.', tone: 'muted' };
-    case 'ready': {
-      const prefix = `Previsão no reset (${formatDayClock(forecast.resetsAt, now)}):`;
-      if (forecast.valueAtReset < EXHAUSTION_LEVEL) {
-        const tone = forecast.valueAtReset >= WARN_LEVEL ? 'warn' : 'ok';
-        return { text: `${prefix} ~${Math.round(forecast.valueAtReset)}%`, tone };
-      }
-      if (forecast.exhaustsAt === null || forecast.exhaustsLeadMs === null) {
-        return { text: `${prefix} ${EXHAUSTION_LEVEL}% · limite já atingido`, tone: 'danger' };
-      }
-      const when = formatDayClock(forecast.exhaustsAt, now);
-      const lead = formatSpan(forecast.exhaustsLeadMs);
-      return { text: `${prefix} ${EXHAUSTION_LEVEL}% · estoura às ${when}, ${lead} antes`, tone: 'danger' };
-    }
-  }
+export function projectionOf(forecast: Forecast, current: number): UsageProjectionView | null {
+  if (forecast.status !== 'ready') return null;
+  const exhausts = forecast.valueAtReset >= EXHAUSTION_LEVEL;
+  const from = clampPercent(current);
+  return { from, to: exhausts ? EXHAUSTION_LEVEL : Math.max(from, clampPercent(forecast.valueAtReset)), exhausts };
 }
 
-function resetText(resetsAt: number | null, now: number): string {
-  if (resetsAt === null) return 'Sem janela ativa';
+export function resetText(resetsAt: number | null, now: number): string {
+  if (resetsAt === null) return 'sem janela ativa';
   const remaining = resetsAt - now;
-  const at = formatDayClock(resetsAt, now);
-  return remaining <= 0 ? `Reset às ${at}` : `Reseta às ${at} (em ${formatSpan(remaining)})`;
+  return remaining <= 0 ? 'reseta agora' : `reseta em ${formatSpan(remaining)}`;
 }
 
-export function toUsageView(data: UsageData, rangeId: string): UsageWindowView[] {
-  const range = usageRange(rangeId);
-  return USAGE_WINDOWS.map(({ kind, label }) => {
+export function toUsageView(data: UsageData, rangeId: string): UsageView {
+  const bars = USAGE_WINDOWS.map(({ kind, label }): UsageBarView => {
     const reading = data.snapshot[kind];
-    const forecast = forecastText(data.forecasts[kind], data.at);
+    if (reading === null) return { kind, label, percent: '—', fill: 0, reset: '', projection: null };
     return {
       kind,
-      title: label,
-      hasData: reading !== null,
-      current: reading === null ? '—' : `${Math.round(reading.utilization)}%`,
-      reset: reading === null ? 'Sem dados desta janela' : resetText(reading.resetsAt, data.at),
-      forecast: forecast.text,
-      tone: forecast.tone,
-      chart: buildChartModel(data.history[kind], data.forecasts[kind], range, data.at),
+      label,
+      percent: `${Math.round(reading.utilization)}%`,
+      fill: clampPercent(reading.utilization),
+      reset: resetText(reading.resetsAt, data.at),
+      projection: projectionOf(data.forecasts[kind], reading.utilization),
     };
   });
+  const chart = buildChartModel(
+    USAGE_WINDOWS.map(({ kind, label }) => ({
+      kind,
+      label,
+      points: data.history[kind],
+      forecast: data.forecasts[kind],
+      resetsAt: data.snapshot[kind]?.resetsAt ?? null,
+    })),
+    usageRange(rangeId),
+    data.at,
+  );
+  return { bars, chart };
 }
 
 export function toUsageErrorView(updateError: string, claude: ConnectionRowView | undefined): UsageErrorView {

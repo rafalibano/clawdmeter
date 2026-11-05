@@ -9,20 +9,20 @@
 }
 
 .card {
-  margin-bottom: 8px;
-  padding: 8px 12px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
   border: 1px solid var(--dp-border);
   border-radius: var(--dp-radius-md);
   background: var(--dp-surface);
 }
 
 .card.error {
-  border-color: var(--dp-danger);
+  border-color: color-mix(in srgb, var(--dp-danger) 45%, transparent);
   color: var(--dp-danger-text);
 }
 
 .card[data-attention] {
-  border-color: var(--dp-warning);
+  border-color: color-mix(in srgb, var(--dp-warning) 50%, transparent);
   background: color-mix(in srgb, var(--dp-warning) 12%, transparent);
 }
 

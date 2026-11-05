@@ -15,7 +15,7 @@ const SLA_TITLES: Record<SlaLevel, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .section {
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
     .heading {
       display: flex;
@@ -74,7 +74,7 @@ const SLA_TITLES: Record<SlaLevel, string> = {
       border-left-color: var(--dp-danger);
     }
     .pr:hover {
-      background: var(--dp-surface);
+      background: var(--dp-hover);
     }
     .title {
       display: block;
@@ -94,7 +94,7 @@ const SLA_TITLES: Record<SlaLevel, string> = {
     .badge {
       padding: 0 6px;
       border-radius: var(--dp-radius-pill);
-      border: 1px solid var(--dp-border);
+      border: 1px solid var(--dp-control-border);
       font-size: 11px;
     }
     .badge[data-tone='ok'] {

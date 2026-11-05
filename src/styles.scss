@@ -10,7 +10,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--dp-bg);
+  background: transparent;
   color: var(--dp-fg);
   font-family: var(--dp-font-family);
   font-size: 13px;
@@ -32,4 +32,13 @@ button {
 
 input[type='checkbox'] {
   accent-color: var(--dp-accent);
+}
+
+dp-root {
+  display: block;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] dp-root {
+  color-scheme: dark;
 }

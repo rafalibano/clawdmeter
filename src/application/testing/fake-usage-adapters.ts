@@ -1,5 +1,17 @@
-import { createEmptyHistory, type UsageHistory, type UsageSnapshot } from '../../domain/usage';
-import type { ProcessProbe, SessionDirectory, UsageGateway, UsageHistoryStore, UsageIndicator } from '../ports';
+import {
+  createEmptyHistory,
+  type ExternalUsagePoint,
+  type UsageHistory,
+  type UsageSnapshot,
+} from '../../domain/usage';
+import type {
+  ExternalUsageHistorySource,
+  ProcessProbe,
+  SessionDirectory,
+  UsageGateway,
+  UsageHistoryStore,
+  UsageIndicator,
+} from '../ports';
 
 export const SAMPLE_SNAPSHOT: UsageSnapshot = {
   fiveHour: { utilization: 20, resetsAt: 1_800_000_000_000 + 3_600_000 },
@@ -39,6 +51,18 @@ export class FakeUsageHistoryStore implements UsageHistoryStore {
   async save(history: UsageHistory): Promise<void> {
     this.current = history;
     this.saved.push(history);
+  }
+}
+
+export class FakeExternalUsageHistorySource implements ExternalUsageHistorySource {
+  reads = 0;
+
+  constructor(public outcome: ExternalUsagePoint[] | Error = []) {}
+
+  async read(): Promise<ExternalUsagePoint[]> {
+    this.reads += 1;
+    if (this.outcome instanceof Error) throw this.outcome;
+    return this.outcome;
   }
 }
 

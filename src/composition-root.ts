@@ -3,10 +3,11 @@ import type { ConnectionAdapters } from './application/connections/connection-ad
 import { GitHubTokenResolver } from './application/connections/github-token-resolver';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { LoadSessions, LoadUsage } from './application/use-cases';
+import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import { AnthropicUsageGateway } from './infrastructure/anthropic';
 import { TauriSessionDirectory } from './infrastructure/claude-code';
+import { TauriClaudeUsageBarHistorySource } from './infrastructure/claude-usage-bar';
 import {
   GhCliTokenSource,
   GitHubDeviceFlowAuthorizer,
@@ -111,6 +112,7 @@ export function createComposition(): Application {
           clock,
           connections,
           new TauriUsageIndicator(commands),
+          new ImportExternalUsageHistory(new TauriClaudeUsageBarHistorySource()),
         ),
       }),
       createSessionsPage({

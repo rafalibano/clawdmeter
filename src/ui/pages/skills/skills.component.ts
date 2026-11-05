@@ -23,8 +23,8 @@ const CLOCK_TICK_MS = 1_000;
       margin-bottom: 16px;
     }
     .card {
-      margin-bottom: 8px;
-      padding: 8px 10px;
+      margin-bottom: 10px;
+      padding: 10px 12px;
       border: 1px solid var(--dp-border);
       border-radius: var(--dp-radius-md);
       background: var(--dp-surface);
@@ -47,7 +47,7 @@ const CLOCK_TICK_MS = 1_000;
     }
     .btn {
       padding: 3px 10px;
-      border: 1px solid var(--dp-border);
+      border: 1px solid var(--dp-control-border);
       border-radius: var(--dp-radius-btn);
       background: var(--dp-bg);
       color: inherit;

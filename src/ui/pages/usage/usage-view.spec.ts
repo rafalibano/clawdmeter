@@ -4,15 +4,15 @@ import { PROBLEM_MESSAGES, actionsFor, errorStatus } from '../../../domain/conne
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
 import { buildForecasts, createEmptyHistory, type Forecast, type UsageHistory } from '../../../domain/usage';
 import { toRowView } from '../../settings/connections/connection-view';
-import { forecastText, toUsageErrorView, toUsageView } from './usage-view';
+import { projectionOf, resetText, toUsageErrorView, toUsageView } from './usage-view';
 
 const NOW = new Date(2026, 10, 5, 14, 0).getTime();
-const RESET = new Date(2026, 10, 5, 17, 0).getTime();
+const RESET = new Date(2026, 10, 5, 16, 6).getTime();
 
 function dataWith(history: UsageHistory, fiveHour = 40): UsageData {
   const snapshot = {
     fiveHour: { utilization: fiveHour, resetsAt: RESET },
-    sevenDay: { utilization: 12.4, resetsAt: NOW + 3 * 24 * HOUR_MS },
+    sevenDay: { utilization: 12.4, resetsAt: NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS },
   };
   return { at: NOW, snapshot, history, forecasts: buildForecasts(history, snapshot, NOW) };
 }
@@ -26,77 +26,81 @@ function ramp(valueAt: (index: number) => number): UsageHistory {
   return { fiveHour: points, sevenDay: [] };
 }
 
-describe('forecastText', () => {
-  const base = { status: 'ready', resetsAt: RESET, trend: { fromAt: NOW, fromValue: 40, toAt: RESET, toValue: 78 } } as const;
+const ready = (valueAtReset: number): Forecast => ({
+  status: 'ready',
+  resetsAt: RESET,
+  valueAtReset,
+  trend: { fromAt: NOW, fromValue: 40, toAt: RESET, toValue: valueAtReset },
+  exhaustsAt: valueAtReset >= 100 ? NOW + HOUR_MS : null,
+  exhaustsLeadMs: valueAtReset >= 100 ? RESET - NOW - HOUR_MS : null,
+});
 
-  it('coletando dados com menos de 3 pontos', () => {
-    expect(forecastText({ status: 'collecting' }, NOW)).toEqual({ text: 'Previsão: coletando dados…', tone: 'muted' });
+describe('resetText', () => {
+  it('formata o tempo restante curto, sem horário', () => {
+    expect(resetText(RESET, NOW)).toBe('reseta em 2h06');
+    expect(resetText(NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS, NOW)).toBe('reseta em 6d2h');
   });
 
-  it('abaixo de 100%: valor aproximado no horário do reset', () => {
-    const forecast: Forecast = { ...base, valueAtReset: 78.4, exhaustsAt: null, exhaustsLeadMs: null };
-    expect(forecastText(forecast, NOW)).toEqual({ text: 'Previsão no reset (17:00): ~78%', tone: 'ok' });
+  it('sem janela, e janela que já passou do reset', () => {
+    expect(resetText(null, NOW)).toBe('sem janela ativa');
+    expect(resetText(NOW - MINUTE_MS, NOW)).toBe('reseta agora');
+  });
+});
+
+describe('projectionOf', () => {
+  it('sem previsão pronta não há trecho', () => {
+    expect(projectionOf({ status: 'collecting' }, 40)).toBeNull();
+    expect(projectionOf({ status: 'unavailable' }, 40)).toBeNull();
   });
 
-  it('perto do limite: tom de alerta', () => {
-    const forecast: Forecast = { ...base, valueAtReset: 91, exhaustsAt: null, exhaustsLeadMs: null };
-    expect(forecastText(forecast, NOW).tone).toBe('warn');
+  it('abaixo de 100%: do percentual atual até o previsto no reset', () => {
+    expect(projectionOf(ready(78.4), 40)).toEqual({ from: 40, to: 78.4, exhausts: false });
   });
 
-  it('estouro: informa o horário e a antecedência', () => {
-    const exhaustsAt = new Date(2026, 10, 5, 15, 40).getTime();
-    const forecast: Forecast = { ...base, valueAtReset: 160, exhaustsAt, exhaustsLeadMs: RESET - exhaustsAt };
-    expect(forecastText(forecast, NOW)).toEqual({
-      text: 'Previsão no reset (17:00): 100% · estoura às 15:40, 1h20 antes',
-      tone: 'danger',
-    });
+  it('estoura: o trecho vai até o fim da barra em alerta', () => {
+    expect(projectionOf(ready(160), 40)).toEqual({ from: 40, to: 100, exhausts: true });
+    expect(projectionOf(ready(100), 100)).toEqual({ from: 100, to: 100, exhausts: true });
   });
 
-  it('já no limite: sem horário de estouro', () => {
-    const forecast: Forecast = { ...base, valueAtReset: 100, exhaustsAt: null, exhaustsLeadMs: null };
-    expect(forecastText(forecast, NOW).text).toBe('Previsão no reset (17:00): 100% · limite já atingido');
-  });
-
-  it('janela sem reset conhecido', () => {
-    expect(forecastText({ status: 'unavailable' }, NOW).tone).toBe('muted');
+  it('nunca recua abaixo do valor atual', () => {
+    expect(projectionOf(ready(30), 40)).toEqual({ from: 40, to: 40, exhausts: false });
   });
 });
 
 describe('toUsageView', () => {
-  it('monta as duas janelas com valor atual, reset e previsão', () => {
-    const [five, week] = toUsageView(dataWith(ramp((i) => 10 + i)), '12h');
-    expect(five).toMatchObject({
-      kind: 'fiveHour',
-      title: 'Janela de 5 horas',
-      current: '40%',
-      reset: 'Reseta às 17:00 (em 3h)',
-      hasData: true,
-    });
-    expect(five?.forecast).toMatch(/^Previsão no reset \(17:00\): /);
-    expect(week).toMatchObject({ kind: 'sevenDay', current: '12%', forecast: 'Previsão: coletando dados…' });
-    expect(week?.reset).toMatch(/^Reseta às (dom|seg|ter|qua|qui|sex|sáb) 14:00 \(em 3d\)$/);
+  it('monta as duas barras com percentual, reset curto e trecho previsto só onde há previsão', () => {
+    const { bars } = toUsageView(dataWith(ramp((i) => 10 + i)), '6h');
+    expect(bars.map((bar) => bar.label)).toEqual(['5h', '7d']);
+    expect(bars[0]).toMatchObject({ kind: 'fiveHour', percent: '40%', fill: 40, reset: 'reseta em 2h06' });
+    expect(bars[0]!.projection).not.toBeNull();
+    expect(bars[1]).toMatchObject({ kind: 'sevenDay', percent: '12%', reset: 'reseta em 6d2h', projection: null });
   });
 
-  it('o período escolhido recorta a série e a tendência parte do último ponto real', () => {
+  it('um gráfico só, com as duas janelas no mesmo eixo de tempo', () => {
+    const { chart } = toUsageView(dataWith(ramp((i) => 10 + i)), '6h');
+    expect(chart.windows.map((window) => window.label)).toEqual(['5h', '7d']);
+    expect(chart.xMin).toBe(NOW - 6 * HOUR_MS);
+    expect(chart.windows[0]!.trend?.[0]).toEqual(chart.windows[0]!.points[chart.windows[0]!.points.length - 1]);
+    expect(chart.windows[1]!.trend).toBeNull();
+  });
+
+  it('o período escolhido recorta a série', () => {
     const history = ramp((i) => 10 + i);
-    const hour = toUsageView(dataWith(history), '1h')[0]!;
-    const day = toUsageView(dataWith(history), '1d')[0]!;
-    expect(hour.chart.series.length).toBe(31);
-    expect(hour.chart.series[0]![0]).toBeGreaterThanOrEqual(NOW - HOUR_MS);
-    expect(hour.chart.trend?.[0]).toEqual(hour.chart.series[hour.chart.series.length - 1]);
-    expect(day.chart.xMax).toBeGreaterThan(hour.chart.xMax);
+    const hour = toUsageView(dataWith(history), '1h').chart;
+    const day = toUsageView(dataWith(history), '1d').chart;
+    expect(hour.windows[0]!.points[0]![0]).toBeGreaterThanOrEqual(NOW - HOUR_MS);
+    expect(day.xMax).toBeGreaterThan(hour.xMax);
   });
 
-  it('janela ausente na resposta', () => {
+  it('janela ausente na resposta: barra vazia, sem texto', () => {
     const data = dataWith(createEmptyHistory());
-    const view = toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, '1d')[0]!;
-    expect(view).toMatchObject({ hasData: false, current: '—', reset: 'Sem dados desta janela' });
+    const { bars } = toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, '1d');
+    expect(bars[0]).toEqual({ kind: 'fiveHour', label: '5h', percent: '—', fill: 0, reset: '', projection: null });
   });
 
-  it('janela sem resets_at: sem janela ativa', () => {
-    const data = dataWith(createEmptyHistory());
-    const view = toUsageView({ ...data, snapshot: { fiveHour: { utilization: 0, resetsAt: null }, sevenDay: null } }, '1d')[0]!;
-    expect(view.reset).toBe('Sem janela ativa');
+  it('percentual acima de 100 enche a barra sem passar do trilho', () => {
+    const data = dataWith(createEmptyHistory(), 130);
+    expect(toUsageView(data, '1d').bars[0]).toMatchObject({ percent: '130%', fill: 100 });
   });
 });
 

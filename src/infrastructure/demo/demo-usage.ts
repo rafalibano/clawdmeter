@@ -1,7 +1,18 @@
-import type { ClaudeCredentialSource, UsageGateway, UsageHistoryStore } from '../../application/ports';
+import type {
+  ClaudeCredentialSource,
+  ExternalUsageHistorySource,
+  UsageGateway,
+  UsageHistoryStore,
+} from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../domain/time';
-import { createEmptyHistory, retainHistory, type UsageHistory, type UsageSnapshot } from '../../domain/usage';
+import {
+  createEmptyHistory,
+  retainHistory,
+  type ExternalUsagePoint,
+  type UsageHistory,
+  type UsageSnapshot,
+} from '../../domain/usage';
 
 const FIVE_HOUR_MS = 5 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
@@ -115,5 +126,11 @@ export class DemoUsageHistoryStore implements UsageHistoryStore {
 
   async save(history: UsageHistory): Promise<void> {
     this.history = history;
+  }
+}
+
+export class DemoExternalUsageHistorySource implements ExternalUsageHistorySource {
+  async read(): Promise<ExternalUsagePoint[]> {
+    return [];
   }
 }

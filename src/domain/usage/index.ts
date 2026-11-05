@@ -1,3 +1,4 @@
+export * from './external-history';
 export * from './forecast';
 export * from './regression';
 export * from './retention';

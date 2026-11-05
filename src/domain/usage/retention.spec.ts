@@ -49,6 +49,18 @@ describe('retainPoints', () => {
     expect(later[0]!.utilization).toBe(70);
   });
 
+  it('o balde agregado preserva a marca de importado do ponto máximo', () => {
+    const bucket = Math.floor((NOW - 10 * DAY_MS) / AGGREGATE_BUCKET_MS) * AGGREGATE_BUCKET_MS;
+    const retained = retainPoints(
+      [
+        { at: bucket + MINUTE_MS, utilization: 20, resetsAt: 9 },
+        { at: bucket + 2 * MINUTE_MS, utilization: 40, resetsAt: null, imported: true },
+      ],
+      NOW,
+    );
+    expect(retained).toEqual([{ at: bucket, utilization: 40, resetsAt: null, imported: true }]);
+  });
+
   it('histórico vazio continua vazio', () => {
     expect(retainHistory(createEmptyHistory(), NOW)).toEqual(createEmptyHistory());
   });
