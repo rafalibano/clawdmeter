@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 interface Permission {
   identifier?: string;
-  allow?: Array<{ url?: string }>;
+  allow?: Array<{ url?: string; path?: string }>;
 }
 
 const capability = JSON.parse(readFileSync(join(__dirname, '../src-tauri/capabilities/default.json'), 'utf8')) as {
@@ -31,6 +31,18 @@ describe('capability default', () => {
 
   it('não libera hosts fora da lista', () => {
     expect(httpAllowlist().some((pattern) => matches(pattern, 'https://example.com/graphql'))).toBe(false);
+  });
+
+  it('rename do plugin-fs só vale dentro de $APPCONFIG (escrita atômica do histórico)', () => {
+    const rename = capability.permissions.filter(
+      (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:allow-rename',
+    );
+    expect(rename).toHaveLength(1);
+    expect((rename[0]?.allow ?? []).map((entry) => entry.path)).toEqual(['$APPCONFIG/**']);
+  });
+
+  it('libera notificação local para o fim das runs de skills', () => {
+    expect(capability.permissions).toContain('notification:allow-notify');
   });
 
   it('libera spawn, kill e terminal usados pelas runs de skills', () => {

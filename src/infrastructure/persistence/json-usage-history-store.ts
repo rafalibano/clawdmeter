@@ -1,21 +1,36 @@
 import type { UsageHistoryStore } from '../../application/ports';
 import { createEmptyHistory, parseHistory, serializeHistory, type UsageHistory } from '../../domain/usage';
-import type { JsonFile } from './json-file';
+import type { AtomicJsonFile } from './json-file';
 
 export class JsonUsageHistoryStore implements UsageHistoryStore {
-  constructor(private readonly file: JsonFile) {}
+  private loading: Promise<UsageHistory> | null = null;
+  private writing: Promise<void> = Promise.resolve();
 
-  async load(): Promise<UsageHistory> {
+  constructor(private readonly file: AtomicJsonFile) {}
+
+  load(): Promise<UsageHistory> {
+    this.loading ??= this.readFromDisk();
+    return this.loading;
+  }
+
+  save(history: UsageHistory): Promise<void> {
+    this.loading = Promise.resolve(history);
+    const body = JSON.stringify(serializeHistory(history));
+    const write = this.writing.then(() => this.file.writeAtomic(body));
+    this.writing = write.catch(() => undefined);
+    return write;
+  }
+
+  private async readFromDisk(): Promise<UsageHistory> {
     const text = await this.file.read();
     if (text === null) return createEmptyHistory();
     try {
-      return parseHistory(JSON.parse(text));
+      const raw: unknown = JSON.parse(text);
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('formato inesperado');
+      return parseHistory(raw);
     } catch {
+      await this.file.quarantine().catch(() => undefined);
       return createEmptyHistory();
     }
-  }
-
-  async save(history: UsageHistory): Promise<void> {
-    await this.file.write(JSON.stringify(serializeHistory(history)));
   }
 }

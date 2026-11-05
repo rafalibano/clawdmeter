@@ -48,6 +48,39 @@ describe('PageStateService', () => {
     expect(service.get(pageRef<Count>('once'))).toMatchObject({ status: 'ok', data: { n: 7 } });
   });
 
+  it('guarda o último dado bom quando a próxima atualização falha', async () => {
+    const clock = new FakeClock();
+    let fail = false;
+    const application = createApplication({
+      clock,
+      settingsStore: new FakeSettingsStore(),
+      connectionAdapters: createFakeConnectionWorld().adapters,
+      skills: createFakeSkills(clock),
+      pages: [
+        fakePage({
+          id: 'poll',
+          pollIntervalMs: 1_000,
+          load: async (): Promise<Count> => {
+            if (fail) throw new Error('rede fora');
+            return { n: 1 };
+          },
+        }),
+      ],
+    });
+    const injector = Injector.create({ providers: [{ provide: APPLICATION, useValue: application }] });
+    const service = runInInjectionContext(injector, () => new PageStateService());
+    const ref = pageRef<Count>('poll');
+    const last = service.lastOk(ref);
+    expect(last()).toBeUndefined();
+    application.scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(last()).toEqual({ n: 1 });
+    fail = true;
+    await clock.advance(1_000);
+    expect(service.get(ref)).toMatchObject({ status: 'error', error: 'rede fora' });
+    expect(last()).toEqual({ n: 1 });
+  });
+
   it('devolve undefined para página sem update', () => {
     const { injector } = setup();
     const service = runInInjectionContext(injector, () => new PageStateService());

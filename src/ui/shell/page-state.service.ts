@@ -7,11 +7,13 @@ import { APPLICATION } from './application.token';
 @Injectable({ providedIn: 'root' })
 export class PageStateService {
   private readonly updates = signal<ReadonlyMap<PageId, PageUpdate>>(new Map());
+  private readonly lastData = signal<ReadonlyMap<PageId, unknown>>(new Map());
 
   constructor() {
-    const stop = inject(APPLICATION).scheduler.subscribe((update) =>
-      this.updates.update((current) => new Map(current).set(update.pageId, update)),
-    );
+    const stop = inject(APPLICATION).scheduler.subscribe((update) => {
+      this.updates.update((current) => new Map(current).set(update.pageId, update));
+      if (update.status === 'ok') this.lastData.update((current) => new Map(current).set(update.pageId, update.data));
+    });
     inject(DestroyRef).onDestroy(stop);
   }
 
@@ -21,5 +23,9 @@ export class PageStateService {
 
   of<T>(page: PageRef<T>): Signal<PageUpdate<T> | undefined> {
     return computed(() => this.get(page));
+  }
+
+  lastOk<T>(page: PageRef<T>): Signal<T | undefined> {
+    return computed(() => this.lastData().get(page.id) as T | undefined);
   }
 }

@@ -5,6 +5,7 @@ const fs = vi.hoisted(() => ({
   mkdir: vi.fn(),
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  rename: vi.fn(),
   watch: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ describe('TauriJsonFile', () => {
     for (const mock of Object.values(fs)) mock.mockReset();
     fs.mkdir.mockResolvedValue(undefined);
     fs.writeTextFile.mockResolvedValue(undefined);
+    fs.rename.mockResolvedValue(undefined);
   });
 
   it('read devolve null quando o arquivo não existe, sem tentar ler', async () => {
@@ -59,6 +61,36 @@ describe('TauriJsonFile', () => {
     expect(order).toEqual(['mkdir', 'write']);
     expect(fs.mkdir).toHaveBeenCalledWith('/cfg/com.mottu.devpulse', { recursive: true });
     expect(fs.writeTextFile).toHaveBeenCalledWith('/cfg/com.mottu.devpulse/settings.json', 'texto');
+  });
+
+  it('writeAtomic grava num .tmp e só então renomeia sobre o arquivo final', async () => {
+    const order: string[] = [];
+    fs.writeTextFile.mockImplementation(async (path: string) => void order.push(`write ${path}`));
+    fs.rename.mockImplementation(async (from: string, to: string) => void order.push(`rename ${from} ${to}`));
+    await new TauriJsonFile('usage-history.json').writeAtomic('texto');
+    expect(order).toEqual([
+      'write /cfg/com.mottu.devpulse/usage-history.json.tmp',
+      'rename /cfg/com.mottu.devpulse/usage-history.json.tmp /cfg/com.mottu.devpulse/usage-history.json',
+    ]);
+  });
+
+  it('writeAtomic não renomeia se a gravação do temporário falhar', async () => {
+    fs.writeTextFile.mockRejectedValue(new Error('disco cheio'));
+    await expect(new TauriJsonFile('usage-history.json').writeAtomic('x')).rejects.toThrow('disco cheio');
+    expect(fs.rename).not.toHaveBeenCalled();
+  });
+
+  it('quarantine renomeia o arquivo para .corrupt, e não faz nada se ele não existe', async () => {
+    fs.exists.mockResolvedValue(true);
+    await new TauriJsonFile('usage-history.json').quarantine();
+    expect(fs.rename).toHaveBeenCalledWith(
+      '/cfg/com.mottu.devpulse/usage-history.json',
+      '/cfg/com.mottu.devpulse/usage-history.json.corrupt',
+    );
+    fs.rename.mockClear();
+    fs.exists.mockResolvedValue(false);
+    await new TauriJsonFile('usage-history.json').quarantine();
+    expect(fs.rename).not.toHaveBeenCalled();
   });
 
   it('watch observa a pasta sem recursão, com debounce de 150 ms', async () => {

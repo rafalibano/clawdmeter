@@ -22,6 +22,10 @@
       "allow": [{ "path": "$APPCONFIG/**" }]
     },
     {
+      "identifier": "fs:allow-rename",
+      "allow": [{ "path": "$APPCONFIG/**" }]
+    },
+    {
       "identifier": "fs:allow-watch",
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },

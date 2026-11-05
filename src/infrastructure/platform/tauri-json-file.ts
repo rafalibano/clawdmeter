@@ -1,10 +1,10 @@
 import { appConfigDir, join } from '@tauri-apps/api/path';
-import { exists, mkdir, readTextFile, watch, writeTextFile } from '@tauri-apps/plugin-fs';
-import type { JsonFile } from '../persistence/json-file';
+import { exists, mkdir, readTextFile, rename, watch, writeTextFile } from '@tauri-apps/plugin-fs';
+import type { AtomicJsonFile } from '../persistence/json-file';
 
 const WATCH_DEBOUNCE_MS = 150;
 
-export class TauriJsonFile implements JsonFile {
+export class TauriJsonFile implements AtomicJsonFile {
   constructor(private readonly fileName: string) {}
 
   async read(): Promise<string | null> {
@@ -15,6 +15,19 @@ export class TauriJsonFile implements JsonFile {
   async write(text: string): Promise<void> {
     await mkdir(await appConfigDir(), { recursive: true });
     await writeTextFile(await this.path(), text);
+  }
+
+  async writeAtomic(text: string): Promise<void> {
+    await mkdir(await appConfigDir(), { recursive: true });
+    const target = await this.path();
+    const temp = await this.siblingPath(`${this.fileName}.tmp`);
+    await writeTextFile(temp, text);
+    await rename(temp, target);
+  }
+
+  async quarantine(): Promise<void> {
+    const target = await this.path();
+    if (await exists(target)) await rename(target, await this.siblingPath(`${this.fileName}.corrupt`));
   }
 
   async watch(onChange: () => void): Promise<() => void> {
@@ -33,6 +46,10 @@ export class TauriJsonFile implements JsonFile {
   }
 
   private async path(): Promise<string> {
-    return join(await appConfigDir(), this.fileName);
+    return this.siblingPath(this.fileName);
+  }
+
+  private async siblingPath(name: string): Promise<string> {
+    return join(await appConfigDir(), name);
   }
 }

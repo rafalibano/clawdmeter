@@ -22,7 +22,9 @@ import { toUsageErrorView, toUsageView } from './usage-view';
   styleUrl: './usage.component.scss',
 })
 export class UsageComponent {
-  private readonly update = inject(PageStateService).of(USAGE_PAGE);
+  private readonly pageState = inject(PageStateService);
+  private readonly update = this.pageState.of(USAGE_PAGE);
+  private readonly lastData = this.pageState.lastOk(USAGE_PAGE);
   private readonly connections = inject(ConnectionsFacade);
   private readonly scheduler = inject(APPLICATION).scheduler;
   private readonly state = inject(UsageViewState);
@@ -39,9 +41,10 @@ export class UsageComponent {
 
   protected readonly cards = computed(() => {
     const update = this.update();
-    if (update?.status !== 'ok') return null;
+    const data = update?.status === 'ok' ? update.data : this.lastData();
+    if (data === undefined) return null;
     const palette = this.palette();
-    return toUsageView(update.data, this.rangeId()).map((view) => ({
+    return toUsageView(data, this.rangeId()).map((view) => ({
       ...view,
       option: buildChartOption(view.chart, palette),
     }));

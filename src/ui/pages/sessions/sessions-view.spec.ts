@@ -55,7 +55,7 @@ describe('toSessionsView', () => {
 
   it('destaca sessão ocupada há muito tempo', () => {
     const { rows } = toSessionsView(data([session(5, { statusUpdatedAt: NOW - 45 * MINUTE_MS })]));
-    expect(rows[0]).toMatchObject({ attention: 'running-long', attentionLabel: 'Parada há 45 min no mesmo estado' });
+    expect(rows[0]).toMatchObject({ attention: 'running-long', attentionLabel: 'Ocupada há 45 min' });
   });
 
   it('resumo: vazio, singular e sem atenção', () => {

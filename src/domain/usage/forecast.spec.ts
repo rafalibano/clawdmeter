@@ -146,7 +146,7 @@ describe('trendValueAt', () => {
 });
 
 describe('buildForecasts', () => {
-  it('calcula as duas janelas; janela ausente fica indisponível', () => {
+  it('calcula as duas janelas; janela sem pontos no histórico fica coletando dados', () => {
     const history = { ...createEmptyHistory(), fiveHour: series(10, MINUTE_MS, (i) => i) };
     const forecasts = buildForecasts(history, { fiveHour: { utilization: 9, resetsAt: RESET }, sevenDay: null }, NOW);
     expect(forecasts.fiveHour.status).toBe('ready');

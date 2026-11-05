@@ -38,7 +38,7 @@ function attentionLabel(attention: SessionAttention | null, elapsedMs: number): 
     case 'waiting-input':
       return `Aguardando input há ${formatSpan(elapsedMs)}`;
     case 'running-long':
-      return `Parada há ${formatSpan(elapsedMs)} no mesmo estado`;
+      return `Ocupada há ${formatSpan(elapsedMs)}`;
     case null:
       return null;
   }
