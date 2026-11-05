@@ -305,6 +305,7 @@ O modo demo troca `composition-root.ts` por `composition-root.demo.ts` por `file
 
 - `.github/workflows/ci.yml`: em push na `main` e em PR, roda lint, typecheck, Vitest, build, `cargo test`, `cargo fmt --check` e `cargo clippy --all-targets -- -D warnings` em `macos-latest` e `windows-latest`; um job `supply-chain` (ubuntu) roda `cargo audit` e `cargo deny check` (`src-tauri/deny.toml`: licenças permissivas, advisories e fontes só do crates.io).
 - `.github/workflows/release.yml`: em tag `v*`, gera `.dmg` universal (arm64 + x64, macOS 14+) e `.msi` (Windows 10+) com `tauri-apps/tauri-action` e anexa a um release em rascunho.
+- **Permissões e pins.** O `ci.yml` roda com `permissions: contents: read`; o `release.yml` só tem `contents: write` (precisa criar o release em rascunho). Todas as actions estão fixadas por SHA de commit, não por tag móvel. Versões de origem na data do pin: `actions/checkout` v4, `actions/setup-node` v4, `swatinem/rust-cache` v2, `taiki-e/install-action` v2, `tauri-apps/tauri-action` v0 e `dtolnay/rust-toolchain` na branch `stable` (com `toolchain: stable` explícito, porque a action deriva o toolchain do nome da ref e um SHA não carrega esse nome). Para atualizar, resolva a tag nova com `gh api repos/<org>/<repo>/commits/<tag> --jq .sha` e troque o SHA.
 
 Para publicar: ajuste a versão em `package.json` e `src-tauri/Cargo.toml` (o `tauri.conf.json` lê a versão do `package.json`), e crie a tag.
 
