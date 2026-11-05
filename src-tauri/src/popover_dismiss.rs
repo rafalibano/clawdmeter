@@ -51,20 +51,20 @@ pub fn monotonic_ms() -> u64 {
     u64::try_from(elapsed.as_millis()).unwrap_or(NEVER - 1)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct ShowEpoch(AtomicU64);
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl ShowEpoch {
     pub const fn new() -> Self {
         Self(AtomicU64::new(0))
     }
 
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn begin(&self) -> u64 {
         self.0.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn is_current(&self, epoch: u64) -> bool {
         self.0.load(Ordering::SeqCst) == epoch
     }
