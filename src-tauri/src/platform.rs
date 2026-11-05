@@ -446,6 +446,72 @@ pub fn position_popover(window: &tauri::WebviewWindow, icon: Option<tauri::Rect>
     });
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkArea {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn clamp_to_work_area(x: i32, y: i32, width: i32, height: i32, area: WorkArea) -> (i32, i32) {
+    let fit = |position: i32, size: i32, start: i32, end: i32| {
+        let last = end.saturating_sub(size);
+        if last < start {
+            start
+        } else {
+            position.clamp(start, last)
+        }
+    };
+    (
+        fit(x, width, area.left, area.right),
+        fit(y, height, area.top, area.bottom),
+    )
+}
+
+#[cfg(windows)]
+fn work_area(window: &tauri::WebviewWindow) -> Option<WorkArea> {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+
+    let hwnd = window.hwnd().ok()?;
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: u32::try_from(std::mem::size_of::<MONITORINFO>()).ok()?,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    let work = info.rcWork;
+    Some(WorkArea {
+        left: work.left,
+        top: work.top,
+        right: work.right,
+        bottom: work.bottom,
+    })
+}
+
+#[cfg(windows)]
+fn keep_in_work_area(window: &tauri::WebviewWindow) {
+    let (Ok(position), Ok(size), Some(area)) = (
+        window.outer_position(),
+        window.outer_size(),
+        work_area(window),
+    ) else {
+        return;
+    };
+    let width = i32::try_from(size.width).unwrap_or(i32::MAX);
+    let height = i32::try_from(size.height).unwrap_or(i32::MAX);
+    let (x, y) = clamp_to_work_area(position.x, position.y, width, height, area);
+    if (x, y) != (position.x, position.y) {
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
     use tauri_plugin_positioner::{Position, WindowExt};
@@ -456,6 +522,8 @@ pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect
     {
         let _ = window.move_window_constrained(Position::BottomRight);
     }
+    #[cfg(windows)]
+    keep_in_work_area(window);
 }
 
 #[cfg(target_os = "macos")]
@@ -610,6 +678,50 @@ mod tests {
             let once = popover::merge_behavior(Behavior::empty());
             assert_eq!(popover::merge_behavior(once), once);
         }
+    }
+
+    const WORK: WorkArea = WorkArea {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1040,
+    };
+
+    #[test]
+    fn a_popover_inside_the_work_area_stays_put() {
+        assert_eq!(clamp_to_work_area(1500, 500, 380, 520, WORK), (1500, 500));
+    }
+
+    #[test]
+    fn a_popover_over_a_bottom_or_right_taskbar_moves_inside_the_work_area() {
+        assert_eq!(clamp_to_work_area(1500, 560, 380, 520, WORK), (1500, 520));
+        let right_bar = WorkArea {
+            right: 1860,
+            ..WORK
+        };
+        assert_eq!(
+            clamp_to_work_area(1600, 100, 380, 520, right_bar),
+            (1480, 100)
+        );
+    }
+
+    #[test]
+    fn a_popover_over_a_left_or_top_taskbar_moves_inside_the_work_area() {
+        let left_bar = WorkArea { left: 60, ..WORK };
+        assert_eq!(clamp_to_work_area(0, 100, 380, 520, left_bar), (60, 100));
+        let top_bar = WorkArea { top: 40, ..WORK };
+        assert_eq!(clamp_to_work_area(100, 0, 380, 520, top_bar), (100, 40));
+    }
+
+    #[test]
+    fn a_popover_larger_than_the_work_area_sticks_to_its_top_left() {
+        let tiny = WorkArea {
+            left: -1280,
+            top: 0,
+            right: -1000,
+            bottom: 400,
+        };
+        assert_eq!(clamp_to_work_area(-900, 300, 380, 520, tiny), (-1280, 0));
     }
 
     #[test]

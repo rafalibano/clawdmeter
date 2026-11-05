@@ -48,6 +48,23 @@ fn has_forbidden_path_char(text: &str, backslash_forbidden: bool) -> bool {
         .any(|c| matches!(c, '\'' | '"' | '\n' | '\r' | '\0') || (backslash_forbidden && c == '\\'))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+fn has_cmd_metachar(text: &str) -> bool {
+    text.chars()
+        .any(|c| matches!(c, '&' | '^' | '%' | '|' | '<' | '>' | '(' | ')'))
+}
+
+fn validate_terminal_program(path: &Path) -> CommandResult<()> {
+    validate_terminal_path(path)?;
+    if cfg!(windows) && has_cmd_metachar(&path.to_string_lossy()) {
+        return Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "program path not allowed in cmd",
+        ));
+    }
+    Ok(())
+}
+
 pub fn validate_terminal_path(path: &Path) -> CommandResult<()> {
     if has_forbidden_path_char(&path.to_string_lossy(), cfg!(target_os = "macos")) {
         return Err(CommandError::new(
@@ -178,7 +195,7 @@ fn run_terminal(
     validate_terminal_invocation(program, args)?;
     let dir = terminal_dir(program, args, cwd, protected, default_dir)?;
     let executable = resolve_program(program)?;
-    validate_terminal_path(&executable)?;
+    validate_terminal_program(&executable)?;
     launch(&executable, args, dir.as_deref())
 }
 
@@ -258,6 +275,29 @@ mod tests {
         ] {
             assert!(validate_terminal_path(Path::new(bad)).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn cmd_metacharacters_are_spotted_in_a_program_path() {
+        for bad in [
+            r"C:\a&b\claude.cmd",
+            r"C:\a^b\claude.cmd",
+            r"C:\%TEMP%\claude.cmd",
+            r"C:\a|b\claude.cmd",
+            r"C:\a<b\claude.cmd",
+            r"C:\a>b\claude.cmd",
+            r"C:\Program Files (x86)\claude.cmd",
+        ] {
+            assert!(has_cmd_metachar(bad), "{bad}");
+        }
+        assert!(!has_cmd_metachar(
+            r"C:\Users\dev\AppData\Roaming\npm\claude.cmd"
+        ));
+        let with_parens = Path::new("/Users/dev/tools (old)/claude");
+        assert_eq!(
+            validate_terminal_program(with_parens).is_err(),
+            cfg!(windows)
+        );
     }
 
     #[test]

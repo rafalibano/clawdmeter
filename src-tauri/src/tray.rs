@@ -85,7 +85,9 @@ fn popover_shortcut() -> Shortcut {
 }
 
 pub fn register_shortcut(app: &AppHandle) {
-    let _ = app.global_shortcut().register(popover_shortcut());
+    if let Err(error) = app.global_shortcut().register(popover_shortcut()) {
+        log::write(&format!("shortcut-register failed error={error}"));
+    }
 }
 
 pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
