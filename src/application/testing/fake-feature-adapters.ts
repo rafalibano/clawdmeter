@@ -60,12 +60,14 @@ export class FakeProcess implements StreamingProcessHandle {
 
 export class FakeStreamingProcessRunner implements StreamingProcessRunner {
   startError: Error | null = null;
+  startGate: Promise<void> | null = null;
   readonly processes: FakeProcess[] = [];
 
   async start(spec: StreamingProcessSpec, handlers: StreamingProcessHandlers): Promise<StreamingProcessHandle> {
     if (this.startError) throw this.startError;
     const process = new FakeProcess(spec, handlers);
     this.processes.push(process);
+    if (this.startGate) await this.startGate;
     return process;
   }
 }

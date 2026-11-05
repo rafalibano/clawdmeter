@@ -21,6 +21,6 @@ export class TauriTerminalLauncher implements TerminalLauncher {
   constructor(private readonly commands: TauriCommands) {}
 
   run(command: TerminalCommand): Promise<void> {
-    return this.commands.call<void>('terminal_run', { program: command.program, args: command.args });
+    return this.commands.call<void>('terminal_run', { program: command.program, args: command.args, cwd: command.cwd ?? null });
   }
 }

@@ -162,6 +162,20 @@ describe('CancelSkillRun', () => {
     expect(await finished).toMatchObject({ status: 'cancelled', error: null });
   });
 
+  it('cancelar antes do processo estar anexado fica guardado e mata no attach', async () => {
+    let release: () => void = () => undefined;
+    runner.startGate = new Promise<void>((resolve) => (release = resolve));
+    const starting = skills.run.execute('acabativa');
+    await Promise.resolve();
+    const runId = skills.board.list()[0]?.id ?? '';
+    await skills.cancel.execute(runId);
+    expect(runner.processes[0]?.killed).toBe(0);
+    release();
+    const { finished } = await starting;
+    expect(runner.processes[0]?.killed).toBe(1);
+    expect(await finished).toMatchObject({ status: 'cancelled', error: null });
+  });
+
   it('cancelar uma run que já terminou não faz nada', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     runner.processes[0]?.exit(1);
@@ -183,6 +197,7 @@ describe('histórico', () => {
       endedAt: 20,
       costUsd: 0.5,
       sessionId: FIXTURE_SESSION_ID,
+      cwd: null,
       resultText: 'ok',
       error: null,
       problem: null,
@@ -202,7 +217,23 @@ describe('Continuar no terminal', () => {
     runner.processes[0]?.exit(0);
     await finished;
     await skills.continueInTerminal.execute(run.id);
-    expect(terminal.commands).toEqual([{ program: 'claude', args: ['--resume', FIXTURE_SESSION_ID] }]);
+    expect(terminal.commands).toEqual([{ program: 'claude', args: ['--resume', FIXTURE_SESSION_ID], cwd: null }]);
+  });
+
+  it('retoma na mesma pasta em que a run foi iniciada', async () => {
+    const config = new FakeSkillsConfigStore(
+      parseSkillsConfig({ skills: [{ id: 'proj', name: 'Proj', prompt: '/proj', cwd: '/Users/dev/proj' }] }),
+    );
+    const scoped = createSkills({ config, runs: store, runner, terminal, urls }, clock);
+    const { run, finished } = await scoped.run.execute('proj');
+    expect(runner.processes[0]?.spec.cwd).toBe('/Users/dev/proj');
+    feed(SUCCESS_STREAM);
+    runner.processes[0]?.exit(0);
+    await finished;
+    await scoped.continueInTerminal.execute(run.id);
+    expect(terminal.commands).toEqual([
+      { program: 'claude', args: ['--resume', FIXTURE_SESSION_ID], cwd: '/Users/dev/proj' },
+    ]);
   });
 
   it('sem session_id válido recusa', async () => {

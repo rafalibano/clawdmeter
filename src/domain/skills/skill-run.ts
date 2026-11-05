@@ -19,6 +19,7 @@ export interface SkillRun {
   endedAt: number | null;
   costUsd: number | null;
   sessionId: string | null;
+  cwd: string | null;
   resultText: string | null;
   error: string | null;
   problem: RunProblem | null;
@@ -29,6 +30,7 @@ export interface SkillRun {
 export const MAX_LOG_ENTRIES = 80;
 export const MAX_RUN_HISTORY = 20;
 export const NEEDS_AUTH_STATUS = 'needs-auth';
+export const MCP_PROBLEM_STATUSES: readonly string[] = [NEEDS_AUTH_STATUS, 'pending', 'failed'];
 
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
@@ -51,6 +53,7 @@ export function startRun(id: string, skill: SkillDefinition, now: number): Skill
     endedAt: null,
     costUsd: null,
     sessionId: null,
+    cwd: skill.cwd,
     resultText: null,
     error: null,
     problem: null,
@@ -66,7 +69,7 @@ function appendLog(log: RunLogEntry[], entries: RunLogEntry[]): RunLogEntry[] {
 export function applyStreamEvent(run: SkillRun, event: StreamEvent): SkillRun {
   switch (event.type) {
     case 'init': {
-      const needingAuth = event.mcpServers.filter((server) => server.status === NEEDS_AUTH_STATUS).map((server) => server.name);
+      const needingAuth = event.mcpServers.filter((server) => MCP_PROBLEM_STATUSES.includes(server.status)).map((server) => server.name);
       return {
         ...run,
         sessionId: event.sessionId ?? run.sessionId,
@@ -158,6 +161,7 @@ function parseStoredRun(raw: unknown): SkillRun | null {
     endedAt: typeof endedAt === 'number' ? endedAt : null,
     costUsd: typeof costUsd === 'number' ? costUsd : null,
     sessionId: optionalString(source['sessionId']),
+    cwd: optionalString(source['cwd']),
     resultText: optionalString(source['resultText']),
     error: optionalString(source['error']),
     problem: typeof problem === 'string' && PROBLEMS.includes(problem) ? (problem as RunProblem) : null,

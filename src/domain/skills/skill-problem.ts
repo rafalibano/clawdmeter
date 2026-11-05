@@ -15,11 +15,11 @@ export const RUN_FIX_LABELS: Record<RunFix, string> = {
 
 export const RUN_PROBLEM_MESSAGES: Record<RunProblem, string> = {
   'claude-code-missing': 'Claude Code não encontrado.',
-  'mcp-unauthenticated': 'Um servidor MCP precisa de autenticação.',
+  'mcp-unauthenticated': 'Um servidor MCP precisa de atenção.',
 };
 
 export function mcpProblemMessage(servers: readonly string[]): string {
   return servers.length === 0
     ? RUN_PROBLEM_MESSAGES['mcp-unauthenticated']
-    : `MCP sem autenticação: ${servers.join(', ')}.`;
+    : `MCP com problema: ${servers.join(', ')}.`;
 }

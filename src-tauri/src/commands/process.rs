@@ -125,7 +125,11 @@ fn resolve_program(program: &str) -> CommandResult<PathBuf> {
 
 fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandResult<Command> {
     validate_invocation(program, args)?;
-    let dir = validate_cwd(cwd, home_dir().as_deref())?;
+    let home = home_dir();
+    let effective = cwd
+        .map(str::to_string)
+        .or_else(|| home.as_ref().map(|dir| dir.to_string_lossy().into_owned()));
+    let dir = validate_cwd(effective.as_deref(), home.as_deref())?;
     let mut command = Command::new(resolve_program(program)?);
     command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(dir) = dir {

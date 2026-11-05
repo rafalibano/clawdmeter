@@ -79,6 +79,7 @@ export class RunSkill {
         },
       );
       this.board.attach(initial.id, handle);
+      if (this.board.wasCancelled(initial.id)) await handle.kill().catch(() => undefined);
     } catch (error) {
       const missing = error instanceof ConnectionProblemError && error.problem === 'claude-code-missing';
       const message = error instanceof Error ? error.message : String(error);

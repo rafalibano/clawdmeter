@@ -168,6 +168,14 @@ pub fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 pub fn validate_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Option<PathBuf>> {
     let Some(raw) = cwd else {
         return Ok(None);
@@ -183,7 +191,7 @@ pub fn validate_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Opt
         .canonicalize()
         .map_err(|_| invalid("diretório de trabalho inexistente"))?;
     if resolved.starts_with(&home) {
-        Ok(Some(resolved))
+        Ok(Some(strip_verbatim_prefix(resolved)))
     } else {
         Err(invalid("diretório de trabalho fora da pasta do usuário"))
     }
@@ -398,6 +406,16 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    #[test]
+    fn verbatim_prefix_is_stripped_from_drive_paths_only() {
+        assert_eq!(strip_verbatim_prefix(PathBuf::from(r"\\?\C:\Users\dev")), PathBuf::from(r"C:\Users\dev"));
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\server\share")),
+            PathBuf::from(r"\\?\UNC\server\share")
+        );
+        assert_eq!(strip_verbatim_prefix(PathBuf::from("/Users/dev")), PathBuf::from("/Users/dev"));
     }
 
     #[test]

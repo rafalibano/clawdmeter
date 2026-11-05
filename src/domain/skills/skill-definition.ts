@@ -26,6 +26,16 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/i;
 const TOOL_PATTERN = /^[a-z0-9()*:._/@ -]+$/i;
 const MAX_ALLOWED_TOOLS_LENGTH = 1_024;
 
+const ABSOLUTE_PATH_PATTERN = /^(\/|[a-z]:[\\/]|\\\\)/i;
+
+export function isAbsolutePath(path: string): boolean {
+  return (
+    ABSOLUTE_PATH_PATTERN.test(path) &&
+    !path.includes('\0') &&
+    !path.split(/[\\/]/).includes('..')
+  );
+}
+
 function isValidTool(tool: unknown): tool is string {
   return typeof tool === 'string' && tool.trim() !== '' && !tool.startsWith('-') && TOOL_PATTERN.test(tool);
 }
@@ -41,7 +51,7 @@ function parseSkill(raw: unknown): SkillDefinition | null {
   if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0) return null;
   const tools = allowedTools === undefined ? [...DEFAULT_ALLOWED_TOOLS] : allowedTools;
   if (!Array.isArray(tools) || !tools.every(isValidTool) || tools.join(',').length > MAX_ALLOWED_TOOLS_LENGTH) return null;
-  if (cwd !== undefined && cwd !== null && (typeof cwd !== 'string' || cwd.trim() === '')) return null;
+  if (cwd !== undefined && cwd !== null && (typeof cwd !== 'string' || !isAbsolutePath(cwd))) return null;
   return {
     id,
     name: name.trim(),

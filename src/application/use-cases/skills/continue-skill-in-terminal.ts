@@ -9,8 +9,9 @@ export class ContinueSkillInTerminal {
   ) {}
 
   async execute(runId: string): Promise<void> {
-    const sessionId = this.board.get(runId)?.sessionId ?? null;
+    const run = this.board.get(runId);
+    const sessionId = run?.sessionId ?? null;
     if (!isResumableSession(sessionId)) throw new Error('Esta run não tem uma sessão para continuar.');
-    await this.terminal.run({ program: 'claude', args: ['--resume', sessionId] });
+    await this.terminal.run({ program: 'claude', args: ['--resume', sessionId], cwd: run?.cwd ?? null });
   }
 }

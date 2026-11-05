@@ -9,6 +9,7 @@ export interface SystemSettings {
 export interface TerminalCommand {
   program: 'claude' | 'gh';
   args: string[];
+  cwd?: string | null;
 }
 
 export interface TerminalLauncher {

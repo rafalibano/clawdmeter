@@ -104,7 +104,19 @@ describe('applyStreamEvent', () => {
   it('detecta MCP sem autenticação no init e marca o problema', () => {
     const run = replay(MCP_NEEDS_AUTH_STREAM);
     expect(run).toMatchObject({ status: 'failed', problem: 'mcp-unauthenticated', mcpNeedingAuth: ['atlassian'] });
-    expect(runProblemMessage(run)).toBe('MCP sem autenticação: atlassian.');
+    expect(runProblemMessage(run)).toBe('MCP com problema: atlassian.');
+  });
+
+  it('MCP pending ou failed no init também viram problema; connected não', () => {
+    const init = (servers: Array<{ name: string; status: string }>) =>
+      applyStreamEvent(startRun('r', SKILL, 0), { type: 'init', sessionId: null, mcpServers: servers });
+    const run = init([
+      { name: 'a', status: 'pending' },
+      { name: 'b', status: 'failed' },
+      { name: 'c', status: 'connected' },
+    ]);
+    expect(run).toMatchObject({ problem: 'mcp-unauthenticated', mcpNeedingAuth: ['a', 'b'] });
+    expect(init([{ name: 'c', status: 'connected' }]).problem).toBeNull();
   });
 
   it('erro de orçamento falha com o subtype quando não há texto', () => {
@@ -208,6 +220,19 @@ describe('configuração de skills', () => {
     });
     expect(skills.map((skill) => skill.id)).toEqual(['ok']);
     expect(skills[0]).toMatchObject({ maxBudgetUsd: 3, allowedTools: ['Read'] });
+  });
+
+  it('cwd precisa ser um caminho absoluto sem ..', () => {
+    const accepted = (cwd: unknown) =>
+      parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', cwd }] }).length === 1;
+    expect(accepted('/Users/dev/proj')).toBe(true);
+    expect(accepted('C:\\Users\\dev')).toBe(true);
+    expect(accepted(null)).toBe(true);
+    expect(accepted('proj')).toBe(false);
+    expect(accepted('~/proj')).toBe(false);
+    expect(accepted('/Users/dev/../root')).toBe(false);
+    expect(accepted('')).toBe(false);
+    expect(accepted(3)).toBe(false);
   });
 
   it('rejeita ferramentas que o Rust barraria', () => {

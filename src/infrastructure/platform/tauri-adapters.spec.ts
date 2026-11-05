@@ -76,7 +76,7 @@ describe('ações de sistema', () => {
     expect(calls).toEqual([
       { command: 'open_url', args: { url: 'https://example.com' } },
       { command: 'open_system_settings', args: { pane: 'notifications' } },
-      { command: 'terminal_run', args: { program: 'claude', args: ['/login'] } },
+      { command: 'terminal_run', args: { program: 'claude', args: ['/login'], cwd: null } },
     ]);
   });
 });

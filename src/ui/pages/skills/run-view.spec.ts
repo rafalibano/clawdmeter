@@ -61,7 +61,7 @@ describe('toRunView', () => {
     };
     expect(toRunView(run, 3_000)).toMatchObject({
       error: 'sem auth',
-      problem: { message: 'MCP sem autenticação: atlassian.', fix: 'reconnect-mcp', label: 'Reconectar MCP' },
+      problem: { message: 'MCP com problema: atlassian.', fix: 'reconnect-mcp', label: 'Reconectar MCP' },
       canContinue: false,
     });
   });

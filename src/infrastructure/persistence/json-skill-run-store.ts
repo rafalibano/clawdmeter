@@ -3,6 +3,8 @@ import { parseRunHistory, type SkillRun } from '../../domain/skills';
 import type { JsonFile } from './json-file';
 
 export class JsonSkillRunStore implements SkillRunStore {
+  private writing: Promise<void> = Promise.resolve();
+
   constructor(private readonly file: JsonFile) {}
 
   async load(): Promise<SkillRun[]> {
@@ -15,7 +17,10 @@ export class JsonSkillRunStore implements SkillRunStore {
     }
   }
 
-  async save(runs: SkillRun[]): Promise<void> {
-    await this.file.write(`${JSON.stringify({ schemaVersion: 1, runs }, null, 2)}\n`);
+  save(runs: SkillRun[]): Promise<void> {
+    const body = `${JSON.stringify({ schemaVersion: 1, runs }, null, 2)}\n`;
+    const write = this.writing.then(() => this.file.write(body));
+    this.writing = write.catch(() => undefined);
+    return write;
   }
 }

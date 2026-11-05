@@ -50,6 +50,42 @@ describe('JsonSkillRunStore', () => {
     expect(await store.load()).toEqual([run]);
   });
 
+  it('grava em série, na ordem das chamadas, mesmo com escritas lentas', async () => {
+    const order: string[] = [];
+    let active = 0;
+    let overlapped = false;
+    const file = new (class extends MemoryFile {
+      override async write(text: string): Promise<void> {
+        active += 1;
+        overlapped ||= active > 1;
+        const id = (JSON.parse(text) as { runs: Array<{ id: string }> }).runs[0]?.id ?? '';
+        await new Promise((resolve) => setTimeout(resolve, id === 'a' ? 20 : 1));
+        order.push(id);
+        active -= 1;
+      }
+    })();
+    const store = new JsonSkillRunStore(file);
+    const run = (id: string) => ({ ...startRun(id, DEFAULT_SKILLS[0]!, 1), status: 'succeeded' as const });
+    await Promise.all([store.save([run('a')]), store.save([run('b')]), store.save([run('c')])]);
+    expect(order).toEqual(['a', 'b', 'c']);
+    expect(overlapped).toBe(false);
+  });
+
+  it('uma gravação que falha não trava as seguintes', async () => {
+    let calls = 0;
+    const file = new (class extends MemoryFile {
+      override async write(text: string): Promise<void> {
+        calls += 1;
+        if (calls === 1) throw new Error('disco cheio');
+        this.text = text;
+      }
+    })();
+    const store = new JsonSkillRunStore(file);
+    await expect(store.save([])).rejects.toThrow('disco cheio');
+    await store.save([]);
+    expect(file.text).not.toBeNull();
+  });
+
   it('sem arquivo ou corrompido devolve histórico vazio', async () => {
     expect(await new JsonSkillRunStore(new MemoryFile()).load()).toEqual([]);
     expect(await new JsonSkillRunStore(new MemoryFile('nada')).load()).toEqual([]);
