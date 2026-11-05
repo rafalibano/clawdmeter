@@ -51,6 +51,13 @@ describe('capability default', () => {
     }
   });
 
+  it('não expõe o global-shortcut ao webview: o atalho é registrado só no Rust', () => {
+    const shortcut = capability.permissions.filter((permission) =>
+      (typeof permission === 'string' ? permission : (permission.identifier ?? '')).startsWith('global-shortcut:'),
+    );
+    expect(shortcut).toEqual([]);
+  });
+
   describe('histórico do ClaudeUsageBar', () => {
     const FS_PERMISSION = /^fs:/;
     const HISTORY = '/home/dev/.config/claude-usage-bar/history.json';

@@ -20,6 +20,7 @@ pub enum ErrorKind {
     ProviderError,
     Cancelled,
     Http,
+    RateLimited,
     Tray,
     Io,
 }
@@ -29,6 +30,8 @@ pub enum ErrorKind {
 pub struct CommandError {
     pub kind: ErrorKind,
     pub message: String,
+    #[serde(rename = "retryAfterSecs", skip_serializing_if = "Option::is_none")]
+    pub retry_after_secs: Option<Option<u64>>,
 }
 
 impl CommandError {
@@ -36,6 +39,15 @@ impl CommandError {
         Self {
             kind,
             message: message.into(),
+            retry_after_secs: None,
+        }
+    }
+
+    pub fn rate_limited(message: impl Into<String>, retry_after_secs: Option<u64>) -> Self {
+        Self {
+            kind: ErrorKind::RateLimited,
+            message: message.into(),
+            retry_after_secs: Some(retry_after_secs),
         }
     }
 }
@@ -113,6 +125,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&error).unwrap(),
             r#"{"kind":"keychain_denied","message":"negado"}"#
+        );
+    }
+
+    #[test]
+    fn rate_limited_always_carries_retry_after_secs_even_when_unknown() {
+        assert_eq!(
+            serde_json::to_string(&CommandError::rate_limited("devagar", Some(30))).unwrap(),
+            r#"{"kind":"rate_limited","message":"devagar","retryAfterSecs":30}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CommandError::rate_limited("devagar", None)).unwrap(),
+            r#"{"kind":"rate_limited","message":"devagar","retryAfterSecs":null}"#
         );
     }
 
