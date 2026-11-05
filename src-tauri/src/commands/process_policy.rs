@@ -299,7 +299,7 @@ pub fn is_sensitive_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> 
         .map(|name| home.join(name))
         .chain(protected.iter().cloned())
         .flat_map(|dir| {
-            let real = dir.canonicalize().ok();
+            let real = canonical_path(&dir).ok();
             std::iter::once(dir).chain(real)
         })
         .any(|dir| is_under(resolved, &strip_verbatim_prefix(dir)))
@@ -313,8 +313,7 @@ pub fn validate_project_dir(
     let resolved = validate_cwd(Some(cwd), home, protected)?
         .ok_or_else(|| invalid("invalid working directory"))?;
     let home = home
-        .and_then(|dir| dir.canonicalize().ok())
-        .map(strip_verbatim_prefix)
+        .and_then(|dir| canonical_path(dir).ok())
         .ok_or_else(|| invalid("user folder not found"))?;
     if is_sensitive_dir(&resolved, &home, protected) {
         return Err(invalid(
@@ -337,10 +336,14 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
+pub fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    path.canonicalize().map(strip_verbatim_prefix)
+}
+
 pub fn is_protected_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
     std::iter::once(home.join(".claude"))
         .chain(protected.iter().cloned())
-        .filter_map(|dir| dir.canonicalize().ok())
+        .filter_map(|dir| canonical_path(&dir).ok())
         .any(|dir| resolved.starts_with(dir))
 }
 
@@ -366,11 +369,9 @@ fn validate_cwd_in(
         return Err(invalid("invalid working directory"));
     }
     let home = home
-        .and_then(|dir| dir.canonicalize().ok())
+        .and_then(|dir| canonical_path(dir).ok())
         .ok_or_else(|| invalid("user folder not found"))?;
-    let resolved = path
-        .canonicalize()
-        .map_err(|_| invalid("working directory does not exist"))?;
+    let resolved = canonical_path(path).map_err(|_| invalid("working directory does not exist"))?;
     if !resolved.starts_with(&home) {
         return Err(invalid("working directory outside the user folder"));
     }
@@ -382,7 +383,7 @@ fn validate_cwd_in(
             "working directory inside the app config or ~/.claude",
         ));
     }
-    Ok(Some(strip_verbatim_prefix(resolved)))
+    Ok(Some(resolved))
 }
 
 #[cfg(test)]
@@ -1184,7 +1185,7 @@ mod tests {
         std::fs::create_dir_all(&workdir).unwrap();
         let resolved = resolve_working_dir(None, Some(&home), &[], Some(&workdir)).unwrap();
         assert_eq!(resolved, Some(workdir.clone()));
-        assert_ne!(resolved, home.canonicalize().ok());
+        assert_ne!(resolved, canonical_path(&home).ok());
     }
 
     #[test]
@@ -1195,7 +1196,7 @@ mod tests {
         std::fs::create_dir_all(&workdir).unwrap();
         let inside = home.join("work");
         let ok = resolve_working_dir(inside.to_str(), Some(&home), &[], Some(&workdir)).unwrap();
-        assert_eq!(ok, Some(inside.canonicalize().unwrap()));
+        assert_eq!(ok, Some(canonical_path(&inside).unwrap()));
         let outside = tree.root.join("outside");
         assert!(resolve_working_dir(outside.to_str(), Some(&home), &[], Some(&workdir)).is_err());
         assert!(resolve_working_dir(Some("relativo"), Some(&home), &[], Some(&workdir)).is_err());
@@ -1299,7 +1300,7 @@ mod tests {
         let tree = TempTree::new("workdir-home");
         let home = tree.home();
         let resolved = resolve_working_dir(None, Some(&home), &[], None).unwrap();
-        assert_eq!(resolved, Some(home.canonicalize().unwrap()));
+        assert_eq!(resolved, Some(canonical_path(&home).unwrap()));
         assert_eq!(resolve_working_dir(None, None, &[], None).unwrap(), None);
     }
 
