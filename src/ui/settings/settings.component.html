@@ -1,0 +1,80 @@
+<section class="section">
+  <h2 class="heading">Páginas</h2>
+  @for (page of pages(); track page.id) {
+    <label class="check">
+      <input
+        type="checkbox"
+        [checked]="isEnabled(page.id)"
+        (change)="togglePage(page.id, checkedOf($event))"
+      />
+      <span>{{ page.title }}</span>
+    </label>
+  }
+</section>
+
+<section class="section">
+  <h2 class="heading">Aparência</h2>
+
+  <div class="field">
+    <span class="label">Cor de destaque</span>
+    <div class="swatches">
+      @for (preset of presets; track preset.color) {
+        <button
+          type="button"
+          class="swatch"
+          [class.selected]="settings().appearance.accentColor === preset.color"
+          [style.background]="preset.color"
+          [attr.aria-label]="preset.name"
+          [title]="preset.name"
+          (click)="setAccent(preset.color)"
+        ></button>
+      }
+      <input
+        type="color"
+        class="color-input"
+        aria-label="Cor de destaque personalizada"
+        [value]="settings().appearance.accentColor"
+        (input)="setAccent(valueOf($event))"
+      />
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="label">Fundo do popover</span>
+    <div class="row">
+      <input
+        type="color"
+        class="color-input"
+        aria-label="Cor de fundo do popover"
+        [value]="settings().appearance.popoverBackground ?? defaultBackgroundPreview"
+        (input)="setBackground(valueOf($event))"
+      />
+      <button
+        type="button"
+        class="link"
+        [disabled]="settings().appearance.popoverBackground === null"
+        (click)="setBackground(null)"
+      >
+        Usar padrão do tema
+      </button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="label">Tema</span>
+    <div class="segmented" role="radiogroup" aria-label="Tema">
+      @for (theme of themes; track theme.mode) {
+        <button
+          type="button"
+          role="radio"
+          class="segment"
+          [class.selected]="settings().appearance.theme === theme.mode"
+          [attr.aria-checked]="settings().appearance.theme === theme.mode"
+          (click)="setTheme(theme.mode)"
+        >
+          {{ theme.label }}
+        </button>
+      }
+    </div>
+  </div>
+</section>

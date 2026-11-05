@@ -1,0 +1,47 @@
+<div class="popover">
+  <header class="header">
+    @if (showingSettings()) {
+      <button type="button" class="back" (click)="toggleSettings()">← Voltar</button>
+      <h1 class="title">Ajustes</h1>
+    } @else {
+      <nav class="tabs" aria-label="Páginas">
+        @for (page of pages(); track page.id) {
+          <button
+            type="button"
+            class="tab"
+            [class.active]="page.id === current()?.id"
+            (click)="select(page.id)"
+          >
+            {{ page.title }}
+          </button>
+        }
+      </nav>
+    }
+  </header>
+
+  <main class="content">
+    @if (showingSettings()) {
+      <dp-settings />
+    } @else {
+      @if (current(); as page) {
+        <ng-container [ngComponentOutlet]="page.component" />
+      } @else {
+        <p class="empty">Nenhuma página ativa. Ative páginas em Ajustes.</p>
+      }
+    }
+  </main>
+
+  <footer class="footer">
+    <span class="updated">{{ updatedAgo() }}</span>
+    <button
+      type="button"
+      class="gear"
+      [class.active]="showingSettings()"
+      aria-label="Ajustes"
+      title="Ajustes"
+      (click)="toggleSettings()"
+    >
+      &#9881;&#xFE0E;
+    </button>
+  </footer>
+</div>
