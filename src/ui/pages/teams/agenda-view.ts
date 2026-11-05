@@ -21,13 +21,17 @@ export interface AgendaView {
   isEmpty: boolean;
 }
 
+function titleOf(meeting: Meeting, l: Localizer): string {
+  return meeting.title === '' ? l.t('teams.untitled') : meeting.title;
+}
+
 function headlineOf(current: readonly Meeting[], next: NextMeeting | null, l: Localizer): string | null {
   if (current[0]) {
     return current.length > 1
-      ? l.t('teams.nowMore', { title: current[0].title, extra: current.length - 1 })
-      : l.t('teams.now', { title: current[0].title });
+      ? l.t('teams.nowMore', { title: titleOf(current[0], l), extra: current.length - 1 })
+      : l.t('teams.now', { title: titleOf(current[0], l) });
   }
-  if (next) return l.t('teams.next', { when: l.countdown(next.minutesUntil), title: next.meeting.title });
+  if (next) return l.t('teams.next', { when: l.countdown(next.minutesUntil), title: titleOf(next.meeting, l) });
   return null;
 }
 
@@ -50,7 +54,7 @@ export function toAgendaView(snapshot: AgendaSnapshot, now: number, l: Localizer
     return {
       id: meeting.id,
       time: meeting.allDay ? l.t('teams.allDay') : `${formatClock(meeting.startsAt, zone)}–${formatClock(meeting.endsAt, zone)}`,
-      title: meeting.title,
+      title: titleOf(meeting, l),
       detail: detailOf(item),
       tone: item.phase,
       badge,

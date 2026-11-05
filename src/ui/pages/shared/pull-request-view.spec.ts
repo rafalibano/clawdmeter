@@ -23,17 +23,17 @@ const BASE: PullRequest = {
 };
 
 describe('badgesFor', () => {
-  it('PR sem informação não tem selos', () => {
+  it('a PR without information has no badges', () => {
     expect(badgesFor(BASE)).toEqual([]);
   });
 
-  it('mostra rascunho, CI, decisão de review e conflito', () => {
+  it('shows draft, CI, review decision and conflict', () => {
     const badges = badgesFor({ ...BASE, isDraft: true, ci: 'failure', review: 'changes-requested', merge: 'conflicting' });
     expect(badges.map((badge) => badge.label)).toEqual(['Rascunho', '✗ CI', 'Mudanças pedidas', 'Conflito']);
     expect(badges.map((badge) => badge.tone)).toEqual(['muted', 'bad', 'info', 'bad']);
   });
 
-  it('cobre os estados de CI e de review', () => {
+  it('covers the CI and review states', () => {
     expect(badgesFor({ ...BASE, ci: 'success', review: 'approved' }).map((badge) => badge.label)).toEqual(['✓ CI', 'Aprovado']);
     expect(badgesFor({ ...BASE, ci: 'pending', review: 'review-required' }).map((badge) => badge.label)).toEqual([
       '… CI',
@@ -41,14 +41,14 @@ describe('badgesFor', () => {
     ]);
   });
 
-  it('PR já encerrado mostra o estado e esconde a decisão de review', () => {
+  it('a PR already closed shows its state and hides the review decision', () => {
     expect(badgesFor({ ...BASE, state: 'merged', review: 'approved' }).map((badge) => badge.label)).toEqual(['Mergeado']);
     expect(badgesFor({ ...BASE, state: 'closed' }).map((badge) => badge.label)).toEqual(['Fechado']);
   });
 });
 
-describe('cores dos selos', () => {
-  it('vermelho só para CI falhando e conflito; amarelo nunca vira selo de estado', () => {
+describe('badge colors', () => {
+  it('red only for failing CI and conflict; yellow never becomes a state badge', () => {
     const all: PullRequest[] = [
       { ...BASE, ci: 'success', review: 'approved' },
       { ...BASE, ci: 'pending', review: 'review-required' },
@@ -63,13 +63,13 @@ describe('slaFor', () => {
   const DAY = 24 * 60 * 60_000;
   const NOW = 10 * DAY;
 
-  it('classifica PR aberto pela idade desde a abertura', () => {
+  it('classifies an open PR by its age since opening', () => {
     expect(slaFor({ ...BASE, createdAt: NOW - 2 * DAY }, NOW)).toBe('fresh');
     expect(slaFor({ ...BASE, createdAt: NOW - 3 * DAY }, NOW)).toBe('attention');
     expect(slaFor({ ...BASE, createdAt: NOW - 7 * DAY }, NOW)).toBe('overdue');
   });
 
-  it('PR mergeado ou fechado não tem SLA', () => {
+  it('a merged or closed PR has no SLA', () => {
     expect(slaFor({ ...BASE, state: 'merged', createdAt: 0 }, NOW)).toBeNull();
     expect(slaFor({ ...BASE, state: 'closed', createdAt: 0 }, NOW)).toBeNull();
   });

@@ -5,7 +5,7 @@ import { isPageEnabled } from './page-enabled';
 import { SCHEMA_VERSION } from './schema-version';
 
 describe('defaults', () => {
-  it('nasce na versão atual, com tema do sistema e sem páginas explícitas', () => {
+  it('starts at the current version, with the system theme and no explicit pages', () => {
     const defaults = createDefaultSettings();
     expect(defaults.schemaVersion).toBe(SCHEMA_VERSION);
     expect(defaults.enabledPages).toEqual({ teams: false, skills: false });
@@ -13,19 +13,23 @@ describe('defaults', () => {
     expect(defaults.appearance.popoverBackground).toBeNull();
   });
 
-  it('devolve objetos independentes', () => {
+  it('returns independent objects', () => {
     expect(createDefaultSettings()).not.toBe(createDefaultSettings());
+  });
+
+  it('defaults to English', () => {
+    expect(createDefaultSettings().language).toBe('en');
   });
 });
 
 describe('migrateSettings', () => {
-  it('devolve defaults quando o conteúdo não é um objeto', () => {
+  it('returns defaults when the content is not an object', () => {
     expect(migrateSettings(null)).toEqual(createDefaultSettings());
     expect(migrateSettings('texto')).toEqual(createDefaultSettings());
     expect(migrateSettings([1, 2])).toEqual(createDefaultSettings());
   });
 
-  it('adota o formato atual em arquivo sem versão', () => {
+  it('adopts the current format for a file without a version', () => {
     const migrated = migrateSettings({ enabledPages: { example: false }, appearance: { theme: 'dark' } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.enabledPages).toMatchObject({ example: false });
@@ -33,7 +37,7 @@ describe('migrateSettings', () => {
     expect(migrated.appearance.accentColor).toBe(createDefaultSettings().appearance.accentColor);
   });
 
-  it('mantém um arquivo válido na versão atual', () => {
+  it('keeps a valid file at the current version', () => {
     const current = {
       schemaVersion: SCHEMA_VERSION,
       enabledPages: { example: true },
@@ -49,7 +53,7 @@ describe('migrateSettings', () => {
     });
   });
 
-  it('descarta valores inválidos e cai nos defaults do campo', () => {
+  it('drops invalid values and falls back to the field defaults', () => {
     const migrated = migrateSettings({
       schemaVersion: SCHEMA_VERSION,
       enabledPages: { a: 'sim', b: true },
@@ -59,7 +63,7 @@ describe('migrateSettings', () => {
     expect(migrated.appearance).toEqual(createDefaultSettings().appearance);
   });
 
-  it('encadeia as migrações da versão do arquivo até a versão alvo', () => {
+  it('chains the migrations from the file version to the target version', () => {
     const toOne: Migration = (raw) => ({ ...raw, enabledPages: raw['pages'] });
     const toTwo: Migration = (raw) => ({ ...raw, appearance: { theme: 'dark' } });
     const migrated = migrateSettings({ pages: { example: false } }, [toOne, toTwo], 2);
@@ -67,7 +71,7 @@ describe('migrateSettings', () => {
     expect(migrated.appearance.theme).toBe('dark');
   });
 
-  it('troca o destaque índigo antigo pelo verde Mottu, em versão 0 ou 1', () => {
+  it('replaces the old indigo accent with the Mottu green, on version 0 or 1', () => {
     for (const schemaVersion of [undefined, 1]) {
       const migrated = migrateSettings({ schemaVersion, appearance: { accentColor: '#6366F1', theme: 'dark' } });
       expect(migrated.appearance.accentColor).toBe('#00b131');
@@ -76,37 +80,37 @@ describe('migrateSettings', () => {
     }
   });
 
-  it('preserva destaque escolhido e não mexe no índigo de um arquivo já na versão atual', () => {
+  it('preserves a chosen accent and leaves the indigo of a file already at the current version alone', () => {
     expect(migrateSettings({ schemaVersion: 1, appearance: { accentColor: '#ff0000' } }).appearance.accentColor).toBe('#ff0000');
     expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, appearance: { accentColor: '#6366f1' } }).appearance.accentColor).toBe('#6366f1');
   });
 
-  it('o destaque padrão é o verde Mottu', () => {
+  it('the default accent is the Mottu green', () => {
     expect(createDefaultSettings().appearance.accentColor).toBe('#00b131');
   });
 
-  it('arquivo da versão 2 sem idioma ganha pt-BR', () => {
+  it('file from version 2 without language gets en', () => {
     const migrated = migrateSettings({ schemaVersion: 2, enabledPages: { usage: true }, appearance: { theme: 'dark' } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(migrated.language).toBe('pt-BR');
+    expect(migrated.language).toBe('en');
     expect(migrated).not.toHaveProperty('usageThresholds');
     expect(migrated.appearance.theme).toBe('dark');
   });
 
-  it('idioma conhecido é preservado; desconhecido volta para pt-BR', () => {
-    expect(migrateSettings({ schemaVersion: 2, language: 'en' }).language).toBe('en');
+  it('known language is preserved; unknown falls back to en', () => {
+    expect(migrateSettings({ schemaVersion: 2, language: 'pt-BR' }).language).toBe('pt-BR');
     expect(migrateSettings({ schemaVersion: 3, language: 'es-MX' }).language).toBe('es-MX');
-    expect(migrateSettings({ schemaVersion: 3, language: 'fr' }).language).toBe('pt-BR');
-    expect(migrateSettings({ schemaVersion: 3, language: 42 }).language).toBe('pt-BR');
+    expect(migrateSettings({ schemaVersion: 3, language: 'fr' }).language).toBe('en');
+    expect(migrateSettings({ schemaVersion: 3, language: 42 }).language).toBe('en');
   });
 
-  it('a versão 4 com limiares descarta o campo', () => {
+  it('version 4 with thresholds drops the field', () => {
     const migrated = migrateSettings({ schemaVersion: 4, usageThresholds: { warning: 60, critical: 85 } });
     expect(migrated).not.toHaveProperty('usageThresholds');
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it('só roda as migrações pendentes', () => {
+  it('only runs the pending migrations', () => {
     const calls: number[] = [];
     const toOne: Migration = (raw) => (calls.push(1), raw);
     const toTwo: Migration = (raw) => (calls.push(2), raw);
@@ -114,14 +118,14 @@ describe('migrateSettings', () => {
     expect(calls).toEqual([2]);
   });
 
-  it('não altera arquivo de versão futura além de normalizar', () => {
+  it('does not alter a future-version file beyond normalizing', () => {
     const migrated = migrateSettings({ schemaVersion: SCHEMA_VERSION + 5, enabledPages: { example: false } });
     expect(migrated.enabledPages).toMatchObject({ example: false });
   });
 });
 
-describe('migração 3 -> 4 (páginas em manutenção)', () => {
-  it('desliga Skills e Agenda de quem já tinha ligadas ou sem preferência', () => {
+describe('migration 3 -> 4 (pages under maintenance)', () => {
+  it('turns off Skills and Agenda for those who had them on or had no preference', () => {
     expect(migrateSettings({ schemaVersion: 3, enabledPages: { teams: true, usage: false } }).enabledPages).toEqual({
       teams: false,
       skills: false,
@@ -130,28 +134,28 @@ describe('migração 3 -> 4 (páginas em manutenção)', () => {
     expect(migrateSettings({ schemaVersion: 3 }).enabledPages).toEqual({ teams: false, skills: false });
   });
 
-  it('só atua uma vez: religar depois é respeitado', () => {
+  it('only acts once: turning them back on later is respected', () => {
     const current = migrateSettings({ schemaVersion: 4, enabledPages: { teams: true, skills: false } });
     expect(current.enabledPages).toEqual({ teams: true, skills: false });
     expect(current.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it('o padrão de settings novos já vem com as duas desligadas', () => {
+  it('the default for new settings already has both turned off', () => {
     expect(createDefaultSettings().enabledPages).toEqual({ teams: false, skills: false });
     expect(isPageEnabled(createDefaultSettings(), 'teams')).toBe(false);
     expect(isPageEnabled(createDefaultSettings(), 'usage')).toBe(true);
   });
 });
 
-describe('migração 5 -> 6 (método de projeção)', () => {
-  it('arquivo da versão 5 ganha projectionMethod 14d', () => {
+describe('migration 5 -> 6 (projection method)', () => {
+  it('file from version 5 gets projectionMethod 14d', () => {
     const migrated = migrateSettings({ schemaVersion: 5, language: 'en', appearance: { theme: 'dark' } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.projectionMethod).toBe('14d');
     expect(migrated.language).toBe('en');
   });
 
-  it('preserva método válido e troca inválido pelo padrão', () => {
+  it('preserves a valid method and replaces an invalid one with the default', () => {
     expect(migrateSettings({ schemaVersion: 5, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
     expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
     expect(migrateSettings({ schemaVersion: 6, projectionMethod: '24h' }).projectionMethod).toBe('24h');
@@ -160,13 +164,13 @@ describe('migração 5 -> 6 (método de projeção)', () => {
     expect(migrateSettings({ schemaVersion: 6 }).projectionMethod).toBe('14d');
   });
 
-  it('o padrão dos defaults é 14d', () => {
+  it('the defaults use 14d', () => {
     expect(createDefaultSettings().projectionMethod).toBe('14d');
   });
 });
 
-describe('migração 6 -> 7 (cores das séries)', () => {
-  it('arquivo da versão 6 ganha as cores padrão do 5h e do 7d', () => {
+describe('migration 6 -> 7 (series colors)', () => {
+  it('file from version 6 gets the default 5h and 7d colors', () => {
     const migrated = migrateSettings({ schemaVersion: 6, projectionMethod: '24h', appearance: { accentColor: '#0063f7' } });
     expect(migrated.schemaVersion).toBe(7);
     expect(migrated.seriesColors).toEqual({ fiveHour: null, sevenDay: null });
@@ -174,7 +178,7 @@ describe('migração 6 -> 7 (cores das séries)', () => {
     expect(migrated.appearance.accentColor).toBe('#0063f7');
   });
 
-  it('preserva hex válidos e descarta os inválidos', () => {
+  it('preserves valid hex values and drops invalid ones', () => {
     expect(migrateSettings({ schemaVersion: 6, seriesColors: { fiveHour: '#EF6800', sevenDay: 'cinza' } }).seriesColors).toEqual({
       fiveHour: '#ef6800',
       sevenDay: null,
@@ -182,7 +186,7 @@ describe('migração 6 -> 7 (cores das séries)', () => {
     expect(migrateSettings({ schemaVersion: 7, seriesColors: 'x' }).seriesColors).toEqual({ fiveHour: null, sevenDay: null });
   });
 
-  it('o padrão dos defaults segue as cores do tema', () => {
+  it('the defaults follow the theme colors', () => {
     expect(createDefaultSettings().seriesColors).toEqual({ fiveHour: null, sevenDay: null });
   });
 });

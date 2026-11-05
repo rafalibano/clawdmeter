@@ -59,39 +59,39 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('JsonSettingsStore', () => {
-  it('cria o arquivo com os defaults quando ele não existe', async () => {
+  it('creates the file with the defaults when it does not exist', async () => {
     const file = new MemoryFile();
     const settings = await new JsonSettingsStore(file).load();
     expect(settings).toEqual(createDefaultSettings());
     expect(JSON.parse(file.text ?? '')).toEqual(createDefaultSettings());
   });
 
-  it('migra e regrava arquivo de versão antiga', async () => {
+  it('migrates and rewrites a file of an old version', async () => {
     const file = new MemoryFile(JSON.stringify({ enabledPages: { example: false } }));
     const settings = await new JsonSettingsStore(file).load();
     expect(settings.enabledPages).toMatchObject({ example: false });
     expect(JSON.parse(file.text ?? '').schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it('regrava o arquivo da F1 com o índigo antigo já em verde Mottu', async () => {
+  it('rewrites the F1 file with the old indigo already in Mottu green', async () => {
     const file = new MemoryFile(JSON.stringify({ schemaVersion: 1, enabledPages: {}, appearance: { accentColor: '#6366f1', popoverBackground: null, theme: 'system' } }));
     const settings = await new JsonSettingsStore(file).load();
     expect(settings.appearance.accentColor).toBe('#00b131');
     expect(JSON.parse(file.text ?? '')).toMatchObject({ schemaVersion: SCHEMA_VERSION, appearance: { accentColor: '#00b131' } });
   });
 
-  it('não regrava arquivo já na versão atual', async () => {
+  it('does not rewrite a file already at the current version', async () => {
     const file = new MemoryFile(`${JSON.stringify(createDefaultSettings())}\n`);
     await new JsonSettingsStore(file).load();
     expect(file.writes).toBe(0);
   });
 
-  it('cai nos defaults com JSON corrompido', async () => {
+  it('falls back to the defaults with corrupt JSON', async () => {
     const file = new MemoryFile('{ nao eh json');
     expect(await new JsonSettingsStore(file).load()).toEqual(createDefaultSettings());
   });
 
-  it('JSON inválido não é sobrescrito', async () => {
+  it('invalid JSON is not overwritten', async () => {
     const broken = '{ "appearance": { "theme": "dark" ';
     const file = new MemoryFile(broken);
     const store = new JsonSettingsStore(file);
@@ -100,7 +100,7 @@ describe('JsonSettingsStore', () => {
     expect(file.writes).toBe(0);
   });
 
-  it('JSON inválido não é sobrescrito nem após um update', async () => {
+  it('invalid JSON is not overwritten even after an update', async () => {
     const broken = '{ "appearance": { "theme": "dark" ';
     const file = new MemoryFile(broken);
     const store = new JsonSettingsStore(file);
@@ -115,7 +115,7 @@ describe('JsonSettingsStore', () => {
     expect(file.writes).toBe(0);
   });
 
-  it('update com arquivo inválido acumula sobre o último estado válido em memória', async () => {
+  it('an update with an invalid file builds on the last valid in-memory state', async () => {
     const valid = { ...createDefaultSettings(), appearance: { ...createDefaultSettings().appearance, theme: 'dark' as const } };
     const file = new MemoryFile(`${JSON.stringify(valid)}\n`);
     const store = new JsonSettingsStore(file);
@@ -129,7 +129,7 @@ describe('JsonSettingsStore', () => {
     expect(file.text).toBe('{ quebrado');
   });
 
-  it('volta a gravar depois que o arquivo é corrigido', async () => {
+  it('writes again after the file is fixed', async () => {
     const file = new MemoryFile('{ quebrado');
     const store = new JsonSettingsStore(file);
     await store.load();
@@ -138,13 +138,13 @@ describe('JsonSettingsStore', () => {
     expect(JSON.parse(file.text).enabledPages).toMatchObject({ example: false });
   });
 
-  it('JSON válido que não é objeto também não é sobrescrito', async () => {
+  it('valid JSON that is not an object is not overwritten either', async () => {
     const file = new MemoryFile('[1, 2]');
     await new JsonSettingsStore(file).load();
     expect(file.text).toBe('[1, 2]');
   });
 
-  it('não faz downgrade de arquivo com versão futura', async () => {
+  it('does not downgrade a file with a future version', async () => {
     const future = `${JSON.stringify({ schemaVersion: SCHEMA_VERSION + 1, appearance: { theme: 'dark' }, novo: true })}\n`;
     const file = new MemoryFile(future);
     const settings = await new JsonSettingsStore(file).load();
@@ -153,7 +153,7 @@ describe('JsonSettingsStore', () => {
     expect(file.text).toBe(future);
   });
 
-  it('expõe status invalid no load e volta a ok depois de corrigido e gravado', async () => {
+  it('exposes invalid status on load and goes back to ok after being fixed and written', async () => {
     const file = new MemoryFile('{ quebrado');
     const store = new JsonSettingsStore(file);
     await store.load();
@@ -163,7 +163,7 @@ describe('JsonSettingsStore', () => {
     expect(store.status()).toBe('ok');
   });
 
-  it('recusa gravar sobre arquivo de versão futura e sinaliza future', async () => {
+  it('refuses to write over a future-version file and signals future', async () => {
     const future = `${JSON.stringify({ schemaVersion: SCHEMA_VERSION + 1, appearance: { theme: 'dark' }, novo: true })}\n`;
     const file = new MemoryFile(future);
     const store = new JsonSettingsStore(file);
@@ -176,7 +176,7 @@ describe('JsonSettingsStore', () => {
     expect(file.text).toBe(future);
   });
 
-  it('status acompanha edição manual observada pelo watch', async () => {
+  it('status follows manual edits observed by watch', async () => {
     const file = new MemoryFile(`${JSON.stringify(createDefaultSettings())}\n`);
     const store = new JsonSettingsStore(file);
     await store.load();
@@ -192,7 +192,7 @@ describe('JsonSettingsStore', () => {
     expect(store.status()).toBe('ok');
   });
 
-  it('poda ecos vencidos também ao gravar', async () => {
+  it('prunes expired echoes on write too', async () => {
     let now = 0;
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file, { echoWindowMs: 100, now: () => now });
@@ -204,7 +204,7 @@ describe('JsonSettingsStore', () => {
     expect(writes.size).toBe(1);
   });
 
-  it('persiste e relê o que foi salvo', async () => {
+  it('persists and rereads what was saved', async () => {
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file);
     const next = { ...createDefaultSettings(), enabledPages: { example: false } };
@@ -212,7 +212,7 @@ describe('JsonSettingsStore', () => {
     expect(await store.load()).toEqual(next);
   });
 
-  it('recarrega edição manual do arquivo', async () => {
+  it('reloads a manual edit of the file', async () => {
     const file = new MemoryFile(`${JSON.stringify(createDefaultSettings())}\n`);
     const store = new JsonSettingsStore(file);
     const listener = vi.fn();
@@ -223,7 +223,7 @@ describe('JsonSettingsStore', () => {
     expect(listener.mock.calls[0]?.[0].appearance.theme).toBe('dark');
   });
 
-  it('ignora o eco da própria gravação', async () => {
+  it('ignores the echo of its own write', async () => {
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file);
     const listener = vi.fn();
@@ -233,7 +233,7 @@ describe('JsonSettingsStore', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('ignora o eco atrasado de uma gravação quando a seguinte já está em voo', async () => {
+  it('ignores the late echo of a write when the next one is already in flight', async () => {
     const file = new SlowFile();
     const store = new JsonSettingsStore(file, { echoWindowMs: 500 });
     const listener = vi.fn();
@@ -251,7 +251,7 @@ describe('JsonSettingsStore', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('ignora o eco atrasado da gravação anterior depois que a seguinte terminou', async () => {
+  it('ignores the late echo of the previous write after the next one finished', async () => {
     const file = new SlowFile();
     const store = new JsonSettingsStore(file, { echoWindowMs: 500 });
     const listener = vi.fn();
@@ -265,7 +265,7 @@ describe('JsonSettingsStore', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('repassa edição manual depois que a janela de eco expira', async () => {
+  it('forwards a manual edit after the echo window expires', async () => {
     let now = 0;
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file, { echoWindowMs: 100, now: () => now });
@@ -278,7 +278,7 @@ describe('JsonSettingsStore', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('ignora edição manual ainda inválida', async () => {
+  it('ignores a manual edit that is still invalid', async () => {
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file);
     const listener = vi.fn();
@@ -288,7 +288,7 @@ describe('JsonSettingsStore', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('para de notificar depois de cancelar', async () => {
+  it('stops notifying after cancelling', async () => {
     const file = new MemoryFile();
     const store = new JsonSettingsStore(file);
     const listener = vi.fn();

@@ -112,7 +112,7 @@ export function assertAllowedTools(skill: SkillDefinition): void {
   const disallowed = findDisallowedTools(skill.allowedTools);
   if (disallowed.length > 0) {
     throw new Error(
-      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Atualize o skills.json (ex.: "Read" virou "Read(./**)" e "Bash(git diff|log|status:*)" saiu da lista; use "Bash(gh pr diff:*)"; "Grep" e "Glob" também saíram, dentro do cwd da run eles funcionam sem regra). Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
+      `Skill "${skill.name}" uses a tool that is not allowed: ${disallowed.join(', ')}. Update skills.json (e.g. "Read" became "Read(./**)" and "Bash(git diff|log|status:*)" was removed from the list; use "Bash(gh pr diff:*)"; "Grep" and "Glob" were also removed, inside the run cwd they work without a rule). Allowed: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
     );
   }
 }

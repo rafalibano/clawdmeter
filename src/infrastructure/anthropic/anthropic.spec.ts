@@ -10,7 +10,7 @@ describe('AnthropicUsageGateway', () => {
     extra_usage: { is_enabled: false },
   };
 
-  it('chama claude_usage_fetch sem argumentos e converte o JSON em snapshot', async () => {
+  it('calls claude_usage_fetch without arguments and converts the JSON to a snapshot', async () => {
     const { commands, calls } = createFakeCommands(() => RECORDED);
     const snapshot = await new AnthropicUsageGateway(commands).fetch();
     expect(calls).toEqual([{ command: 'claude_usage_fetch', args: undefined }]);
@@ -18,44 +18,44 @@ describe('AnthropicUsageGateway', () => {
     expect(snapshot.sevenDay?.utilization).toBe(18);
   });
 
-  it('claude_expired vira problema de conexão do Claude', async () => {
+  it('claude_expired becomes a Claude connection problem', async () => {
     const { commands } = createFakeCommands(() => rejectWith('claude_expired', 'login do Claude expirado'));
     await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toMatchObject({ problem: 'claude-expired' });
   });
 
-  it('cofre negado e Claude Code ausente chegam tipados', async () => {
+  it('a denied vault and missing Claude Code arrive typed', async () => {
     const denied = createFakeCommands(() => rejectWith('keychain_denied', 'negado'));
     await expect(new AnthropicUsageGateway(denied.commands).fetch()).rejects.toMatchObject({ problem: 'keychain-denied' });
-    const missing = createFakeCommands(() => rejectWith('claude_code_missing', 'sem credencial'));
+    const missing = createFakeCommands(() => rejectWith('claude_code_missing', 'no credential'));
     await expect(new AnthropicUsageGateway(missing.commands).fetch()).rejects.toMatchObject({
       problem: 'claude-code-missing',
     });
   });
 
-  it('kind rate_limited vira RateLimitedError com o Retry-After em ms', async () => {
+  it('kind rate_limited becomes RateLimitedError with the Retry-After in ms', async () => {
     const { commands } = createFakeCommands(() => rejectWith('rate_limited', 'limite', { retryAfterSecs: 120 }));
     const error = await new AnthropicUsageGateway(commands).fetch().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(RateLimitedError);
     expect((error as RateLimitedError).retryAfterMs).toBe(120_000);
   });
 
-  it('rate_limited sem Retry-After não traz tempo', async () => {
+  it('rate_limited without Retry-After carries no time', async () => {
     const { commands } = createFakeCommands(() => rejectWith('rate_limited', 'limite'));
     await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toMatchObject({ retryAfterMs: null });
   });
 
-  it.each([['429'], ['500'], ['503']])('erro HTTP %s genérico também vira RateLimitedError', async (status) => {
+  it.each([['429'], ['500'], ['503']])('a generic HTTP %s error also becomes RateLimitedError', async (status) => {
     const { commands } = createFakeCommands(() => rejectWith('http', `Anthropic respondeu ${status}`));
     await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toBeInstanceOf(RateLimitedError);
   });
 
-  it('erro HTTP 4xx comum mantém a mensagem', async () => {
+  it('a plain HTTP 4xx error keeps the message', async () => {
     const { commands } = createFakeCommands(() => rejectWith('http', 'Anthropic respondeu 403'));
     await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('Anthropic respondeu 403');
   });
 
-  it('resposta sem janelas reconhecíveis falha', async () => {
+  it('a response without recognizable windows fails', async () => {
     const { commands } = createFakeCommands(() => ({ surprise: true }));
-    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('sem five_hour nem seven_day');
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('neither five_hour nor seven_day');
   });
 });

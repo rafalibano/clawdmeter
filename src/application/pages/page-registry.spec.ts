@@ -9,25 +9,25 @@ describe('PageRegistry', () => {
   const reviews = fakePage({ id: 'reviews', requiredConnections: ['github'] });
   const registry = new PageRegistry([usage, prs, reviews]);
 
-  it('lista as páginas na ordem de registro', () => {
+  it('lists the pages in registration order', () => {
     expect(registry.all().map((page) => page.id)).toEqual(['usage', 'prs', 'reviews']);
   });
 
-  it('busca por id', () => {
+  it('looks up by id', () => {
     expect(registry.get('prs')).toBe(prs);
     expect(registry.get('nada')).toBeUndefined();
   });
 
-  it('rejeita id duplicado', () => {
-    expect(() => new PageRegistry([usage, fakePage({ id: 'usage' })])).toThrow('Página duplicada: usage');
+  it('rejects a duplicate id', () => {
+    expect(() => new PageRegistry([usage, fakePage({ id: 'usage' })])).toThrow('Duplicate page: usage');
   });
 
-  it('só devolve páginas habilitadas, ligando por padrão', () => {
+  it('only returns enabled pages, on by default', () => {
     const settings = { ...createDefaultSettings(), enabledPages: { prs: false } };
     expect(registry.enabled(settings).map((page) => page.id)).toEqual(['usage', 'reviews']);
   });
 
-  it('exige só as conexões das páginas habilitadas, sem repetir', () => {
+  it('requires only the connections of enabled pages, without repeating', () => {
     expect(registry.requiredConnections(createDefaultSettings()).sort()).toEqual(['claude', 'github']);
     const noGithub = { ...createDefaultSettings(), enabledPages: { prs: false, reviews: false } };
     expect(registry.requiredConnections(noGithub)).toEqual(['claude']);

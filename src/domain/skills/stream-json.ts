@@ -20,7 +20,7 @@ export type StreamEvent =
   | { type: 'truncated' }
   | { type: 'other' };
 
-export const LINE_TRUNCATED_MARK = '…[linha truncada]';
+export const LINE_TRUNCATED_MARK = '…[line truncated]';
 
 type Json = Record<string, unknown>;
 

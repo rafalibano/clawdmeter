@@ -7,19 +7,19 @@ const PT = new Localizer('pt-BR');
 const toRowView = (id: ConnectionId, status: ConnectionStatus, l: Localizer = PT) => toRowViewWith(id, status, l);
 
 describe('toRowView', () => {
-  it('conectado mostra a conta e oferece Desconectar', () => {
+  it('connected shows the account and offers Disconnect', () => {
     const view = toRowView('github', { state: 'connected', account: 'dev' });
     expect(view).toMatchObject({ tone: 'ok', summary: 'Conectado · dev', busy: false });
     expect(view.actions.map((a) => a.label)).toEqual(['disconnect']);
   });
 
-  it('desconectado oferece Conectar e mostra a dica', () => {
+  it('disconnected offers Connect and shows the hint', () => {
     const view = toRowView('microsoft', { state: 'disconnected', note: 'after-reset' });
     expect(view).toMatchObject({ tone: 'idle', message: 'Entre de novo com o código do GitHub ou cole um novo token.', signInOptions: false });
     expect(view.actions.map((a) => a.label)).toEqual(['connect']);
   });
 
-  it('GitHub sem gh instalado: Instalar GitHub CLI e as alternativas pelo navegador e token', () => {
+  it('GitHub without gh installed: Install GitHub CLI and the browser and token alternatives', () => {
     const view = toRowView('github', {
       state: 'disconnected',
       note: 'github-cli-not-installed',
@@ -32,7 +32,7 @@ describe('toRowView', () => {
     expect(view.signInOptions).toBe(true);
   });
 
-  it('GitHub com gh sem login: Conectar GitHub CLI e as alternativas', () => {
+  it('GitHub with gh not logged in: Connect GitHub CLI and the alternatives', () => {
     const view = toRowView('github', {
       state: 'disconnected',
       note: 'github-cli-not-logged-in',
@@ -43,16 +43,16 @@ describe('toRowView', () => {
     expect(view.signInOptions).toBe(true);
   });
 
-  it('GitHub conectado ou com erro não mostra as alternativas de entrada', () => {
+  it('GitHub connected or in error does not show the sign-in alternatives', () => {
     expect(toRowView('github', { state: 'connected', account: 'dev' }).signInOptions).toBe(false);
     expect(toRowView('github', errorStatus('github-unauthorized')).signInOptions).toBe(false);
   });
 
-  it('verificando fica ocupado e sem botões', () => {
+  it('checking is busy and has no buttons', () => {
     expect(toRowView('claude', { state: 'checking' })).toMatchObject({ busy: true, tone: 'busy', actions: [] });
   });
 
-  it('todo estado de erro mostra mensagem e um botão de conserto', () => {
+  it('every error state shows a message and a fix button', () => {
     for (const problem of CONNECTION_PROBLEMS) {
       const view = toRowView('claude', errorStatus(problem));
       expect(view.tone).toBe('error');
@@ -61,23 +61,23 @@ describe('toRowView', () => {
     }
   });
 
-  it('notificações não verificáveis aparecem como "Não verificável", nunca como conectadas', () => {
+  it('unverifiable notifications show as "Not verifiable", never as connected', () => {
     const view = toRowView('notifications', errorStatus('notifications-unverifiable'));
     expect(view).toMatchObject({ tone: 'error', summary: 'Não verificável' });
     expect(view.actions.find((action) => action.kind === 'fix')?.label).toBe('open-system-settings');
   });
 
-  it('token vencido do Claude orienta a abrir o Claude Code ou refazer o login', () => {
+  it('expired Claude token tells the user to open Claude Code or sign in again', () => {
     expect(toRowView('claude', errorStatus('claude-expired')).message).toBe(
       'Token vencido — abra o Claude Code para renová-lo ou refaça o login.',
     );
   });
 
-  it('mensagem específica do status tem prioridade sobre a padrão', () => {
+  it('the status-specific message takes priority over the default one', () => {
     expect(toRowView('claude', errorStatus('claude-expired', 'Conclua o login')).message).toBe('Conclua o login');
   });
 
-  it('a mesma linha muda de texto com a língua', () => {
+  it('the same row changes text with the language', () => {
     const status = errorStatus('claude-expired');
     expect(toRowViewWith('claude', status, new Localizer('en')).message).toBe(
       'Token expired — open Claude Code to renew it or sign in again.',
@@ -88,7 +88,7 @@ describe('toRowView', () => {
     expect(toRowViewWith('github', { state: 'connected', account: 'dev' }, new Localizer('en')).summary).toBe('Connected · dev');
   });
 
-  it('notas do status levam o argumento (org, escopos) e vencem a mensagem padrão', () => {
+  it('status notes carry the argument (org, scopes) and win over the default message', () => {
     expect(toRowView('github', noteStatus('github-not-member', 'ask-invite', 'Mottu-ops')).message).toBe(
       'Peça o convite para a org Mottu-ops e clique em "Verificar de novo".',
     );

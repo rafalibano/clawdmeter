@@ -36,7 +36,7 @@ export class DemoSessionDirectory implements SessionDirectory {
         kind: 'interactive',
       }),
     );
-    return [...files, '{ arquivo corrompido'];
+    return [...files, '{ corrupt file'];
   }
 }
 

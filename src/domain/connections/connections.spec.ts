@@ -7,8 +7,8 @@ import { errorStatus } from './connection-status';
 import { FIX_FOR } from './fix-action';
 import { evaluateGitHubAccount, missingScopes, parseSsoUrl } from './github';
 
-describe('tabela de consertos', () => {
-  it('todo problema tem conserto', () => {
+describe('fix table', () => {
+  it('every problem has a fix', () => {
     for (const problem of CONNECTION_PROBLEMS) expect(FIX_FOR[problem]).toBeDefined();
   });
 
@@ -30,7 +30,7 @@ describe('tabela de consertos', () => {
 });
 
 describe('actionsFor', () => {
-  it('nenhum estado de erro fica sem botão de conserto', () => {
+  it('no error state is left without a fix button', () => {
     for (const connection of CONNECTIONS) {
       for (const problem of CONNECTION_PROBLEMS) {
         const actions = actionsFor(connection.id, errorStatus(problem));
@@ -39,27 +39,27 @@ describe('actionsFor', () => {
     }
   });
 
-  it('toda conexão desconectável oferece Desconectar quando conectada ou com erro', () => {
+  it('every disconnectable connection offers Disconnect when connected or in error', () => {
     for (const connection of CONNECTIONS.filter((item) => item.disconnectable)) {
       expect(actionsFor(connection.id, { state: 'connected' }).map((a) => a.kind)).toContain('disconnect');
       expect(actionsFor(connection.id, errorStatus('unexpected')).map((a) => a.kind)).toContain('disconnect');
     }
   });
 
-  it('notificações não têm Desconectar', () => {
+  it('notifications have no Disconnect', () => {
     expect(actionsFor('notifications', { state: 'connected' })).toEqual([]);
     expect(actionsFor('notifications', errorStatus('notifications-blocked')).map((a) => a.kind)).not.toContain(
       'disconnect',
     );
   });
 
-  it('desconectada oferece Conectar; checando não oferece nada', () => {
+  it('disconnected offers Connect; checking offers nothing', () => {
     expect(actionsFor('microsoft', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'connect' }]);
     expect(actionsFor('github', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'connect-github-cli' }]);
     expect(actionsFor('github', { state: 'checking' })).toEqual([]);
   });
 
-  it('o conserto genérico não duplica o "Verificar de novo"', () => {
+  it('the generic fix does not duplicate "Check again"', () => {
     expect(actionsFor('claude', errorStatus('unexpected')).map((a) => a.kind)).toEqual(['fix', 'disconnect']);
     expect(actionsFor('claude', errorStatus('claude-expired')).map((a) => a.kind)).toEqual([
       'fix',
@@ -72,21 +72,21 @@ describe('actionsFor', () => {
 describe('evaluateGitHubAccount', () => {
   const ok = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'ok' as const };
 
-  it('conectado quando escopos e org estão ok', () => {
+  it('connected when scopes and org are ok', () => {
     expect(evaluateGitHubAccount(ok)).toEqual({ state: 'connected', account: 'dev' });
   });
 
-  it('escopo faltando', () => {
+  it('missing scope', () => {
     const status = evaluateGitHubAccount({ ...ok, scopes: ['repo'] });
     expect(status).toMatchObject({ state: 'error', problem: 'github-missing-scope', note: 'missing-scopes', noteArg: 'read:org' });
   });
 
-  it('SSO pendente e não-membro têm problemas distintos', () => {
+  it('pending SSO and non-member have distinct problems', () => {
     expect(evaluateGitHubAccount({ ...ok, orgAccess: 'sso-required' })).toMatchObject({ problem: 'github-org-access' });
     expect(evaluateGitHubAccount({ ...ok, orgAccess: 'not-member' })).toMatchObject({ problem: 'github-not-member' });
   });
 
-  it('escopos maiores implicam os menores', () => {
+  it('larger scopes imply the smaller ones', () => {
     expect(missingScopes({ ...ok, scopes: ['repo', 'admin:org'] })).toEqual([]);
     expect(missingScopes({ ...ok, scopes: ['repo', 'write:org'] })).toEqual([]);
     expect(missingScopes({ ...ok, scopes: ['repo'] })).toEqual(['read:org']);
@@ -95,20 +95,20 @@ describe('evaluateGitHubAccount', () => {
     expect(missingScopes({ ...ok, scopes: ['read:org'] }, ['write:org'])).toEqual(['write:org']);
   });
 
-  it('escopos desconhecidos (token fine-grained) não bloqueiam', () => {
+  it('unknown scopes (fine-grained token) do not block', () => {
     expect(missingScopes({ ...ok, scopes: null })).toEqual([]);
     expect(evaluateGitHubAccount({ ...ok, scopes: null })).toMatchObject({ state: 'connected' });
   });
 });
 
 describe('parseConnectionPrefs', () => {
-  it('usa os padrões para lixo', () => {
+  it('uses the defaults for garbage', () => {
     expect(parseConnectionPrefs(undefined)).toEqual(createDefaultConnectionPrefs());
     expect(parseConnectionPrefs('x')).toEqual(createDefaultConnectionPrefs());
     expect(parseConnectionPrefs({ github: { method: 'telepatia' } }).github.method).toBeNull();
   });
 
-  it('preserva valores válidos', () => {
+  it('preserves valid values', () => {
     const prefs = parseConnectionPrefs({
       claude: { enabled: false },
       github: { method: 'pat' },
@@ -119,13 +119,13 @@ describe('parseConnectionPrefs', () => {
 });
 
 describe('parseSsoUrl', () => {
-  it('extrai a URL https de github.com do header', () => {
+  it('extracts the https github.com URL from the header', () => {
     expect(parseSsoUrl('required; url=https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC')).toBe(
       'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC',
     );
   });
 
-  it('recusa header ausente, sem url, http, outro host e lixo', () => {
+  it('rejects a missing header, no url, http, another host and garbage', () => {
     for (const header of [
       null,
       'required',
@@ -142,7 +142,7 @@ describe('parseSsoUrl', () => {
 });
 
 describe('actionsForProblem', () => {
-  it('nunca oferece Desconectar e sempre tem um botão de conserto', () => {
+  it('never offers Disconnect and always has a fix button', () => {
     for (const problem of CONNECTION_PROBLEMS) {
       const actions = actionsForProblem('microsoft', problem);
       expect(actions.length).toBeGreaterThan(0);
@@ -150,7 +150,7 @@ describe('actionsForProblem', () => {
     }
   });
 
-  it('Microsoft nunca conectada oferece só Conectar', () => {
+  it('Microsoft never connected offers only Connect', () => {
     expect(actionsForProblem('microsoft', 'microsoft-not-connected')).toEqual([{ kind: 'connect', label: 'connect' }]);
   });
 });

@@ -1,16 +1,6 @@
-import type { ErrorCode } from '../../domain/coded-error';
-import type { ActionLabel, ConnectionProblem, StatusNote } from '../../domain/connections';
-import type { RunFix } from '../../domain/skills';
-import type { ApplicationMessageKey } from '../../application/ports';
+import type { MessageKey } from './en';
 
-type Required =
-  | ApplicationMessageKey
-  | `error.${ErrorCode}`
-  | `problem.${ConnectionProblem}`
-  | `note.${StatusNote}`
-  | `action.${ActionLabel | RunFix}`;
-
-export const ptBR = {
+export const ptBR: Record<MessageKey, string> = {
   'common.loading': 'Carregando…',
   'common.retry': 'Tentar de novo',
 
@@ -150,6 +140,15 @@ export const ptBR = {
   'error.link-invalid-meeting': 'Link da reunião inválido',
   'error.link-invalid-github': 'Link do GitHub inválido',
   'error.meeting-open-failed': 'Não foi possível abrir a reunião.',
+  'error.too-many-processes': 'Há processos demais em andamento. Aguarde uma run terminar e tente de novo.',
+  'error.github-token-empty': 'Cole um token de acesso pessoal.',
+  'error.github-access-denied': 'Acesso negado no GitHub.',
+  'error.github-code-expired': 'O código expirou. Tente de novo.',
+  'error.github-oauth-misconfigured': 'OAuth App do GitHub mal configurada ({error}). Confira o client_id e se o Device Flow está habilitado.',
+  'error.github-login-failed': 'Falha no login.',
+  'error.github-rate-limited': 'Limite de requisições do GitHub atingido. Tente de novo em alguns minutos.',
+  'error.microsoft-calendar-denied': 'A Microsoft não liberou a leitura da agenda (Calendars.Read).',
+  'error.client-id-missing': 'client_id do {provider} não configurado em auth-config.ts.',
 
   'time.lessThanMinute': 'menos de 1 min',
   'time.now': 'agora',
@@ -206,6 +205,7 @@ export const ptBR = {
   'prs.badge.conflict': 'Conflito',
 
   'teams.allDay': 'Dia todo',
+  'teams.untitled': '(sem título)',
   'teams.now': 'Agora: {title}',
   'teams.nowMore': 'Agora: {title} (+{extra})',
   'teams.next': 'Próxima {when}: {title}',
@@ -239,6 +239,4 @@ export const ptBR = {
   'tooltip.unavailable': 'ClawdMeter · usage indisponível',
   'tooltip.noData': '{label}: sem dado',
   'tooltip.resets': 'reseta {when}',
-} as const satisfies Record<Required, string> & Record<string, string>;
-
-export type MessageKey = keyof typeof ptBR;
+};

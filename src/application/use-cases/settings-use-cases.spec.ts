@@ -6,12 +6,12 @@ import { UpdateSettings } from './update-settings';
 import { WatchSettings } from './watch-settings';
 
 describe('settings use cases', () => {
-  it('GetSettings lê do store', async () => {
+  it('GetSettings reads from the store', async () => {
     const current = { ...createDefaultSettings(), enabledPages: { a: false } };
     expect(await new GetSettings(new FakeSettingsStore(current)).execute()).toBe(current);
   });
 
-  it('UpdateSettings aplica o patch, persiste e devolve o resultado', async () => {
+  it('UpdateSettings applies the patch, persists and returns the result', async () => {
     const store = new FakeSettingsStore();
     const result = await new UpdateSettings(store).execute({
       enabledPages: { example: false },
@@ -22,7 +22,7 @@ describe('settings use cases', () => {
     expect(store.saved).toEqual([result]);
   });
 
-  it('UpdateSettings acumula patches sucessivos', async () => {
+  it('UpdateSettings accumulates successive patches', async () => {
     const store = new FakeSettingsStore();
     const update = new UpdateSettings(store);
     await update.execute({ enabledPages: { a: false } });
@@ -30,7 +30,7 @@ describe('settings use cases', () => {
     expect(result.enabledPages).toMatchObject({ a: false, b: false });
   });
 
-  it('WatchSettings repassa mudanças externas e permite cancelar', async () => {
+  it('WatchSettings forwards external changes and allows unsubscribing', async () => {
     const store = new FakeSettingsStore();
     const listener = vi.fn();
     const stop = await new WatchSettings(store).execute(listener);

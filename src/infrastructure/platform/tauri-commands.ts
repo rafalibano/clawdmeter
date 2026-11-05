@@ -1,11 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
+import { CodedError } from '../../domain/coded-error';
 import { ConnectionProblemError } from '../../domain/connections';
 import { RateLimitedError } from '../../domain/rate-limit';
 
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
-
-export const TOO_MANY_PROCESSES_MESSAGE =
-  'Há processos demais em andamento. Aguarde uma run terminar e tente de novo.';
 
 export class PlatformCommandError extends Error {
   constructor(
@@ -40,7 +38,7 @@ export function toDomainError(raw: unknown): Error {
         typeof raw.retryAfterSecs === 'number' && raw.retryAfterSecs > 0 ? raw.retryAfterSecs * 1_000 : null,
       );
     case 'too_many_processes':
-      return new PlatformCommandError(raw.kind, TOO_MANY_PROCESSES_MESSAGE);
+      return new CodedError('too-many-processes');
     default:
       return new PlatformCommandError(raw.kind, raw.message);
   }

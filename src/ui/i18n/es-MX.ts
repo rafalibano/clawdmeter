@@ -1,4 +1,4 @@
-import type { MessageKey } from './pt-BR';
+import type { MessageKey } from './en';
 
 export const esMX: Record<MessageKey, string> = {
   'common.loading': 'Cargando…',
@@ -140,6 +140,15 @@ export const esMX: Record<MessageKey, string> = {
   'error.link-invalid-meeting': 'Enlace de la reunión inválido',
   'error.link-invalid-github': 'Enlace de GitHub inválido',
   'error.meeting-open-failed': 'No se pudo abrir la reunión.',
+  'error.too-many-processes': 'Hay demasiados procesos en curso. Espera a que termine una ejecución e inténtalo de nuevo.',
+  'error.github-token-empty': 'Pega un token de acceso personal.',
+  'error.github-access-denied': 'Acceso denegado en GitHub.',
+  'error.github-code-expired': 'El código expiró. Inténtalo de nuevo.',
+  'error.github-oauth-misconfigured': 'La OAuth App de GitHub está mal configurada ({error}). Revisa el client_id y que el Device Flow esté habilitado.',
+  'error.github-login-failed': 'Falló el inicio de sesión.',
+  'error.github-rate-limited': 'Se alcanzó el límite de solicitudes de GitHub. Inténtalo de nuevo en unos minutos.',
+  'error.microsoft-calendar-denied': 'Microsoft no permitió leer la agenda (Calendars.Read).',
+  'error.client-id-missing': 'El client_id de {provider} no está configurado en auth-config.ts.',
 
   'time.lessThanMinute': 'menos de 1 min',
   'time.now': 'ahora',
@@ -196,6 +205,7 @@ export const esMX: Record<MessageKey, string> = {
   'prs.badge.conflict': 'Conflicto',
 
   'teams.allDay': 'Todo el día',
+  'teams.untitled': '(sin título)',
   'teams.now': 'Ahora: {title}',
   'teams.nowMore': 'Ahora: {title} (+{extra})',
   'teams.next': 'Próxima {when}: {title}',

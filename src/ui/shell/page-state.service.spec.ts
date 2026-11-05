@@ -30,7 +30,7 @@ function setup() {
 }
 
 describe('PageStateService', () => {
-  it('entrega o dado tipado da página assim que ela publica', async () => {
+  it('delivers the typed page data as soon as it publishes', async () => {
     const { application, injector } = setup();
     const service = runInInjectionContext(injector, () => new PageStateService());
     application.scheduler.sync(createDefaultSettings());
@@ -40,7 +40,7 @@ describe('PageStateService', () => {
     expect(service.get(pageRef<Count>('once'))).toBe(update);
   });
 
-  it('não perde o update de página sem polling quando o serviço é criado depois', async () => {
+  it('does not lose the update of a page without polling when the service is created later', async () => {
     const { application, injector } = setup();
     application.scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -48,7 +48,7 @@ describe('PageStateService', () => {
     expect(service.get(pageRef<Count>('once'))).toMatchObject({ status: 'ok', data: { n: 7 } });
   });
 
-  it('guarda o último dado bom quando a próxima atualização falha', async () => {
+  it('keeps the last good data when the next update fails', async () => {
     const clock = new FakeClock();
     let fail = false;
     const application = createApplication({
@@ -81,7 +81,7 @@ describe('PageStateService', () => {
     expect(last()).toEqual({ n: 1 });
   });
 
-  it('devolve undefined para página sem update', () => {
+  it('returns undefined for a page without an update', () => {
     const { injector } = setup();
     const service = runInInjectionContext(injector, () => new PageStateService());
     expect(service.get(pageRef<Count>('outra'))).toBeUndefined();

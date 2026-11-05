@@ -131,7 +131,12 @@ export class PollingScheduler {
 
 function describeFailure(error: unknown): { error: string; problem?: ConnectionProblem; code?: ErrorCode; args?: ErrorArgs } {
   if (error instanceof ConnectionProblemError) {
-    return { error: error.message, problem: error.problem, ...(error.code ? { code: error.code } : {}) };
+    return {
+      error: error.message,
+      problem: error.problem,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.args ? { args: error.args } : {}),
+    };
   }
   if (error instanceof CodedError) return { error: error.message, code: error.code, ...(error.args ? { args: error.args } : {}) };
   return { error: error instanceof Error ? error.message : String(error) };

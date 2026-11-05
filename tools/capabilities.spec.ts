@@ -25,15 +25,15 @@ function matches(pattern: string, url: string): boolean {
 }
 
 describe('capability default', () => {
-  it('libera o POST do GraphQL do GitHub no plugin-http', () => {
+  it('allows the GitHub GraphQL POST in plugin-http', () => {
     expect(httpAllowlist().some((pattern) => matches(pattern, 'https://api.github.com/graphql'))).toBe(true);
   });
 
-  it('não libera hosts fora da lista', () => {
+  it('does not allow hosts outside the list', () => {
     expect(httpAllowlist().some((pattern) => matches(pattern, 'https://example.com/graphql'))).toBe(false);
   });
 
-  it('rename do plugin-fs só vale dentro de $APPCONFIG (escrita atômica do histórico)', () => {
+  it('plugin-fs rename only applies inside $APPCONFIG (atomic history write)', () => {
     const rename = capability.permissions.filter(
       (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:allow-rename',
     );
@@ -41,24 +41,24 @@ describe('capability default', () => {
     expect((rename[0]?.allow ?? []).map((entry) => entry.path)).toEqual(['$APPCONFIG/**']);
   });
 
-  it('libera notificação local para o fim das runs de skills', () => {
+  it('allows a local notification at the end of skill runs', () => {
     expect(capability.permissions).toContain('notification:allow-notify');
   });
 
-  it('libera spawn, kill e terminal usados pelas runs de skills', () => {
+  it('allows spawn, kill and terminal used by skill runs', () => {
     for (const permission of ['allow-process-spawn', 'allow-process-kill', 'allow-terminal-run', 'allow-open-url']) {
       expect(capability.permissions).toContain(permission);
     }
   });
 
-  it('não expõe o global-shortcut ao webview: o atalho é registrado só no Rust', () => {
+  it('does not expose global-shortcut to the webview: the shortcut is registered only in Rust', () => {
     const shortcut = capability.permissions.filter((permission) =>
       (typeof permission === 'string' ? permission : (permission.identifier ?? '')).startsWith('global-shortcut:'),
     );
     expect(shortcut).toEqual([]);
   });
 
-  describe('histórico do ClaudeUsageBar', () => {
+  describe('ClaudeUsageBar history', () => {
     const FS_PERMISSION = /^fs:/;
     const HISTORY = '/home/dev/.config/claude-usage-bar/history.json';
 
@@ -81,13 +81,13 @@ describe('capability default', () => {
 
     const reaching = (path: string) => fsScopes().filter((scope) => pathMatches(scope.path, path));
 
-    it('só leitura de arquivo, e só do history.json', () => {
+    it('file read only, and only of history.json', () => {
       expect(reaching(HISTORY).map((scope) => scope.identifier)).toEqual(['fs:allow-read-text-file']);
       const own = fsScopes().filter((scope) => scope.path.includes('claude-usage-bar'));
       expect(own).toEqual([{ identifier: 'fs:allow-read-text-file', path: '$HOME/.config/claude-usage-bar/history.json' }]);
     });
 
-    it('credentials.json da mesma pasta e a própria pasta ficam fora de qualquer escopo', () => {
+    it('credentials.json in the same folder and the folder itself stay outside any scope', () => {
       expect(reaching('/home/dev/.config/claude-usage-bar/credentials.json')).toEqual([]);
       expect(reaching('/home/dev/.config/claude-usage-bar')).toEqual([]);
       expect(reaching('/home/dev/.config/claude-usage-bar/history.json.bak')).toEqual([]);

@@ -21,19 +21,19 @@ function jwt(claims: Record<string, unknown>): string {
 }
 
 describe('PKCE', () => {
-  it('gera o challenge S256 do vetor de teste da RFC 7636', async () => {
+  it('generates the S256 challenge of the RFC 7636 test vector', async () => {
     expect(await challengeS256('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe(
       'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
     );
   });
 
-  it('verifier e challenge são base64url sem padding e o par é consistente', async () => {
+  it('verifier and challenge are unpadded base64url and the pair is consistent', async () => {
     const pair = await createPkcePair();
     expect(pair.verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     expect(pair.challenge).toBe(await challengeS256(pair.verifier));
   });
 
-  it('decodifica claims de um JWT e rejeita lixo', () => {
+  it('decodes the claims of a JWT and rejects garbage', () => {
     expect(decodeJwtClaims(jwt({ preferred_username: 'a@b.c' }))).toEqual({ preferred_username: 'a@b.c' });
     expect(decodeJwtClaims('lixo')).toBeNull();
   });
@@ -70,7 +70,7 @@ function setup(responder: Parameters<typeof createFakeFetch>[0], config = CONFIG
 }
 
 describe('PkceMicrosoftAuthorizer.signIn', () => {
-  it('abre o navegador com PKCE S256, troca o code e guarda só o refresh token no cofre', async () => {
+  it('opens the browser with PKCE S256, exchanges the code and stores only the refresh token in the vault', async () => {
     const { authorizer, requests, loopback, urls, secrets } = setup(() => ({
       json: {
         access_token: 'graph-at',
@@ -100,13 +100,13 @@ describe('PkceMicrosoftAuthorizer.signIn', () => {
     expect(loopback.cancelled).toEqual(['l1']);
   });
 
-  it('com client_id placeholder, falha sem abrir nada', async () => {
+  it('with a placeholder client_id, fails without opening anything', async () => {
     const { authorizer, urls } = setup(() => ({ json: {} }), { ...CONFIG, clientId: 'REPLACE_WITH_X' });
     await expect(authorizer.signIn()).rejects.toMatchObject({ problem: 'unexpected' });
     expect(urls.opened).toEqual([]);
   });
 
-  it('timeout ou state inválido no loopback viram microsoft-expired', async () => {
+  it('loopback timeout or invalid state become microsoft-expired', async () => {
     const { authorizer, loopback } = setup(() => ({ json: {} }));
     loopback.waitError = new PlatformCommandError('timeout', 'tempo esgotado aguardando o login');
     await expect(authorizer.signIn()).rejects.toMatchObject({
@@ -116,19 +116,19 @@ describe('PkceMicrosoftAuthorizer.signIn', () => {
     expect(loopback.cancelled).toEqual(['l1']);
   });
 
-  it('erro do endpoint de token vira erro comum', async () => {
+  it('a token endpoint error becomes a plain error', async () => {
     const { authorizer } = setup(() => ({ status: 400, json: { error: 'invalid_request', error_description: 'ruim\r\nTrace' } }));
     await expect(authorizer.signIn()).rejects.toThrow('ruim');
   });
 });
 
 describe('PkceMicrosoftAuthorizer.accessToken', () => {
-  it('sem refresh token no cofre, nunca conectou: pede Conectar, não Refazer login', async () => {
+  it('without a refresh token in the vault it never connected: asks to Connect, not to sign in again', async () => {
     const { authorizer } = setup(() => ({ json: {} }));
     await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-not-connected' });
   });
 
-  it('renova com o refresh token, rotaciona e usa cache até perto do vencimento', async () => {
+  it('renews with the refresh token, rotates it and uses the cache until close to expiry', async () => {
     const { authorizer, requests, secrets, advance } = setup(() => ({
       json: { access_token: 'at', refresh_token: 'refresh-2', expires_in: 3600 },
     }));
@@ -143,13 +143,13 @@ describe('PkceMicrosoftAuthorizer.accessToken', () => {
     expect(requests).toHaveLength(2);
   });
 
-  it('invalid_grant vira microsoft-expired', async () => {
+  it('invalid_grant becomes microsoft-expired', async () => {
     const { authorizer, secrets } = setup(() => ({ status: 400, json: { error: 'invalid_grant', error_description: 'expirou' } }));
     secrets.values.set(SECRET_KEYS.microsoftRefreshToken, 'velho');
     await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-expired' });
   });
 
-  it('signOut apaga o refresh token e o cache', async () => {
+  it('signOut deletes the refresh token and the cache', async () => {
     const { authorizer, secrets, requests } = setup(() => ({ json: { access_token: 'at', expires_in: 3600 } }));
     secrets.values.set(SECRET_KEYS.microsoftRefreshToken, 'r');
     await authorizer.accessToken();

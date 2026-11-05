@@ -25,7 +25,7 @@ beforeEach(async () => {
 });
 
 describe('LoadSessions', () => {
-  it('só devolve sessões com pid vivo', async () => {
+  it('only returns sessions with a live pid', async () => {
     directory.files = [file(1, 'busy', 1_000), file(2, 'idle', 1_000), file(3, 'shell', 1_000)];
     probe.alive = new Set([1, 3]);
     const data = await loadSessions.execute();
@@ -33,7 +33,7 @@ describe('LoadSessions', () => {
     expect(probe.probed.sort()).toEqual([1, 2, 3]);
   });
 
-  it('sessão encerrada some na leitura seguinte', async () => {
+  it('a finished session disappears on the next read', async () => {
     directory.files = [file(1, 'busy', 1_000), file(2, 'idle', 1_000)];
     probe.alive = new Set([1, 2]);
     expect((await loadSessions.execute()).sessions).toHaveLength(2);
@@ -41,7 +41,7 @@ describe('LoadSessions', () => {
     expect((await loadSessions.execute()).sessions.map((session) => session.pid)).toEqual([1]);
   });
 
-  it('ignora arquivos ilegíveis ou sem pid e remove pids repetidos', async () => {
+  it('ignores unreadable files or files without a pid and removes repeated pids', async () => {
     directory.files = ['{ quebrado', '{"status":"idle"}', file(7, 'idle', 0), file(7, 'busy', 0)];
     probe.alive = new Set([7]);
     const data = await loadSessions.execute();
@@ -49,7 +49,7 @@ describe('LoadSessions', () => {
     expect(probe.probed).toEqual([7]);
   });
 
-  it('ordena as que pedem atenção primeiro e devolve a configuração de limiar', async () => {
+  it('sorts the ones that need attention first and returns the threshold configuration', async () => {
     directory.files = [file(1, 'busy', MINUTE_MS), file(2, 'idle', 20 * MINUTE_MS)];
     probe.alive = new Set([1, 2]);
     const data = await loadSessions.execute();
@@ -58,7 +58,7 @@ describe('LoadSessions', () => {
     expect(data.at).toBe(START);
   });
 
-  it('pasta vazia: nenhuma sessão', async () => {
+  it('empty folder: no sessions', async () => {
     expect((await loadSessions.execute()).sessions).toEqual([]);
   });
 });

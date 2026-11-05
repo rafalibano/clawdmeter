@@ -62,7 +62,7 @@ describe('ThemeService', () => {
     vi.unstubAllGlobals();
   });
 
-  it('segue o esquema do sistema no modo system e aplica no documento', () => {
+  it('follows the system scheme in system mode and applies it to the document', () => {
     const service = TestBed.inject(ThemeService);
     flush();
     expect(service.resolved()).toBe('light');
@@ -73,7 +73,7 @@ describe('ThemeService', () => {
     expect(rootElement.dataset['theme']).toBe('dark');
   });
 
-  it('ignora o sistema quando o tema é fixo e propaga o destaque', () => {
+  it('ignores the system when the theme is fixed and propagates the accent', () => {
     const service = TestBed.inject(ThemeService);
     settings.update((current) => ({
       ...current,
@@ -85,7 +85,7 @@ describe('ThemeService', () => {
     expect(properties.get('--cm-accent')).toBe('#ff0000');
   });
 
-  it('para de ouvir o sistema ao ser destruído', () => {
+  it('stops listening to the system when destroyed', () => {
     TestBed.inject(ThemeService);
     expect(media.listening).toBe(true);
     TestBed.resetTestingModule();

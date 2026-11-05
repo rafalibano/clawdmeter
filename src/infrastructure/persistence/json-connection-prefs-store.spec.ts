@@ -20,7 +20,7 @@ class MemoryFile implements JsonFile {
 }
 
 describe('JsonConnectionPrefsStore', () => {
-  it('arquivo ausente ou corrompido usa os padrões sem escrever', async () => {
+  it('a missing or corrupt file uses the defaults without writing', async () => {
     const missing = new MemoryFile();
     expect(await new JsonConnectionPrefsStore(missing).load()).toEqual(createDefaultConnectionPrefs());
     expect(missing.text).toBeNull();
@@ -29,7 +29,7 @@ describe('JsonConnectionPrefsStore', () => {
     );
   });
 
-  it('grava e relê as preferências', async () => {
+  it('writes and rereads the preferences', async () => {
     const file = new MemoryFile();
     const store = new JsonConnectionPrefsStore(file);
     const prefs = { claude: { enabled: false }, github: { method: 'pat' as const }, microsoft: { account: 'a@b.c' } };
@@ -37,7 +37,7 @@ describe('JsonConnectionPrefsStore', () => {
     expect(await store.load()).toEqual(prefs);
   });
 
-  it('nunca grava segredos: só o método de autenticação', async () => {
+  it('never writes secrets: only the authentication method', async () => {
     const file = new MemoryFile();
     await new JsonConnectionPrefsStore(file).save({
       claude: { enabled: true },

@@ -23,14 +23,14 @@ async function settle<T>(work: Promise<T>): Promise<T> {
   return work;
 }
 
-describe('cenário demo', () => {
-  it('lê o query param, ignora ids desconhecidos e expande "errors"', () => {
+describe('demo scenario', () => {
+  it('reads the query param, ignores unknown ids and expands "errors"', () => {
     expect([...parseDemoScenario('?demo=claude:claude-expired,foo:bar,github')]).toEqual([['claude', 'claude-expired']]);
     expect(parseDemoScenario('?demo=errors').size).toBe(4);
     expect(parseDemoScenario('').size).toBe(0);
   });
 
-  it('sem parâmetro: Claude e notificações ok, GitHub e Microsoft desconectados', async () => {
+  it('without a parameter: Claude and notifications ok, GitHub and Microsoft disconnected', async () => {
     const { monitor } = await checkAll('');
     expect(monitor.get('claude').state).toBe('connected');
     expect(monitor.get('notifications').state).toBe('connected');
@@ -50,30 +50,30 @@ describe('cenário demo', () => {
     ['notifications:notifications-unverifiable', 'notifications', 'notifications-unverifiable'],
     ['github:github-not-member', 'github', 'github-not-member'],
     ['github:unexpected', 'github', 'unexpected'],
-  ] as const)('?demo=%s mostra o estado %s/%s', async (scenario, id, problem) => {
+  ] as const)('?demo=%s shows the state %s/%s', async (scenario, id, problem) => {
     const { monitor } = await checkAll(`?demo=${scenario}`);
     expect(monitor.get(id as ConnectionId)).toMatchObject({ state: 'error', problem });
   });
 
-  it('keychain: refazer permissão e reler conecta', async () => {
+  it('keychain: granting permission again and rereading connects', async () => {
     const connections = await checkAll('?demo=claude:keychain-denied');
     const after = await settle(connections.fix.execute('claude', 'retry-permission'));
     expect(after.state).toBe('connected');
   });
 
-  it('Claude vencido: login no terminal + verificar de novo conecta', async () => {
+  it('expired Claude: terminal login + checking again connects', async () => {
     const connections = await checkAll('?demo=claude:claude-expired');
     await settle(connections.fix.execute('claude', 'relogin-claude'));
     expect((await settle(connections.check.execute('claude'))).state).toBe('connected');
   });
 
-  it('Claude Code ausente: instalar + verificar de novo conecta', async () => {
+  it('missing Claude Code: install + checking again connects', async () => {
     const connections = await checkAll('?demo=claude:claude-code-missing');
     await settle(connections.fix.execute('claude', 'install-claude-code'));
     expect((await settle(connections.check.execute('claude'))).state).toBe('connected');
   });
 
-  it('GitHub: escopo, org e login se resolvem pelos respectivos botões', async () => {
+  it('GitHub: scope, org and login are resolved by their respective buttons', async () => {
     const scope = await checkAll('?demo=github:github-missing-scope');
     await settle(scope.fix.execute('github', 'regrant-scopes'));
     expect((await settle(scope.check.execute('github'))).state).toBe('connected');
@@ -87,7 +87,7 @@ describe('cenário demo', () => {
     expect((await settle(login.check.execute('github'))).state).toBe('connected');
   });
 
-  it('?demo=github:gh-not-installed mostra o gh ausente e Instalar + Conectar leva ao login', async () => {
+  it('?demo=github:gh-not-installed shows the missing gh and Install + Connect leads to login', async () => {
     const connections = await checkAll('?demo=github:gh-not-installed');
     expect(connections.monitor.get('github')).toMatchObject({ state: 'disconnected', cli: 'not-installed' });
     await settle(connections.fix.execute('github', 'install-github-cli'));
@@ -96,7 +96,7 @@ describe('cenário demo', () => {
     expect((await settle(connections.connect.execute('github'))).state).toBe('connected');
   });
 
-  it('?demo=github:gh-not-logged-in mostra o gh sem login e Conectar GitHub CLI conecta', async () => {
+  it('?demo=github:gh-not-logged-in shows gh without login and Connect GitHub CLI connects', async () => {
     const connections = await checkAll('?demo=github:gh-not-logged-in');
     expect(connections.monitor.get('github')).toMatchObject({ state: 'disconnected', cli: 'not-logged-in' });
     await settle(connections.fix.execute('github', 'connect-github-cli'));
@@ -108,16 +108,16 @@ describe('cenário demo', () => {
     expect((await settle(connections.fix.execute('microsoft', 'relogin-microsoft'))).state).toBe('connected');
   });
 
-  it('notificações bloqueadas: abrir ajustes e verificar de novo conecta', async () => {
+  it('blocked notifications: opening settings and checking again connects', async () => {
     const connections = await checkAll('?demo=notifications:notifications-blocked');
     await settle(connections.fix.execute('notifications', 'open-system-settings'));
     expect((await settle(connections.check.execute('notifications'))).state).toBe('connected');
   });
 
-  it('GitHub desconectado: device flow e PAT do demo conectam', async () => {
+  it('disconnected GitHub: the demo device flow and PAT connect', async () => {
     const viaDevice = await checkAll('');
     const code = await viaDevice.github.startDeviceFlow.execute();
-    if (code === null) throw new Error('o demo sempre devolve um código');
+    if (code === null) throw new Error('the demo always returns a code');
     expect((await settle(viaDevice.github.completeDeviceFlow.execute(code))).state).toBe('connected');
 
     const viaPat = await checkAll('');
@@ -131,27 +131,27 @@ describe('cenário demo', () => {
     const clock = { now: () => NOON, every: () => () => undefined };
     const range = dayBounds(NOON, 'America/Sao_Paulo');
 
-    it('devolve reuniões genéricas, com uma em andamento, uma próxima, uma cancelada e uma de dia inteiro', async () => {
+    it('returns generic meetings, with one in progress, one upcoming, one cancelled and one all-day', async () => {
       const calendar = new DemoCalendar(createDemoWorld(''), clock);
       const pending = calendar.meetings(range, 'America/Sao_Paulo');
       await vi.runAllTimersAsync();
       const meetings = await pending;
       expect(meetings.map((meeting) => meeting.title)).toEqual([
-        'Alinhamento rápido',
-        'Daily do time',
+        'Quick sync',
+        'Team daily',
         '1:1',
-        'Planejamento',
-        'Retrospectiva',
-        'Dia de foco',
+        'Planning',
+        'Retrospective',
+        'Focus day',
       ]);
       const agenda = buildAgenda(meetings, NOON);
-      expect(agenda.current.map((meeting) => meeting.title)).toEqual(['Daily do time']);
+      expect(agenda.current.map((meeting) => meeting.title)).toEqual(['Team daily']);
       expect(agenda.next?.meeting.title).toBe('1:1');
       expect(agenda.allDay).toHaveLength(1);
       expect(agenda.timed.filter((item) => item.phase === 'cancelled')).toHaveLength(1);
     });
 
-    it('?demo=microsoft:microsoft-expired faz a agenda falhar com microsoft-expired até refazer o login', async () => {
+    it('?demo=microsoft:microsoft-expired makes the agenda fail with microsoft-expired until signing in again', async () => {
       const world = createDemoWorld('?demo=microsoft:microsoft-expired');
       const adapters = createDemoConnectionAdapters(world);
       const calendar = new DemoCalendar(world, clock);
@@ -168,10 +168,10 @@ describe('cenário demo', () => {
       expect(await recovered).toHaveLength(6);
     });
 
-    it('?demo=microsoft:unexpected falha uma vez com erro comum e depois funciona', async () => {
+    it('?demo=microsoft:unexpected fails once with a plain error and then works', async () => {
       const calendar = new DemoCalendar(createDemoWorld('?demo=microsoft:unexpected'), clock);
       const first = calendar.meetings(range, 'America/Sao_Paulo');
-      const assertion = expect(first).rejects.toThrow('Sem rede');
+      const assertion = expect(first).rejects.toThrow('No network');
       await vi.runAllTimersAsync();
       await assertion;
       const second = calendar.meetings(range, 'America/Sao_Paulo');

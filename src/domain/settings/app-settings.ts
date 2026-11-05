@@ -7,9 +7,9 @@ export const THEME_MODES: readonly ThemeMode[] = ['light', 'dark', 'system'];
 
 export type AppLanguage = 'pt-BR' | 'en' | 'es-MX';
 
-export const APP_LANGUAGES: readonly AppLanguage[] = ['pt-BR', 'en', 'es-MX'];
+export const APP_LANGUAGES: readonly AppLanguage[] = ['en', 'pt-BR', 'es-MX'];
 
-export const DEFAULT_LANGUAGE: AppLanguage = 'pt-BR';
+export const DEFAULT_LANGUAGE: AppLanguage = 'en';
 
 export function isAppLanguage(value: unknown): value is AppLanguage {
   return APP_LANGUAGES.includes(value as AppLanguage);

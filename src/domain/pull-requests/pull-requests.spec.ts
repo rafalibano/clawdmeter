@@ -8,7 +8,7 @@ function pr(overrides: Partial<PullRequest>): PullRequest {
   return {
     id: 'PR_1',
     number: 1,
-    title: 'Título',
+    title: 'Title',
     url: 'https://github.com/acme/api/pull/1',
     repo: 'acme/api',
     author: 'ana',
@@ -24,7 +24,7 @@ function pr(overrides: Partial<PullRequest>): PullRequest {
 }
 
 describe('groupByRepo', () => {
-  it('agrupa por repo em ordem alfabética, mais recente primeiro', () => {
+  it('groups by repo in alphabetical order, most recent first', () => {
     const groups = groupByRepo([
       pr({ id: 'a', repo: 'acme/web', updatedAt: 1 }),
       pr({ id: 'b', repo: 'acme/api', updatedAt: 1 }),
@@ -35,7 +35,7 @@ describe('groupByRepo', () => {
     expect(groups.every((group) => !group.collapsedByDefault)).toBe(true);
   });
 
-  it('manda k8s e k8s-prod para o grupo Deploy, recolhido e por último', () => {
+  it('sends k8s and k8s-prod to the Deploy group, collapsed and last', () => {
     const groups = groupByRepo([
       pr({ id: 'a', repo: 'acme/k8s' }),
       pr({ id: 'b', repo: 'acme/zeta' }),
@@ -46,11 +46,11 @@ describe('groupByRepo', () => {
     expect(groups[1]?.items).toHaveLength(2);
   });
 
-  it('sem PRs devolve lista vazia', () => {
+  it('without PRs returns an empty list', () => {
     expect(groupByRepo([])).toEqual([]);
   });
 
-  it('só considera deploy o nome exato do repo', () => {
+  it('only treats the exact repo name as deploy', () => {
     expect(isDeployRepo('acme/k8s')).toBe(true);
     expect(isDeployRepo('acme/k8s-prod')).toBe(true);
     expect(isDeployRepo('acme/k8s-tools')).toBe(false);
@@ -58,46 +58,46 @@ describe('groupByRepo', () => {
 });
 
 describe('mergeUnique', () => {
-  it('mantém a primeira ocorrência de cada id', () => {
-    const merged = mergeUnique([pr({ id: 'a', title: 'um' })], [pr({ id: 'a', title: 'dois' }), pr({ id: 'b' })]);
-    expect(merged.map((item) => item.title)).toEqual(['um', 'Título']);
+  it('keeps the first occurrence of each id', () => {
+    const merged = mergeUnique([pr({ id: 'a', title: 'one' })], [pr({ id: 'a', title: 'two' }), pr({ id: 'b' })]);
+    expect(merged.map((item) => item.title)).toEqual(['one', 'Title']);
   });
 });
 
 describe('busca', () => {
-  it('monta a janela de 30 dias da busca de revisados', () => {
+  it('builds the 30 day window of the reviewed search', () => {
     const now = Date.UTC(2026, 10, 5, 12);
     expect(reviewedRecentQuery(now)).toBe(
       'reviewed-by:@me -author:@me is:pr archived:false is:closed closed:>=2026-10-06 sort:updated-desc',
     );
   });
 
-  it('o link "Ver todos" dos revisados cobre abertos e fechados dos últimos 30 dias', () => {
+  it('the "See all" link of the reviewed ones covers open and closed from the last 30 days', () => {
     const now = Date.UTC(2026, 10, 5, 12);
     expect(reviewedAllQuery(now)).toBe(
       'reviewed-by:@me -author:@me is:pr archived:false (is:open OR closed:>=2026-10-06) sort:updated-desc',
     );
   });
 
-  it('as quatro buscas ordenam por atualização mais recente', () => {
+  it('the four searches sort by most recently updated', () => {
     const now = Date.UTC(2026, 10, 5, 12);
     for (const query of [MINE_QUERY, TO_REVIEW_QUERY, REVIEWED_OPEN_QUERY, reviewedRecentQuery(now)]) {
       expect(query.endsWith(' sort:updated-desc')).toBe(true);
     }
   });
 
-  it('monta o link da busca no GitHub', () => {
+  it('builds the GitHub search link', () => {
     expect(searchPageUrl('author:@me is:open')).toBe('https://github.com/pulls?q=author%3A%40me%20is%3Aopen');
   });
 
-  it('detecta lista truncada', () => {
+  it('detects a truncated list', () => {
     expect(isTruncated({ items: [pr({})], total: 3 })).toBe(true);
     expect(isTruncated({ items: [pr({})], total: 1 })).toBe(false);
   });
 });
 
 describe('formatAge', () => {
-  it('formata em min, h e d', () => {
+  it('formats in min, h and d', () => {
     expect(formatAge(0, 30_000)).toBe('1 min');
     expect(formatAge(0, 5 * 60_000)).toBe('5 min');
     expect(formatAge(0, 3 * 3_600_000)).toBe('3 h');

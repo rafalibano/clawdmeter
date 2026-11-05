@@ -17,12 +17,12 @@ function deps() {
 }
 
 describe('createApplication', () => {
-  it('aceita a lista de páginas direta', () => {
+  it('accepts a direct list of pages', () => {
     const app = createApplication({ ...deps(), pages: [fakePage({ id: 'a' })] });
     expect(app.registry.all().map((page) => page.id)).toEqual(['a']);
   });
 
-  it('aceita uma fábrica de páginas que recebe as conexões da própria aplicação', () => {
+  it('accepts a page factory that receives the application own connections', () => {
     let received: unknown;
     const app = createApplication({
       ...deps(),
@@ -35,7 +35,7 @@ describe('createApplication', () => {
     expect(received).toBe(app.connections);
   });
 
-  it('aceita skills prontas ou uma fábrica que recebe as conexões, e repassa as skills às páginas', () => {
+  it('accepts ready skills or a factory that receives the connections, and passes the skills to the pages', () => {
     const clock = new FakeClock();
     const ready = createFakeSkills(clock);
     const direct = createApplication({ ...deps(), skills: ready, pages: [] });

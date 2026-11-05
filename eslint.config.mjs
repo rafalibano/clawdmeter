@@ -2,8 +2,8 @@ import js from '@eslint/js';
 import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
 
-const OS_MESSAGE = 'Detecção de SO só no composition-root e em src-tauri.';
-const NETWORK_MESSAGE = 'Acesso externo pertence à infrastructure, atrás de uma porta.';
+const OS_MESSAGE = 'OS detection only in the composition root and in src-tauri.';
+const NETWORK_MESSAGE = 'External access belongs to infrastructure, behind a port.';
 
 const OS_DETECTION = [
   { object: 'navigator', property: 'platform', message: OS_MESSAGE },
@@ -79,17 +79,17 @@ export default tseslint.config(
             {
               from: { element: { type: 'domain' } },
               allow: { to: { element: { type: 'domain' } } },
-              message: 'domain não importa nada de fora do próprio domain (regra 1).',
+              message: 'domain imports nothing from outside domain itself (rule 1).',
             },
             {
               from: { element: { type: 'application' } },
               allow: { to: { element: { types: ['domain', 'application'] } } },
-              message: 'application importa só domain e as próprias portas (regra 2).',
+              message: 'application imports only domain and its own ports (rule 2).',
             },
             {
               from: { element: { type: 'infrastructure' } },
               allow: { to: { element: { types: ['domain', 'application', 'infrastructure'] } } },
-              message: 'infrastructure só depende de domain e application.',
+              message: 'infrastructure depends only on domain and application.',
             },
             {
               from: { element: { type: 'ui' } },
@@ -118,7 +118,7 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ regex: '^[^.]', message: 'domain é TypeScript puro: sem dependências externas (regra 1).' }] },
+        { patterns: [{ regex: '^[^.]', message: 'domain is pure TypeScript: no external dependencies (rule 1).' }] },
       ],
     },
   },
@@ -129,8 +129,8 @@ export default tseslint.config(
         'error',
         {
           patterns: [
-            { group: ['@angular/*', '@angular/**'], message: 'application não conhece Angular (regra 2).' },
-            { group: ['@tauri-apps/*', '@tauri-apps/**'], message: 'application não conhece Tauri (regra 2).' },
+            { group: ['@angular/*', '@angular/**'], message: 'application does not know Angular (rule 2).' },
+            { group: ['@tauri-apps/*', '@tauri-apps/**'], message: 'application does not know Tauri (rule 2).' },
           ],
         },
       ],
@@ -143,8 +143,8 @@ export default tseslint.config(
         'error',
         {
           patterns: [
-            { group: ['@tauri-apps/*', '@tauri-apps/**'], message: 'ui não chama plugin nem invoke do Tauri (regra 4).' },
-            { group: ['@angular/common/http', '@angular/common/http/**'], message: 'ui não faz HTTP: use um caso de uso (regra 4).' },
+            { group: ['@tauri-apps/*', '@tauri-apps/**'], message: 'ui does not call Tauri plugins or invoke (rule 4).' },
+            { group: ['@angular/common/http', '@angular/common/http/**'], message: 'ui does not make HTTP calls: use a use case (rule 4).' },
           ],
         },
       ],

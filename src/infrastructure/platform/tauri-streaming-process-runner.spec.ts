@@ -20,7 +20,7 @@ function createBus() {
 const SPEC = { program: 'claude', args: ['-p', '/acabativa'], cwd: null } as const;
 
 describe('TauriStreamingProcessRunner', () => {
-  it('chama process_spawn e entrega só os eventos do pid devolvido', async () => {
+  it('calls process_spawn and delivers only the events of the returned pid', async () => {
     const bus = createBus();
     const { commands, calls } = createFakeCommands(() => 4242);
     const lines: string[] = [];
@@ -38,7 +38,7 @@ describe('TauriStreamingProcessRunner', () => {
     expect(bus.listeners()).toBe(0);
   });
 
-  it('reentrega eventos que chegam antes de o pid ser conhecido', async () => {
+  it('redelivers events that arrive before the pid is known', async () => {
     const bus = createBus();
     const lines: string[] = [];
     const exits: Array<number | null> = [];
@@ -56,7 +56,7 @@ describe('TauriStreamingProcessRunner', () => {
     expect(exits).toEqual([1]);
   });
 
-  it('kill chama process_kill com o pid', async () => {
+  it('kill calls process_kill with the pid', async () => {
     const bus = createBus();
     const { commands, calls } = createFakeCommands(() => 55);
     const handle = await new TauriStreamingProcessRunner(commands, bus.listen).start(
@@ -67,21 +67,21 @@ describe('TauriStreamingProcessRunner', () => {
     expect(calls.at(-1)).toEqual({ command: 'process_kill', args: { pid: 55 } });
   });
 
-  it('claude ausente vira claude-code-missing e solta os listeners', async () => {
+  it('missing claude becomes claude-code-missing and releases the listeners', async () => {
     const bus = createBus();
-    const { commands } = createFakeCommands(() => rejectWith('program_not_found', 'claude não encontrado'));
+    const { commands } = createFakeCommands(() => rejectWith('program_not_found', 'claude not found'));
     await expect(
       new TauriStreamingProcessRunner(commands, bus.listen).start(
         { ...SPEC, args: [] },
         { onLine: () => undefined, onExit: () => undefined },
       ),
-    ).rejects.toMatchObject({ problem: 'claude-code-missing', message: 'claude não encontrado' });
+    ).rejects.toMatchObject({ problem: 'claude-code-missing', message: 'claude not found' });
     expect(bus.listeners()).toBe(0);
   });
 
-  it('outros erros do spawn passam adiante', async () => {
+  it('other spawn errors pass through', async () => {
     const bus = createBus();
-    const { commands } = createFakeCommands(() => rejectWith('spawn_failed', 'sem permissão'));
+    const { commands } = createFakeCommands(() => rejectWith('spawn_failed', 'permission denied'));
     await expect(
       new TauriStreamingProcessRunner(commands, bus.listen).start(
         { program: 'gh', args: [], cwd: null },

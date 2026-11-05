@@ -51,7 +51,7 @@ jobs:
           tauriScript: yarn tauri
           tagName: ${{ github.ref_name }}
           releaseName: ClawdMeter ${{ github.ref_name }}
-          releaseBody: Instalação e aviso de app não assinado no README.
+          releaseBody: Installation steps and the unsigned-app notice are in the README.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

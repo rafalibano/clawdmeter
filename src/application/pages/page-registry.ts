@@ -7,7 +7,7 @@ export class PageRegistry {
 
   constructor(modules: readonly PageModule[]) {
     for (const module of modules) {
-      if (this.modules.has(module.id)) throw new Error(`Página duplicada: ${module.id}`);
+      if (this.modules.has(module.id)) throw new Error(`Duplicate page: ${module.id}`);
       this.modules.set(module.id, module);
     }
   }

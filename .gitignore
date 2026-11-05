@@ -51,7 +51,7 @@ Thumbs.db
 # Vitest
 .vitest/
 
-# Ícones gerados que não usamos
+# Generated icons we do not use
 /src-tauri/icons/android/
 /src-tauri/icons/ios/
 /src-tauri/icons/Square*.png

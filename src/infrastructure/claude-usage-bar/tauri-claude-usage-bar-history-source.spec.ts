@@ -17,7 +17,7 @@ describe('TauriClaudeUsageBarHistorySource', () => {
     fs.readTextFile.mockReset();
   });
 
-  it('lê só o history.json do ClaudeUsageBar e converte em pontos', async () => {
+  it('reads only the ClaudeUsageBar history.json and converts it to points', async () => {
     fs.readTextFile.mockResolvedValue(
       JSON.stringify({ dataPoints: [{ id: 'a', pct5h: 0.05, pct7d: 0.72, timestamp: '2026-10-06T17:12:03Z' }] }),
     );
@@ -28,17 +28,17 @@ describe('TauriClaudeUsageBarHistorySource', () => {
     expect(fs.readTextFile).toHaveBeenCalledWith(FILE);
   });
 
-  it('arquivo ausente ou sem permissão vira lista vazia, sem erro', async () => {
+  it('a missing or unreadable file becomes an empty list, without error', async () => {
     fs.readTextFile.mockRejectedValue(new Error('No such file'));
     expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
   });
 
-  it('JSON inválido vira lista vazia', async () => {
+  it('invalid JSON becomes an empty list', async () => {
     fs.readTextFile.mockResolvedValue('{ quebrado');
     expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
   });
 
-  it('arquivo gigante é ignorado sem parse', async () => {
+  it('a huge file is ignored without parsing', async () => {
     fs.readTextFile.mockResolvedValue(' '.repeat(9 * 1024 * 1024));
     expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
   });

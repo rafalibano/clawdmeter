@@ -12,32 +12,32 @@ const point = (daysAgo: number, utilization: number, imported = false): UsagePoi
 });
 
 describe('dailyConsumptionRate', () => {
-  it('soma os incrementos positivos e divide pelos dias cobertos', () => {
+  it('sums the positive increments and divides by the covered days', () => {
     expect(dailyConsumptionRate([point(4, 10), point(2, 30), point(0, 50)], NOW)).toBeCloseTo(10, 5);
   });
 
-  it('quedas são resets e não contam', () => {
+  it('drops are resets and do not count', () => {
     const rate = dailyConsumptionRate([point(4, 10), point(3, 40), point(2, 5), point(0, 25)], NOW);
     expect(rate).toBeCloseTo((30 + 20) / 4, 5);
   });
 
-  it('só olha os últimos 14 dias', () => {
+  it('only looks at the last 14 days', () => {
     const rate = dailyConsumptionRate([point(20, 0), point(15, 90), point(4, 10), point(0, 50)], NOW);
     expect(rate).toBeCloseTo(40 / 4, 5);
   });
 
-  it('o histórico importado conta', () => {
+  it('imported history counts', () => {
     expect(dailyConsumptionRate([point(3, 0, true), point(2, 10, true), point(0, 30)], NOW)).toBeCloseTo(10, 5);
   });
 
-  it('menos de 1 dia de dados ou menos de 2 pontos não tem taxa', () => {
+  it('less than 1 day of data or fewer than 2 points has no rate', () => {
     expect(dailyConsumptionRate([], NOW)).toBeNull();
     expect(dailyConsumptionRate([point(0, 10)], NOW)).toBeNull();
     expect(dailyConsumptionRate([point(0.5, 10), point(0, 40)], NOW)).toBeNull();
     expect(dailyConsumptionRate([point(1, 10), point(0, 40)], NOW)).toBeCloseTo(30, 5);
   });
 
-  it('ignora pontos no futuro', () => {
+  it('ignores points in the future', () => {
     expect(dailyConsumptionRate([point(2, 10), point(0, 30), point(-1, 99)], NOW)).toBeCloseTo(10, 5);
   });
 });

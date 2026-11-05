@@ -44,7 +44,7 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
     if (text === null) return createEmptyHistory();
     try {
       const raw: unknown = JSON.parse(text);
-      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('formato inesperado');
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('unexpected format');
       const marker = (raw as Record<string, unknown>)['claudeUsageBarImportedAt'];
       this.imported = typeof marker === 'number' && Number.isFinite(marker) ? marker : null;
       return parseHistory(raw);

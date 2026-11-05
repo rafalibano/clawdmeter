@@ -5,11 +5,11 @@ const NOW = 1_000_000;
 const idle = { now: NOW, loading: false, cooldownUntil: 0, backoffUntil: null };
 
 describe('refreshState', () => {
-  it('livre: habilitado com o tooltip "Atualizar"', () => {
+  it('idle: enabled with the "Refresh" tooltip', () => {
     expect(refreshState(idle)).toEqual({ disabled: false, spinning: false, tooltip: { key: 'refresh.tooltip' } });
   });
 
-  it('carregando: desabilitado e girando', () => {
+  it('loading: disabled and spinning', () => {
     expect(refreshState({ ...idle, loading: true })).toEqual({
       disabled: true,
       spinning: true,
@@ -17,7 +17,7 @@ describe('refreshState', () => {
     });
   });
 
-  it('cooldown de 30 s depois do clique, com o tempo restante', () => {
+  it('30 s cooldown after the click, with the remaining time', () => {
     expect(REFRESH_COOLDOWN_MS).toBe(30_000);
     expect(refreshState({ ...idle, cooldownUntil: NOW + 12_000 })).toEqual({
       disabled: true,
@@ -27,7 +27,7 @@ describe('refreshState', () => {
     expect(refreshState({ ...idle, cooldownUntil: NOW })).toMatchObject({ disabled: false });
   });
 
-  it('em backoff de rate limit mostra o tempo restante e não deixa chamar', () => {
+  it('in rate limit backoff shows the remaining time and blocks the call', () => {
     expect(refreshState({ ...idle, backoffUntil: NOW + 300_000 })).toEqual({
       disabled: true,
       spinning: false,
@@ -35,7 +35,7 @@ describe('refreshState', () => {
     });
   });
 
-  it('o backoff vence o cooldown; backoff vencido libera', () => {
+  it('backoff wins over cooldown; expired backoff releases', () => {
     expect(refreshState({ ...idle, cooldownUntil: NOW + 5_000, backoffUntil: NOW + 60_000 }).tooltip.key).toBe('refresh.rateLimited');
     expect(refreshState({ ...idle, backoffUntil: NOW - 1 })).toMatchObject({ disabled: false });
   });

@@ -15,7 +15,7 @@ export class FakeNotifier implements Notifier {
   fail = false;
 
   async notify(notice: Notice): Promise<void> {
-    if (this.fail) throw new Error('notificação recusada');
+    if (this.fail) throw new Error('notification rejected');
     this.sent.push(notice);
   }
 }
@@ -38,7 +38,7 @@ export class FakeSkillRunStore implements SkillRunStore {
   }
 
   async save(runs: SkillRun[]): Promise<void> {
-    if (this.failSave) throw new Error('disco cheio');
+    if (this.failSave) throw new Error('disk full');
     this.stored = runs;
     this.saved.push(runs);
   }

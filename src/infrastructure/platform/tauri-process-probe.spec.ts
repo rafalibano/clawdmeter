@@ -3,7 +3,7 @@ import { createFakeCommands } from '../testing/fakes';
 import { TauriProcessProbe } from './tauri-process-probe';
 
 describe('TauriProcessProbe', () => {
-  it('pergunta ao command process_is_alive pelo pid', async () => {
+  it('asks the process_is_alive command about the pid', async () => {
     const { commands, calls } = createFakeCommands((_, args) => args?.['pid'] === 4242);
     const probe = new TauriProcessProbe(commands);
     expect(await probe.isAlive(4242)).toBe(true);

@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { chartPalette, withAlpha } from './chart-palette';
 
 describe('chartPalette', () => {
-  it('converte hex em rgba', () => {
+  it('converts hex to rgba', () => {
     expect(withAlpha('#121212', 0.5)).toBe('rgba(18, 18, 18, 0.5)');
   });
 
-  it('tema claro: 5h em primary-base, 7d em cinza neutro, texto escuro e grade leve', () => {
+  it('light theme: 5h in primary-base, 7d in neutral gray, dark text and light grid', () => {
     const palette = chartPalette('#00b131', null, 'light');
     expect(palette.series.fiveHour.line).toBe('#00b131');
     expect(palette.series.sevenDay.line).toBe('#767676');
@@ -17,25 +17,25 @@ describe('chartPalette', () => {
     expect(palette.tooltipBackground).toBe('#ffffff');
   });
 
-  it('tema escuro: 5h em primary-alt, 7d em cinza neutro', () => {
+  it('dark theme: 5h in primary-alt, 7d in neutral gray', () => {
     const palette = chartPalette('#00b131', null, 'dark');
     expect(palette.series.fiveHour.line).toBe('#1bd60b');
     expect(palette.series.sevenDay.line).toBe('#a9a9a9');
   });
 
-  it('destaque customizado manda na série de 5h e não na de 7d', () => {
+  it('custom accent drives the 5h series and not the 7d one', () => {
     const palette = chartPalette('#ef6800', null, 'dark');
     expect(palette.series.fiveHour.line).toBe('#ef6800');
     expect(palette.series.sevenDay.line).toBe('#a9a9a9');
   });
 
-  it('alerta em alert-base, atenção em amarelo e a fonte é Helvetica', () => {
+  it('alert in alert-base, warning in yellow and the font is Helvetica', () => {
     const palette = chartPalette('#00b131', null, 'dark');
     expect(palette.danger).toBe('#ff5449');
     expect(palette.fontFamily).toBe('"Helvetica Neue", Helvetica, Arial, sans-serif');
   });
 
-  it('grade e linha de agora no escuro são brancas translúcidas e o tooltip usa o card suave', () => {
+  it('grid and now line in dark are translucent white and the tooltip uses the soft card', () => {
     const palette = chartPalette('#00b131', null, 'dark');
     expect(palette.grid).toBe('rgba(255, 255, 255, 0.06)');
     expect(palette.now).toBe('rgba(255, 255, 255, 0.3)');
@@ -43,14 +43,14 @@ describe('chartPalette', () => {
     expect(chartPalette('#00b131', '#101010', 'dark').tooltipBackground).toBe('#101010');
   });
 
-  it('tema escuro usa texto branco; fundo personalizado manda no contraste', () => {
+  it('dark theme uses white text; custom background drives the contrast', () => {
     expect(chartPalette('#00b131', null, 'dark').text).toBe('#ffffff');
     expect(chartPalette('#00b131', '#ffffff', 'dark').text).toBe('#121212');
   });
 });
 
-describe('cores escolhidas das séries', () => {
-  it('substituem linha, área e marcador de cada série nos dois temas', () => {
+describe('chosen series colors', () => {
+  it('replace the line, area and marker of each series in both themes', () => {
     for (const theme of ['light', 'dark'] as const) {
       const palette = chartPalette('#00b131', null, theme, { fiveHour: '#0063f7', sevenDay: '#ef6800' });
       expect(palette.series.fiveHour.line).toBe('#0063f7');
@@ -60,7 +60,7 @@ describe('cores escolhidas das séries', () => {
     }
   });
 
-  it('o texto do gráfico não muda com a cor da série', () => {
+  it('the chart text does not change with the series color', () => {
     const base = chartPalette('#00b131', null, 'dark');
     const dark = chartPalette('#00b131', null, 'dark', { fiveHour: '#000000', sevenDay: '#121212' });
     expect(dark.text).toBe(base.text);
@@ -68,7 +68,7 @@ describe('cores escolhidas das séries', () => {
     expect(dark.series.fiveHour.line).toBe('#000000');
   });
 
-  it('só uma cor escolhida mantém o padrão da outra', () => {
+  it('a single chosen color keeps the default of the other', () => {
     const palette = chartPalette('#00b131', null, 'light', { fiveHour: null, sevenDay: '#0063f7' });
     expect(palette.series.fiveHour.line).toBe('#00b131');
     expect(palette.series.sevenDay.line).toBe('#0063f7');

@@ -9,34 +9,34 @@ import {
   projectionSummary,
 } from './settings-summaries';
 
-describe('resumos das seções de Ajustes', () => {
+describe('settings section summaries', () => {
   const pt = new Localizer('pt-BR');
 
-  it('páginas: ativas de total', () => {
+  it('pages: active out of total', () => {
     expect(pagesSummary(pt, [{ enabled: true }, { enabled: false }, { enabled: true }])).toBe('2 de 3 ativas');
   });
 
-  it('páginas nas três línguas', () => {
+  it('pages in the three languages', () => {
     const rows = [{ enabled: true }, { enabled: false }];
     expect(pagesSummary(new Localizer('en'), rows)).toBe('1 of 2 active');
     expect(pagesSummary(new Localizer('es-MX'), rows)).toBe('1 de 2 activas');
   });
 
-  it('conexões: ok verde, erro atenção, o resto cinza', () => {
+  it('connections: ok is green, error is attention, the rest is gray', () => {
     expect(connectionDots(['ok', 'error', 'idle', 'busy'])).toEqual(['ok', 'attention', 'off', 'off']);
   });
 
-  it('conexões: abre sozinha só com erro', () => {
+  it('connections: opens by itself only on error', () => {
     expect(connectionsNeedAttention(['ok', 'idle', 'busy'])).toBe(false);
     expect(connectionsNeedAttention(['ok', 'error'])).toBe(true);
   });
 
-  it('conexões: texto de atenção só com erro', () => {
+  it('connections: attention text only on error', () => {
     expect(connectionsAttentionText(pt, ['ok'])).toBeNull();
     expect(connectionsAttentionText(pt, ['error', 'error'])).toBe('2 com atenção');
   });
 
-  it('projeção e aparência mostram o rótulo escolhido', () => {
+  it('projection and appearance show the chosen label', () => {
     expect(projectionSummary(pt, '14d')).toBe('Últimos 14 dias');
     expect(appearanceSummary(pt, 'dark')).toBe('Escuro');
   });

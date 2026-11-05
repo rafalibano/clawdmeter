@@ -36,7 +36,7 @@ beforeEach(async () => {
 });
 
 describe('LoadUsage', () => {
-  it('lê o usage pelo gateway (sem token no TS), grava um ponto por janela e começa coletando dados', async () => {
+  it('reads usage through the gateway (no token in TS), records one point per window and starts collecting data', async () => {
     const data = await loadUsage.execute();
     expect(gateway.fetches).toBe(1);
     expect(data.at).toBe(START);
@@ -45,7 +45,7 @@ describe('LoadUsage', () => {
     expect(history.current.sevenDay).toHaveLength(1);
   });
 
-  it('acumula o histórico entre leituras', async () => {
+  it('accumulates history between readings', async () => {
     for (let minute = 0; minute < 3; minute++) {
       gateway.outcome = {
         fiveHour: { utilization: 20 + minute * 2, resetsAt: START + 3_600_000 },
@@ -58,7 +58,7 @@ describe('LoadUsage', () => {
     expect(data.history.fiveHour).toHaveLength(4);
   });
 
-  it('aplica a retenção: pontos com mais de 30 dias saem do histórico gravado', async () => {
+  it('applies retention: points older than 30 days leave the stored history', async () => {
     history.current = {
       fiveHour: [{ at: START - 31 * DAY_MS, utilization: 99, resetsAt: null }],
       sevenDay: [],
@@ -67,13 +67,13 @@ describe('LoadUsage', () => {
     expect(history.current.fiveHour.map((point) => point.utilization)).toEqual([20]);
   });
 
-  it('janela ausente na resposta não grava ponto', async () => {
+  it('a window missing from the response records no point', async () => {
     gateway.outcome = { fiveHour: { utilization: 5, resetsAt: null }, sevenDay: null };
     const data = await loadUsage.execute();
     expect(data.history.sevenDay).toEqual([]);
   });
 
-  it('401 vira problema de conexão do Claude com o botão "Refazer login do Claude"', async () => {
+  it('401 becomes a Claude connection problem with the "Sign in to Claude again" button', async () => {
     gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
     const status = connections.monitor.get('claude');
@@ -83,14 +83,14 @@ describe('LoadUsage', () => {
     expect(history.saved).toHaveLength(0);
   });
 
-  it('token vencido (detectado no Rust) vira problema de conexão sem gravar histórico', async () => {
+  it('an expired token (detected in Rust) becomes a connection problem without recording history', async () => {
     gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
     expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'claude-expired' });
     expect(history.saved).toHaveLength(0);
   });
 
-  it('cofre negado e Claude Code ausente chegam à conexão', async () => {
+  it('a denied keychain and a missing Claude Code reach the connection', async () => {
     gateway.outcome = new ConnectionProblemError('keychain-denied');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'keychain-denied' });
     expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'keychain-denied' });
@@ -98,20 +98,20 @@ describe('LoadUsage', () => {
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-code-missing' });
   });
 
-  it('Claude desconectado em Ajustes: não chama o Rust', async () => {
+  it('Claude disconnected in Settings: does not call Rust', async () => {
     await connections.disconnect.execute('claude');
     await expect(loadUsage.execute()).rejects.toThrow('usage-disconnected');
     expect(gateway.fetches).toBe(0);
     expect(connections.monitor.get('claude')).toEqual({ state: 'disconnected' });
   });
 
-  it('erro de rede não mexe na conexão', async () => {
+  it('a network error does not touch the connection', async () => {
     gateway.outcome = new Error('Anthropic respondeu 500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
     expect(connections.monitor.get('claude').state).toBe('unknown');
   });
 
-  it('depois de um 401, o primeiro sucesso confere a conexão de novo e limpa o erro', async () => {
+  it('after a 401, the first success rechecks the connection and clears the error', async () => {
     gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toThrow();
     gateway.outcome = { fiveHour: { utilization: 1, resetsAt: null }, sevenDay: null };
@@ -119,13 +119,13 @@ describe('LoadUsage', () => {
     expect(connections.monitor.get('claude').state).toBe('connected');
   });
 
-  it('histórico vazio no primeiro uso', async () => {
+  it('empty history on first use', async () => {
     expect(await history.load()).toEqual(createEmptyHistory());
   });
 });
 
-describe('LoadUsage e o indicador da bandeja', () => {
-  it('a cada leitura bem-sucedida entrega o snapshot e o horário ao indicador', async () => {
+describe('LoadUsage and the tray indicator', () => {
+  it('each successful reading hands the snapshot and the time to the indicator', async () => {
     const data = await loadUsage.execute();
     expect(indicator.updates).toEqual([{ snapshot: data.snapshot, now: START }]);
     await clock.advance(MINUTE_MS);
@@ -133,7 +133,7 @@ describe('LoadUsage e o indicador da bandeja', () => {
     expect(indicator.updates.map((update) => update.now)).toEqual([START, START + MINUTE_MS]);
   });
 
-  it('erro de rede, token vencido e Claude desconectado mandam null ao indicador', async () => {
+  it('a network error, an expired token and a disconnected Claude send null to the indicator', async () => {
     gateway.outcome = new Error('Anthropic respondeu 500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
     gateway.outcome = new ConnectionProblemError('claude-expired');
@@ -147,17 +147,17 @@ describe('LoadUsage e o indicador da bandeja', () => {
     ]);
   });
 
-  it('atualiza o indicador mesmo quando gravar o histórico falha depois', async () => {
+  it('updates the indicator even when saving the history fails afterwards', async () => {
     history.save = async () => {
-      throw new Error('disco cheio');
+      throw new Error('disk full');
     };
-    await expect(loadUsage.execute()).rejects.toThrow('disco cheio');
+    await expect(loadUsage.execute()).rejects.toThrow('disk full');
     expect(indicator.updates).toHaveLength(1);
     expect(indicator.updates[0]?.snapshot).not.toBeNull();
   });
 
-  it('falha do indicador não derruba a página de usage', async () => {
-    indicator.failure = new Error('tray indisponível');
+  it('an indicator failure does not break the usage page', async () => {
+    indicator.failure = new Error('tray unavailable');
     const data = await loadUsage.execute();
     expect(data.snapshot).toEqual(gateway.outcome);
     gateway.outcome = new Error('500');
@@ -165,7 +165,7 @@ describe('LoadUsage e o indicador da bandeja', () => {
   });
 });
 
-describe('LoadUsage com histórico externo (migração única)', () => {
+describe('LoadUsage with external history (one-time migration)', () => {
   let source: FakeExternalUsageHistorySource;
   let withImport: LoadUsage;
 
@@ -189,7 +189,7 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     );
   });
 
-  it('na primeira carga mescla os pontos externos, sem ciclo falso, e grava o marcador', async () => {
+  it('on the first load merges the external points, without a false cycle, and records the marker', async () => {
     source.outcome = externalPoints();
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(7);
@@ -198,7 +198,7 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     expect(history.imported).toBe(START);
   });
 
-  it('depois de importar nunca mais lê o arquivo', async () => {
+  it('after importing never reads the file again', async () => {
     source.outcome = [{ at: START - 20 * MINUTE_MS, fiveHour: 10, sevenDay: 5 }];
     await withImport.execute();
     await clock.advance(MINUTE_MS);
@@ -209,7 +209,7 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     expect(history.imported).toBe(START);
   });
 
-  it('quem já tem ponto importado é marcado sem ler a fonte', async () => {
+  it('whoever already has an imported point is marked without reading the source', async () => {
     history.current = {
       fiveHour: [{ at: START - 3 * DAY_MS, utilization: 10, resetsAt: null, imported: true }],
       sevenDay: [],
@@ -221,7 +221,7 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     expect(data.history.fiveHour).toHaveLength(2);
   });
 
-  it('marcador existente impede a leitura, mesmo sem pontos importados no histórico', async () => {
+  it('an existing marker prevents reading, even without imported points in the history', async () => {
     history.imported = START - DAY_MS;
     source.outcome = externalPoints();
     const data = await withImport.execute();
@@ -230,15 +230,15 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     expect(data.history.fiveHour).toHaveLength(1);
   });
 
-  it('arquivo ausente (fonte vazia) também conclui a migração', async () => {
+  it('a missing file (empty source) also completes the migration', async () => {
     await withImport.execute();
     await withImport.execute();
     expect(source.reads).toBe(1);
     expect(history.imported).toBe(START);
   });
 
-  it('fonte que falha é ignorada em silêncio e tenta de novo na próxima carga', async () => {
-    source.outcome = new Error('arquivo ilegível');
+  it('a failing source is silently ignored and retried on the next load', async () => {
+    source.outcome = new Error('unreadable file');
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(1);
     expect(history.imported).toBeNull();
@@ -248,13 +248,13 @@ describe('LoadUsage com histórico externo (migração única)', () => {
     expect(history.imported).toBe(START);
   });
 
-  it('o ponto lido agora vence o externo colado nele', async () => {
+  it('the point read now wins over the external one right next to it', async () => {
     source.outcome = [{ at: START - 30_000, fiveHour: 99, sevenDay: 99 }];
     const data = await withImport.execute();
     expect(data.history.fiveHour).toEqual([{ at: START, utilization: 20, resetsAt: START + 3_600_000 }]);
   });
 
-  it('a retenção vale para os importados: mais de 30 dias fica de fora', async () => {
+  it('retention applies to imported points: older than 30 days is left out', async () => {
     source.outcome = [{ at: START - 31 * DAY_MS, fiveHour: 50, sevenDay: 50 }];
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(1);

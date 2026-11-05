@@ -16,19 +16,19 @@ function external(ageMs: number, fiveHour: number | null, sevenDay: number | nul
 }
 
 describe('parseClaudeUsageBarHistory', () => {
-  it('converte fração em percentual e o timestamp ISO em epoch ms', () => {
+  it('converts fraction to percentage and the ISO timestamp to epoch ms', () => {
     const parsed = parseClaudeUsageBarHistory({
       dataPoints: [{ id: 'a', pct5h: 0.05, pct7d: 0.72, timestamp: '2026-10-06T17:12:03Z' }],
     });
     expect(parsed).toEqual([{ at: Date.parse('2026-10-06T17:12:03Z'), fiveHour: 5, sevenDay: 72 }]);
   });
 
-  it('arredonda o ruído de ponto flutuante', () => {
+  it('rounds floating point noise', () => {
     const [point] = parseClaudeUsageBarHistory({ dataPoints: [{ pct5h: 0.07, pct7d: 0.29, timestamp: '2026-10-06T17:12:03Z' }] });
     expect(point).toMatchObject({ fiveHour: 7, sevenDay: 29 });
   });
 
-  it('é tolerante: lixo vira lista vazia e entradas inválidas são descartadas', () => {
+  it('is tolerant: garbage becomes an empty list and invalid entries are dropped', () => {
     expect(parseClaudeUsageBarHistory(null)).toEqual([]);
     expect(parseClaudeUsageBarHistory('x')).toEqual([]);
     expect(parseClaudeUsageBarHistory({})).toEqual([]);
@@ -51,7 +51,7 @@ describe('parseClaudeUsageBarHistory', () => {
     ]);
   });
 
-  it('ordena por timestamp e aceita epoch em segundos ou ms', () => {
+  it('sorts by timestamp and accepts epoch in seconds or ms', () => {
     const parsed = parseClaudeUsageBarHistory({
       dataPoints: [
         { pct5h: 0.2, timestamp: 1_800_000_100_000 },
@@ -63,13 +63,13 @@ describe('parseClaudeUsageBarHistory', () => {
 });
 
 describe('mergeExternalPoints', () => {
-  it('importa em cada janela só o que veio preenchido, marcando como importado e sem resetsAt', () => {
+  it('imports into each window only what came filled in, flagging it as imported and without resetsAt', () => {
     const merged = mergeExternalPoints(createEmptyHistory(), [external(HOUR_MS, 10, null), external(2 * HOUR_MS, null, 40)], NOW);
     expect(merged.fiveHour).toEqual([{ at: NOW - HOUR_MS, utilization: 10, resetsAt: null, imported: true }]);
     expect(merged.sevenDay).toEqual([{ at: NOW - 2 * HOUR_MS, utilization: 40, resetsAt: null, imported: true }]);
   });
 
-  it('deduplica por timestamp com tolerância de 1 minuto e mantém o ponto nosso', () => {
+  it('deduplicates by timestamp with a 1 minute tolerance and keeps our point', () => {
     const history: UsageHistory = {
       fiveHour: [{ at: NOW - HOUR_MS, utilization: 11, resetsAt: NOW + HOUR_MS }],
       sevenDay: [],
@@ -89,7 +89,7 @@ describe('mergeExternalPoints', () => {
     ]);
   });
 
-  it('pontos externos colados entre si também colapsam', () => {
+  it('external points that are close to each other also collapse', () => {
     const merged = mergeExternalPoints(
       createEmptyHistory(),
       [external(HOUR_MS, 10), external(HOUR_MS - 20_000, 11), external(HOUR_MS - 5 * MINUTE_MS, 12)],
@@ -98,7 +98,7 @@ describe('mergeExternalPoints', () => {
     expect(merged.fiveHour.map((point) => point.utilization)).toEqual([10, 12]);
   });
 
-  it('descarta o que é anterior a 30 dias e o que está no futuro', () => {
+  it('drops what is older than 30 days and what is in the future', () => {
     const merged = mergeExternalPoints(
       createEmptyHistory(),
       [external(31 * DAY_MS, 90), external(29 * DAY_MS, 10), external(-10 * MINUTE_MS, 50)],
@@ -107,7 +107,7 @@ describe('mergeExternalPoints', () => {
     expect(merged.fiveHour.map((point) => point.utilization)).toEqual([10]);
   });
 
-  it('é idempotente e a retenção agrega os antigos em baldes de 15 min pelo máximo', () => {
+  it('is idempotent and retention aggregates the old ones into 15 min buckets by maximum', () => {
     const points = [external(10 * DAY_MS, 20), external(10 * DAY_MS - 3 * MINUTE_MS, 35), external(DAY_MS, 5)];
     const once = retainHistory(mergeExternalPoints(createEmptyHistory(), points, NOW), NOW);
     const twice = retainHistory(mergeExternalPoints(once, points, NOW), NOW);
@@ -117,7 +117,7 @@ describe('mergeExternalPoints', () => {
     expect(once.fiveHour[1]).toMatchObject({ at: NOW - DAY_MS, utilization: 5 });
   });
 
-  it('não muta o histórico recebido', () => {
+  it('does not mutate the received history', () => {
     const history = createEmptyHistory();
     mergeExternalPoints(history, [external(HOUR_MS, 10)], NOW);
     expect(history.fiveHour).toEqual([]);

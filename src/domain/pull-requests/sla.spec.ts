@@ -6,22 +6,22 @@ const DAY = 24 * HOUR;
 const NOW = 1_800_000_000_000;
 
 describe('slaLevel', () => {
-  it('menos de 3 dias é fresh', () => {
+  it('less than 3 days is fresh', () => {
     expect(slaLevel(NOW, NOW)).toBe('fresh');
     expect(slaLevel(NOW - (2 * DAY + 23 * HOUR), NOW)).toBe('fresh');
   });
 
-  it('de 3 dias até 6d23h é attention', () => {
+  it('from 3 days up to 6d23h is attention', () => {
     expect(slaLevel(NOW - 3 * DAY, NOW)).toBe('attention');
     expect(slaLevel(NOW - (6 * DAY + 23 * HOUR), NOW)).toBe('attention');
   });
 
-  it('a partir de 7 dias é overdue', () => {
+  it('from 7 days on is overdue', () => {
     expect(slaLevel(NOW - 7 * DAY, NOW)).toBe('overdue');
     expect(slaLevel(NOW - 30 * DAY, NOW)).toBe('overdue');
   });
 
-  it('data no futuro (relógio adiantado) é fresh', () => {
+  it('a date in the future (clock ahead) is fresh', () => {
     expect(slaLevel(NOW + DAY, NOW)).toBe('fresh');
   });
 });

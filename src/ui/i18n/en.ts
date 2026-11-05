@@ -1,6 +1,16 @@
-import type { MessageKey } from './pt-BR';
+import type { ErrorCode } from '../../domain/coded-error';
+import type { ActionLabel, ConnectionProblem, StatusNote } from '../../domain/connections';
+import type { RunFix } from '../../domain/skills';
+import type { ApplicationMessageKey } from '../../application/ports';
 
-export const en: Record<MessageKey, string> = {
+type Required =
+  | ApplicationMessageKey
+  | `error.${ErrorCode}`
+  | `problem.${ConnectionProblem}`
+  | `note.${StatusNote}`
+  | `action.${ActionLabel | RunFix}`;
+
+export const en = {
   'common.loading': 'Loading…',
   'common.retry': 'Try again',
 
@@ -140,6 +150,15 @@ export const en: Record<MessageKey, string> = {
   'error.link-invalid-meeting': 'Invalid meeting link',
   'error.link-invalid-github': 'Invalid GitHub link',
   'error.meeting-open-failed': 'Could not open the meeting.',
+  'error.too-many-processes': 'Too many processes are running. Wait for a run to finish and try again.',
+  'error.github-token-empty': 'Paste a personal access token.',
+  'error.github-access-denied': 'Access denied on GitHub.',
+  'error.github-code-expired': 'The code expired. Try again.',
+  'error.github-oauth-misconfigured': 'The GitHub OAuth App is misconfigured ({error}). Check the client_id and that Device Flow is enabled.',
+  'error.github-login-failed': 'Login failed.',
+  'error.github-rate-limited': 'GitHub request limit reached. Try again in a few minutes.',
+  'error.microsoft-calendar-denied': 'Microsoft did not allow reading the calendar (Calendars.Read).',
+  'error.client-id-missing': 'The {provider} client_id is not configured in auth-config.ts.',
 
   'time.lessThanMinute': 'less than 1 min',
   'time.now': 'now',
@@ -196,6 +215,7 @@ export const en: Record<MessageKey, string> = {
   'prs.badge.conflict': 'Conflict',
 
   'teams.allDay': 'All day',
+  'teams.untitled': '(untitled)',
   'teams.now': 'Now: {title}',
   'teams.nowMore': 'Now: {title} (+{extra})',
   'teams.next': 'Next {when}: {title}',
@@ -229,4 +249,6 @@ export const en: Record<MessageKey, string> = {
   'tooltip.unavailable': 'ClawdMeter · usage unavailable',
   'tooltip.noData': '{label}: no data',
   'tooltip.resets': 'resets {when}',
-};
+} as const satisfies Record<Required, string> & Record<string, string>;
+
+export type MessageKey = keyof typeof en;

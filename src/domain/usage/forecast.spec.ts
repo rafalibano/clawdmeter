@@ -19,46 +19,46 @@ function ready(forecast: Forecast) {
   return forecast;
 }
 
-describe('método 14d (sevenDay)', () => {
+describe('14d method (sevenDay)', () => {
   const points = [point(4, 10), point(2, 30), point(0, 50)];
 
-  it('taxa = incrementos positivos ÷ dias cobertos; projetado = atual + taxa × dias até o reset', () => {
+  it('rate = positive increments ÷ covered days; projected = current + rate × days until the reset', () => {
     const forecast = ready(forecastWindow('sevenDay', '14d', points, NOW, 50, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(50 + 10 * 3, 5);
     expect(forecast.trend).toEqual({ fromAt: NOW, fromValue: 50, toAt: WEEKLY_RESET, toValue: forecast.valueAtReset });
   });
 
-  it('quedas (reset) são ignoradas na soma', () => {
+  it('drops (reset) are ignored in the sum', () => {
     const withDrop = [point(4, 10), point(3, 40), point(2, 5), point(0, 25)];
     const forecast = ready(forecastWindow('sevenDay', '14d', withDrop, NOW, 25, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(25 + ((30 + 20) / 4) * 3, 5);
   });
 
-  it('só considera os últimos 14 dias', () => {
+  it('only considers the last 14 days', () => {
     const old = [point(20, 0), point(15, 90), point(4, 10), point(0, 50)];
     const forecast = ready(forecastWindow('sevenDay', '14d', old, NOW, 50, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(50 + 10 * 3, 5);
   });
 
-  it('o histórico importado conta', () => {
+  it('imported history counts', () => {
     const imported = [point(3, 0, true), point(2, 10, true), point(0, 30)];
     const forecast = ready(forecastWindow('sevenDay', '14d', imported, NOW, 30, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(30 + 10 * 3, 5);
   });
 
-  it('informa o momento em que passa de 100%', () => {
+  it('reports the moment it goes past 100%', () => {
     const forecast = ready(forecastWindow('sevenDay', '14d', points, NOW, 50, NOW + 7 * DAY_MS));
     expect(forecast.exhaustsAt).toBeCloseTo(NOW + 5 * DAY_MS, -2);
     expect(forecast.exhaustsLeadMs).toBeCloseTo(2 * DAY_MS, -2);
   });
 
-  it('consumo parado projeta linha plana, sem estouro', () => {
+  it('flat consumption projects a flat line, without overflow', () => {
     const forecast = ready(forecastWindow('sevenDay', '14d', [point(3, 20), point(0, 20)], NOW, 20, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBe(20);
     expect(forecast.exhaustsAt).toBeNull();
   });
 
-  it('menos de 1 dia de dados cai no consumo desde o reset', () => {
+  it('less than 1 day of data falls back to consumption since the reset', () => {
     const resetsAt = NOW + 3 * DAY_MS;
     const elapsed = 4 * DAY_MS;
     const short = [point(0.5, 10), point(0, 40)];
@@ -66,23 +66,23 @@ describe('método 14d (sevenDay)', () => {
     expect(forecast.valueAtReset).toBeCloseTo(40 + (40 / elapsed) * 3 * DAY_MS, 5);
   });
 
-  it('sem pontos e dados insuficientes ainda cai no desde o reset quando há decorrido', () => {
+  it('without points and insufficient data still falls back to since-reset when time has elapsed', () => {
     const forecast = ready(forecastWindow('sevenDay', '14d', [], NOW, 35, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(35 + (35 / (4 * DAY_MS)) * 3 * DAY_MS, 5);
   });
 });
 
-describe('método 24h (sevenDay)', () => {
+describe('24h method (sevenDay)', () => {
   const hourAgo = (hours: number, utilization: number): UsagePoint => ({ at: NOW - hours * HOUR_MS, utilization, resetsAt: null });
 
-  it('taxa = incrementos positivos das últimas 24h ÷ horas cobertas, quedas ignoradas', () => {
+  it('rate = positive increments from the last 24h ÷ covered hours, drops ignored', () => {
     const points = [hourAgo(30, 90), hourAgo(20, 10), hourAgo(12, 30), hourAgo(10, 4), hourAgo(0, 24)];
     const forecast = ready(forecastWindow('sevenDay', '24h', points, NOW, 24, WEEKLY_RESET));
     expect(forecast.ratePerDay).toBeCloseTo(((20 + 20) / 20) * 24, 5);
     expect(forecast.valueAtReset).toBeCloseTo(24 + ((40 / 20) * 24) * 3, 5);
   });
 
-  it('só olha as últimas 24h, diferente do 14d', () => {
+  it('only looks at the last 24h, unlike 14d', () => {
     const points = [point(5, 0), point(4, 50), hourAgo(10, 50), hourAgo(0, 55)];
     const by24 = ready(forecastWindow('sevenDay', '24h', points, NOW, 55, WEEKLY_RESET));
     const by14 = ready(forecastWindow('sevenDay', '14d', points, NOW, 55, WEEKLY_RESET));
@@ -90,42 +90,42 @@ describe('método 24h (sevenDay)', () => {
     expect(by14.ratePerDay).not.toBeCloseTo(by24.ratePerDay, 3);
   });
 
-  it('menos de 2h de dados cai no consumo desde o reset', () => {
+  it('less than 2h of data falls back to consumption since the reset', () => {
     const points = [hourAgo(1.5, 10), hourAgo(0, 20)];
     const forecast = ready(forecastWindow('sevenDay', '24h', points, NOW, 20, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(20 + (20 / (4 * DAY_MS)) * 3 * DAY_MS, 5);
   });
 
-  it('2h exatas de dados já valem', () => {
+  it('exactly 2h of data is enough', () => {
     const points = [hourAgo(2, 10), hourAgo(0, 20)];
     expect(ready(forecastWindow('sevenDay', '24h', points, NOW, 20, WEEKLY_RESET)).ratePerDay).toBeCloseTo(5 * 24, 5);
   });
 });
 
-describe('método desde o reset', () => {
-  it('taxa = % atual ÷ tempo desde o último reset; ignora o histórico', () => {
+describe('since-reset method', () => {
+  it('rate = current % ÷ time since the last reset; ignores the history', () => {
     const history = [point(4, 10), point(2, 30), point(0, 50)];
     const forecast = ready(forecastWindow('sevenDay', 'since-reset', history, NOW, 50, WEEKLY_RESET));
     expect(forecast.valueAtReset).toBeCloseTo(50 + (50 / (4 * DAY_MS)) * 3 * DAY_MS, 5);
   });
 
-  it('decorrido menor que 30 min: sem projeção', () => {
+  it('elapsed under 30 min: no projection', () => {
     const resetsAt = NOW + 7 * DAY_MS - 29 * MINUTE_MS;
     expect(forecastWindow('sevenDay', 'since-reset', [], NOW, 2, resetsAt)).toEqual({ status: 'collecting' });
     expect(forecastWindow('sevenDay', '14d', [], NOW, 2, resetsAt)).toEqual({ status: 'collecting' });
   });
 
-  it('exatamente 30 min já projeta', () => {
+  it('exactly 30 min already projects', () => {
     const resetsAt = NOW + 7 * DAY_MS - 30 * MINUTE_MS;
     expect(forecastWindow('sevenDay', 'since-reset', [], NOW, 2, resetsAt).status).toBe('ready');
   });
 });
 
-describe('janela de 5h', () => {
+describe('5h window', () => {
   const FIVE_START = FIVE_RESET - 5 * HOUR_MS;
   const history = [point(4, 10), point(2, 30), point(0, 50)];
 
-  it('sempre usa o consumo desde o reset do 5h, nos dois métodos', () => {
+  it('always uses consumption since the 5h reset, in both methods', () => {
     const elapsed = NOW - FIVE_START;
     const expected = 40 + (40 / elapsed) * 2 * HOUR_MS;
     for (const method of ['14d', 'since-reset'] as const) {
@@ -133,23 +133,23 @@ describe('janela de 5h', () => {
     }
   });
 
-  it('nos primeiros 30 min depois do reset não projeta', () => {
+  it('does not project in the first 30 min after the reset', () => {
     const resetsAt = NOW + 5 * HOUR_MS - 10 * MINUTE_MS;
     expect(forecastWindow('fiveHour', '14d', history, NOW, 3, resetsAt)).toEqual({ status: 'collecting' });
   });
 });
 
-describe('estados', () => {
-  it('sem leitura atual: coletando', () => {
+describe('states', () => {
+  it('without a current reading: collecting', () => {
     expect(forecastWindow('sevenDay', '14d', [], NOW, null, WEEKLY_RESET)).toEqual({ status: 'collecting' });
   });
 
-  it('sem resets_at ou reset no passado: indisponível', () => {
+  it('without resets_at or reset in the past: unavailable', () => {
     expect(forecastWindow('sevenDay', '14d', [], NOW, 10, null)).toEqual({ status: 'unavailable' });
     expect(forecastWindow('sevenDay', 'since-reset', [], NOW, 10, NOW)).toEqual({ status: 'unavailable' });
   });
 
-  it('já em 100%: sem horário de estouro', () => {
+  it('already at 100%: no overflow time', () => {
     const forecast = ready(forecastWindow('sevenDay', 'since-reset', [], NOW, 100, WEEKLY_RESET));
     expect(forecast.exhaustsAt).toBeNull();
     expect(forecast.valueAtReset).toBeGreaterThan(100);
@@ -157,7 +157,7 @@ describe('estados', () => {
 });
 
 describe('trendValueAt', () => {
-  it('interpola entre o último ponto e o reset', () => {
+  it('interpolates between the last point and the reset', () => {
     const trend = { fromAt: 0, fromValue: 10, toAt: 100, toValue: 50 };
     expect(trendValueAt(trend, 50)).toBe(30);
     expect(trendValueAt({ ...trend, toAt: 0 }, 50)).toBe(10);
@@ -171,7 +171,7 @@ describe('buildForecasts', () => {
   };
   const history = { ...createEmptyHistory(), sevenDay: [point(4, 10), point(2, 30), point(0, 50)] };
 
-  it('o método muda só o 7d; o 5h é igual nos três', () => {
+  it('the method only changes the 7d; the 5h is the same in all three', () => {
     const byDays = buildForecasts(history, snapshot, NOW, '14d');
     const bySince = buildForecasts(history, snapshot, NOW, 'since-reset');
     expect(ready(byDays.sevenDay).valueAtReset).toBeCloseTo(80, 5);
@@ -179,7 +179,7 @@ describe('buildForecasts', () => {
     expect(byDays.fiveHour).toEqual(bySince.fiveHour);
   });
 
-  it('janela ausente no snapshot fica coletando', () => {
+  it('a window missing from the snapshot stays collecting', () => {
     const forecasts = buildForecasts(history, { ...snapshot, sevenDay: null }, NOW, '14d');
     expect(forecasts.sevenDay).toEqual({ status: 'collecting' });
   });

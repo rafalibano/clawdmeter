@@ -55,7 +55,9 @@ function describe(status: ConnectionStatus, l: Localizer): { tone: ConnectionTon
         message:
           status.note !== undefined
             ? noteText(l, status.note, status.noteArg)
-            : (status.message ?? l.t(`problem.${status.problem}`, { org: GITHUB_ORG })),
+            : status.code !== undefined
+              ? l.t(`error.${status.code}`, status.args)
+              : (status.message ?? l.t(`problem.${status.problem}`, { org: GITHUB_ORG })),
       };
   }
 }

@@ -10,9 +10,9 @@ async function rulesViolatedBy(filePath: string, code: string): Promise<string[]
   return (result?.messages ?? []).map((message) => message.ruleId ?? 'parse-error');
 }
 
-describe('lint de arquitetura', () => {
-  describe('regra 1: domain isolado', () => {
-    it('barra domain importando infrastructure', async () => {
+describe('architecture lint', () => {
+  describe('rule 1: isolated domain', () => {
+    it('blocks domain importing infrastructure', async () => {
       const rules = await rulesViolatedBy(
         'src/domain/__fixture__.ts',
         `import { SystemClock } from '../infrastructure/platform/system-clock';\nexport const clock = SystemClock;\n`,
@@ -20,7 +20,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('boundaries/dependencies');
     });
 
-    it('barra domain importando application', async () => {
+    it('blocks domain importing application', async () => {
       const rules = await rulesViolatedBy(
         'src/domain/__fixture__.ts',
         `import { PageRegistry } from '../application/pages';\nexport const registry = PageRegistry;\n`,
@@ -28,7 +28,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('boundaries/dependencies');
     });
 
-    it('barra domain importando pacote externo', async () => {
+    it('blocks domain importing an external package', async () => {
       const rules = await rulesViolatedBy(
         'src/domain/__fixture__.ts',
         `import { signal } from '@angular/core';\nexport const s = signal;\n`,
@@ -37,8 +37,8 @@ describe('lint de arquitetura', () => {
     });
   });
 
-  describe('regra 2: application só enxerga domain', () => {
-    it('barra application importando infrastructure', async () => {
+  describe('rule 2: application only sees domain', () => {
+    it('blocks application importing infrastructure', async () => {
       const rules = await rulesViolatedBy(
         'src/application/__fixture__.ts',
         `import { JsonSettingsStore } from '../infrastructure/persistence';\nexport const s = JsonSettingsStore;\n`,
@@ -46,7 +46,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('boundaries/dependencies');
     });
 
-    it('barra application importando ui', async () => {
+    it('blocks application importing ui', async () => {
       const rules = await rulesViolatedBy(
         'src/application/__fixture__.ts',
         `import { Localizer } from '../ui/i18n/localizer';\nexport const f = Localizer;\n`,
@@ -54,7 +54,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('boundaries/dependencies');
     });
 
-    it('barra application importando @angular/*', async () => {
+    it('blocks application importing @angular/*', async () => {
       const rules = await rulesViolatedBy(
         'src/application/__fixture__.ts',
         `import { Injectable } from '@angular/core';\nexport const i = Injectable;\n`,
@@ -62,7 +62,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-imports');
     });
 
-    it('barra application importando @tauri-apps/*', async () => {
+    it('blocks application importing @tauri-apps/*', async () => {
       const rules = await rulesViolatedBy(
         'src/application/__fixture__.ts',
         `import { invoke } from '@tauri-apps/api/core';\nexport const i = invoke;\n`,
@@ -71,8 +71,8 @@ describe('lint de arquitetura', () => {
     });
   });
 
-  describe('regras 3 e 4: ui não toca infrastructure nem Tauri', () => {
-    it('barra ui importando infrastructure', async () => {
+  describe('rules 3 and 4: ui does not touch infrastructure or Tauri', () => {
+    it('blocks ui importing infrastructure', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { JsonSettingsStore } from '../infrastructure/persistence';\nexport const s = JsonSettingsStore;\n`,
@@ -80,7 +80,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('boundaries/dependencies');
     });
 
-    it('barra ui importando plugin do Tauri', async () => {
+    it('blocks ui importing a Tauri plugin', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { readTextFile } from '@tauri-apps/plugin-fs';\nexport const r = readTextFile;\n`,
@@ -88,12 +88,12 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-imports');
     });
 
-    it('barra ui chamando fetch', async () => {
+    it('blocks ui calling fetch', async () => {
       const rules = await rulesViolatedBy('src/ui/__fixture__.ts', `export const call = () => fetch('/x');\n`);
       expect(rules).toContain('no-restricted-globals');
     });
 
-    it('barra ui importando @angular/common/http', async () => {
+    it('blocks ui importing @angular/common/http', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { HttpClient } from '@angular/common/http';\nexport const h = HttpClient;\n`,
@@ -101,7 +101,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-imports');
     });
 
-    it('permite ui importando @angular/common', async () => {
+    it('allows ui importing @angular/common', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { DatePipe } from '@angular/common';\nexport const d = DatePipe;\n`,
@@ -128,7 +128,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toEqual([]);
     });
 
-    it('barra desestruturação de XMLHttpRequest e WebSocket de self', async () => {
+    it('blocks destructuring XMLHttpRequest and WebSocket from self', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `const { XMLHttpRequest, WebSocket: Socket } = self;\nexport const a = [XMLHttpRequest, Socket];\n`,
@@ -136,7 +136,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-syntax');
     });
 
-    it('permite fetch na infrastructure, inclusive via globalThis', async () => {
+    it('allows fetch in infrastructure, including via globalThis', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
         `export const a = () => fetch('/x');\nexport const b = () => globalThis.fetch('/x');\n`,
@@ -145,13 +145,13 @@ describe('lint de arquitetura', () => {
     });
   });
 
-  describe('regra 6: detecção de SO', () => {
-    it('barra navigator.platform fora do composition-root', async () => {
+  describe('rule 6: OS detection', () => {
+    it('blocks navigator.platform outside the composition root', async () => {
       const rules = await rulesViolatedBy('src/ui/__fixture__.ts', `export const os = navigator.platform;\n`);
       expect(rules).toContain('no-restricted-properties');
     });
 
-    it('permite no composition-root', async () => {
+    it('allows it in the composition root', async () => {
       const rules = await rulesViolatedBy('src/composition-root.ts', `export const os = navigator.platform;\n`);
       expect(rules).toEqual([]);
     });
@@ -167,7 +167,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-syntax');
     });
 
-    it('permite desestruturar propriedade não relacionada a SO de navigator', async () => {
+    it('allows destructuring a non-OS property from navigator', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `const { language } = navigator;\nexport const l = language;\n`,
@@ -175,12 +175,12 @@ describe('lint de arquitetura', () => {
       expect(rules).toEqual([]);
     });
 
-    it('barra process.platform fora do composition-root', async () => {
+    it('blocks process.platform outside the composition root', async () => {
       const rules = await rulesViolatedBy('src/infrastructure/__fixture__.ts', `export const os = process.platform;\n`);
       expect(rules).toContain('no-restricted-properties');
     });
 
-    it('barra window.navigator.platform na infrastructure', async () => {
+    it('blocks window.navigator.platform in infrastructure', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
         `export const os = window.navigator.platform;\n`,
@@ -188,7 +188,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-syntax');
     });
 
-    it('barra @tauri-apps/plugin-os na infrastructure', async () => {
+    it('blocks @tauri-apps/plugin-os in infrastructure', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
         `import { platform } from '@tauri-apps/plugin-os';\nexport const os = platform;\n`,
@@ -196,7 +196,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-imports');
     });
 
-    it('barra @tauri-apps/plugin-os na ui', async () => {
+    it('blocks @tauri-apps/plugin-os in ui', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { platform } from '@tauri-apps/plugin-os';\nexport const os = platform;\n`,
@@ -204,7 +204,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-imports');
     });
 
-    it('permite plugin-os, process.platform e window.navigator no composition-root', async () => {
+    it('allows plugin-os, process.platform and window.navigator in the composition root', async () => {
       const rules = await rulesViolatedBy(
         'src/composition-root.ts',
         `import { platform } from '@tauri-apps/plugin-os';\nexport const a = [platform, process.platform, window.navigator.platform];\n`,
@@ -212,7 +212,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toEqual([]);
     });
 
-    it('infrastructure continua podendo usar outros plugins do Tauri', async () => {
+    it('infrastructure can still use other Tauri plugins', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
         `import { readTextFile } from '@tauri-apps/plugin-fs';\nexport const r = readTextFile;\n`,
@@ -221,8 +221,8 @@ describe('lint de arquitetura', () => {
     });
   });
 
-  describe('dependências permitidas', () => {
-    it('ui importa application e domain', async () => {
+  describe('allowed dependencies', () => {
+    it('ui imports application and domain', async () => {
       const rules = await rulesViolatedBy(
         'src/ui/__fixture__.ts',
         `import { PageRegistry } from '../application/pages';\nimport { createDefaultSettings } from '../domain/settings';\nexport const x = [PageRegistry, createDefaultSettings];\n`,
@@ -230,7 +230,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toEqual([]);
     });
 
-    it('infrastructure implementa portas da application', async () => {
+    it('infrastructure implements application ports', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
         `import type { Clock } from '../application/ports';\nexport type C = Clock;\n`,
@@ -238,7 +238,7 @@ describe('lint de arquitetura', () => {
       expect(rules).toEqual([]);
     });
 
-    it('composition-root importa infrastructure e ui', async () => {
+    it('composition root imports infrastructure and ui', async () => {
       const rules = await rulesViolatedBy(
         'src/composition-root.ts',
         `import { SystemClock } from './infrastructure/platform/system-clock';\nimport { createExamplePage } from './ui/pages/example/example.page';\nexport const x = [SystemClock, createExamplePage];\n`,
@@ -247,7 +247,7 @@ describe('lint de arquitetura', () => {
     });
   });
 
-  describe('regra 7: popover não pode perder o foco', () => {
+  describe('rule 7: the popover must not lose focus', () => {
     function sourcesUnder(dir: string): string[] {
       return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
         const path = join(dir, entry.name);
@@ -256,7 +256,7 @@ describe('lint de arquitetura', () => {
       });
     }
 
-    it('a ui não usa input type=color (o seletor nativo fecha o popover por blur)', () => {
+    it('ui does not use input type=color (the native picker closes the popover on blur)', () => {
       const offenders = sourcesUnder('src/ui').filter((path) => /type\s*=\s*["']color["']/.test(readFileSync(path, 'utf8')));
       expect(offenders).toEqual([]);
     });

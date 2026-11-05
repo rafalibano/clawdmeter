@@ -8,17 +8,17 @@ import { fakePage } from '../testing/fake-page';
 import { PollingScheduler, type PageUpdate } from './polling-scheduler';
 
 describe('rateLimitDelay', () => {
-  it('sobe 5 -> 10 -> 20 -> 30 min e para em 30', () => {
+  it('goes 5 -> 10 -> 20 -> 30 min and stops at 30', () => {
     expect([1, 2, 3, 4, 5, 9].map((failures) => rateLimitDelay(failures, null) / MINUTE_MS)).toEqual([5, 10, 20, 30, 30, 30]);
   });
 
-  it('o Retry-After maior vence o backoff e o menor não encurta', () => {
+  it('a larger Retry-After wins over the backoff and a smaller one does not shorten it', () => {
     expect(rateLimitDelay(1, 12 * MINUTE_MS)).toBe(12 * MINUTE_MS);
     expect(rateLimitDelay(2, MINUTE_MS)).toBe(10 * MINUTE_MS);
   });
 });
 
-describe('PollingScheduler com rate limit', () => {
+describe('PollingScheduler with rate limit', () => {
   let clock: FakeClock;
   let updates: PageUpdate[];
   let outcome: () => Promise<string>;
@@ -37,7 +37,7 @@ describe('PollingScheduler com rate limit', () => {
 
   const limited = (retryAfterMs: number | null = null) => () => Promise.reject(new RateLimitedError(retryAfterMs));
 
-  it('429 publica o erro com o horário da próxima tentativa e adia o poll', async () => {
+  it('429 publishes the error with the next attempt time and postpones the poll', async () => {
     outcome = limited();
     scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -47,7 +47,7 @@ describe('PollingScheduler com rate limit', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it('o backoff dobra a cada falha seguida: 5, 10, 20, 30, 30 min', async () => {
+  it('the backoff doubles on each consecutive failure: 5, 10, 20, 30, 30 min', async () => {
     outcome = limited();
     scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -64,7 +64,7 @@ describe('PollingScheduler com rate limit', () => {
     expect(waits.slice(0, 3)).toEqual([10, 20, 30]);
   });
 
-  it('o Retry-After maior que o backoff é respeitado', async () => {
+  it('a Retry-After larger than the backoff is honored', async () => {
     outcome = limited(12 * MINUTE_MS);
     scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -75,7 +75,7 @@ describe('PollingScheduler com rate limit', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('refresh manual em backoff não chama a fonte', async () => {
+  it('a manual refresh during backoff does not call the source', async () => {
     outcome = limited();
     scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -84,7 +84,7 @@ describe('PollingScheduler com rate limit', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it('um sucesso zera o backoff e volta ao ritmo normal', async () => {
+  it('a success resets the backoff and returns to the normal pace', async () => {
     outcome = limited();
     scheduler.sync(createDefaultSettings());
     await flushPromises();
@@ -100,7 +100,7 @@ describe('PollingScheduler com rate limit', () => {
     expect(scheduler.backoffUntil('usage')! - clock.now()).toBe(5 * MINUTE_MS);
   });
 
-  it('erro comum não aciona backoff', async () => {
+  it('an ordinary error does not trigger backoff', async () => {
     outcome = () => Promise.reject(new Error('rede'));
     scheduler.sync(createDefaultSettings());
     await flushPromises();

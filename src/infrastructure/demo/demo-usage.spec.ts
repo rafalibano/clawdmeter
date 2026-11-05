@@ -12,16 +12,16 @@ import { DemoUsageIndicator } from './demo-usage-indicator';
 
 const ORIGIN = new Date(2026, 10, 5, 14, 30).getTime();
 
-describe('modelo de usage do demo', () => {
+describe('demo usage model', () => {
   const model = new DemoUsageModel(ORIGIN);
 
-  it('histórico tem uma lacuna entre 4d e 2,5d atrás para exercitar a quebra da linha', () => {
+  it('history has a gap between 4d and 2.5d ago to exercise the line break', () => {
     const points = model.history(ORIGIN).sevenDay;
     expect(points.some((point) => point.at > ORIGIN - 4 * DAY_MS + MINUTE_MS && point.at < ORIGIN - 2.5 * DAY_MS - MINUTE_MS)).toBe(false);
     expect(points.some((point) => point.at < ORIGIN - 7 * DAY_MS)).toBe(true);
   });
 
-  it('histórico cobre ~30 dias, em ordem e sem passar de 30 dias', () => {
+  it('history covers ~30 days, in order and never beyond 30 days', () => {
     const history = model.history(ORIGIN);
     for (const points of [history.fiveHour, history.sevenDay]) {
       expect(points.length).toBeGreaterThan(5_000);
@@ -31,7 +31,7 @@ describe('modelo de usage do demo', () => {
     }
   });
 
-  it('janela de 5h reseta várias vezes e o semanal também cai no reset', () => {
+  it('the 5h window resets several times and the weekly one also drops at the reset', () => {
     const history = model.history(ORIGIN);
     const drops = (points: typeof history.fiveHour) =>
       points.filter((point, index) => index > 0 && point.utilization < points[index - 1]!.utilization - 1).length;
@@ -39,7 +39,7 @@ describe('modelo de usage do demo', () => {
     expect(drops(history.sevenDay)).toBeGreaterThanOrEqual(3);
   });
 
-  it('a janela atual está ativa, com reset no futuro e uso crescente', () => {
+  it('the current window is active, with a future reset and growing usage', () => {
     const early = model.snapshotAt(ORIGIN);
     const later = model.snapshotAt(ORIGIN + 30 * MINUTE_MS);
     expect(early.fiveHour!.resetsAt).toBeGreaterThan(ORIGIN);
@@ -48,7 +48,7 @@ describe('modelo de usage do demo', () => {
     expect(early.sevenDay!.resetsAt).toBeGreaterThan(ORIGIN + DAY_MS);
   });
 
-  it('cenário high: 7d acima de 90% e 5h por volta de 60%', () => {
+  it('high scenario: 7d above 90% and 5h around 60%', () => {
     const snapshot = new DemoUsageModel(ORIGIN, true).snapshotAt(ORIGIN);
     expect(snapshot.sevenDay!.utilization).toBeGreaterThan(90);
     expect(snapshot.sevenDay!.utilization).toBeLessThan(100);
@@ -56,11 +56,11 @@ describe('modelo de usage do demo', () => {
     expect(snapshot.fiveHour!.utilization).toBeLessThan(70);
   });
 
-  it('é determinístico', () => {
+  it('is deterministic', () => {
     expect(model.snapshotAt(ORIGIN - 2 * DAY_MS)).toEqual(new DemoUsageModel(ORIGIN).snapshotAt(ORIGIN - 2 * DAY_MS));
   });
 
-  it('o gateway do demo repete o que o Rust faz: credencial vencida vira claude-expired', async () => {
+  it('the demo gateway mirrors what Rust does: an expired credential becomes claude-expired', async () => {
     const world = createFakeConnectionWorld();
     world.claude.outcome = { expiresAt: ORIGIN - 1, subscriptionType: 'max' };
     const gateway = new DemoUsageGateway(model, () => ORIGIN, world.claude);
@@ -69,7 +69,7 @@ describe('modelo de usage do demo', () => {
     expect((await gateway.fetch()).fiveHour).not.toBeNull();
   });
 
-  it('LoadUsage com o demo já devolve previsão pronta para a janela de 5h', async () => {
+  it('LoadUsage with the demo already returns a ready forecast for the 5h window', async () => {
     const world = createFakeConnectionWorld();
     const clock = new FakeClock();
     await clock.advance(ORIGIN);
@@ -87,8 +87,8 @@ describe('modelo de usage do demo', () => {
   });
 });
 
-describe('sessões do demo', () => {
-  it('mostra sessões em vários estados, esconde a morta e ignora o arquivo corrompido', async () => {
+describe('demo sessions', () => {
+  it('shows sessions in several states, hides the dead one and ignores the corrupt file', async () => {
     const clock = new FakeClock();
     await clock.advance(ORIGIN);
     const data = await new LoadSessions(

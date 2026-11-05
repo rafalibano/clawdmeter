@@ -35,7 +35,7 @@ class MemoryFile implements AtomicJsonFile {
 }
 
 describe('JsonUsageHistoryStore', () => {
-  it('leitura que falha não trava o próximo load', async () => {
+  it('a failed read does not block the next load', async () => {
     const file = new MemoryFile();
     let fail = true;
     file.read = async () => {
@@ -48,11 +48,11 @@ describe('JsonUsageHistoryStore', () => {
     expect(await store.load()).toEqual(createEmptyHistory());
   });
 
-  it('arquivo ausente: histórico vazio', async () => {
+  it('missing file: empty history', async () => {
     expect(await new JsonUsageHistoryStore(new MemoryFile()).load()).toEqual(createEmptyHistory());
   });
 
-  it('grava e relê o histórico (sobrevive a reiniciar)', async () => {
+  it('writes and rereads the history (survives a restart)', async () => {
     const file = new MemoryFile();
     const history = {
       fiveHour: [{ at: 1_000, utilization: 12.5, resetsAt: 9_000 }],
@@ -63,7 +63,7 @@ describe('JsonUsageHistoryStore', () => {
     expect(await new JsonUsageHistoryStore(file).load()).toEqual(history);
   });
 
-  it('JSON inválido: guarda o arquivo como .corrupt e começa vazio, sem sobrescrever', async () => {
+  it('invalid JSON: keeps the file as .corrupt and starts empty, without overwriting', async () => {
     const file = new MemoryFile('{ quebrado');
     const store = new JsonUsageHistoryStore(file);
     expect(await store.load()).toEqual(createEmptyHistory());
@@ -73,13 +73,13 @@ describe('JsonUsageHistoryStore', () => {
     expect(file.corrupt).toBe('{ quebrado');
   });
 
-  it('JSON válido mas que não é um objeto também vai para .corrupt', async () => {
+  it('valid JSON that is not an object also goes to .corrupt', async () => {
     const file = new MemoryFile('[1,2]');
     expect(await new JsonUsageHistoryStore(file).load()).toEqual(createEmptyHistory());
     expect(file.corrupt).toBe('[1,2]');
   });
 
-  it('lê o disco uma vez e mantém o histórico em memória depois', async () => {
+  it('reads the disk once and keeps the history in memory afterwards', async () => {
     const file = new MemoryFile();
     const store = new JsonUsageHistoryStore(file);
     await Promise.all([store.load(), store.load()]);
@@ -89,7 +89,7 @@ describe('JsonUsageHistoryStore', () => {
     expect(file.reads).toBe(1);
   });
 
-  it('grava de forma atômica e em série, na ordem das chamadas', async () => {
+  it('writes atomically and in series, in call order', async () => {
     const order: number[] = [];
     let active = 0;
     let overlapped = false;
@@ -110,7 +110,7 @@ describe('JsonUsageHistoryStore', () => {
     expect(overlapped).toBe(false);
   });
 
-  it('uma gravação que falha não trava as seguintes e o histórico em memória continua válido', async () => {
+  it('a failed write does not block the following ones and the in-memory history stays valid', async () => {
     let calls = 0;
     const file = new (class extends MemoryFile {
       override async writeAtomic(text: string): Promise<void> {
@@ -127,7 +127,7 @@ describe('JsonUsageHistoryStore', () => {
     expect(file.text).not.toBeNull();
   });
 
-  it('o marcador da migração do ClaudeUsageBar sobrevive a salvar e reiniciar', async () => {
+  it('the ClaudeUsageBar migration marker survives saving and restarting', async () => {
     const file = new MemoryFile();
     const store = new JsonUsageHistoryStore(file);
     expect(await store.importedAt()).toBeNull();
@@ -139,7 +139,7 @@ describe('JsonUsageHistoryStore', () => {
     expect((await reopened.load()).fiveHour).toHaveLength(1);
   });
 
-  it('arquivo antigo sem marcador volta null', async () => {
+  it('an old file without a marker returns null', async () => {
     const file = new MemoryFile(JSON.stringify({ schemaVersion: 1, fiveHour: [], sevenDay: [] }));
     expect(await new JsonUsageHistoryStore(file).importedAt()).toBeNull();
   });

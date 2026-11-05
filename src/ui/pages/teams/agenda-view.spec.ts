@@ -20,7 +20,7 @@ function snapshot(meetings: Meeting[]): AgendaSnapshot {
   return { meetings, day: dayBounds(NOW, ZONE), timeZone: ZONE };
 }
 
-describe('contagem regressiva por língua', () => {
+describe('countdown by language', () => {
   it.each([
     [0, 'agora', 'now', 'ahora'],
     [-3, 'agora', 'now', 'ahora'],
@@ -41,7 +41,7 @@ describe('toAgendaView', () => {
   const next = meeting('1:1', NOW + 25 * MIN, NOW + 55 * MIN, { joinUrl: JOIN });
   const cancelled = meeting('Planejamento', NOW + 120 * MIN, NOW + 180 * MIN, { cancelled: true, joinUrl: JOIN });
 
-  it('mostra horário local, badges "agora" e "próxima em X min" e a manchete', () => {
+  it('shows local time, "now" and "next in X min" badges and the headline', () => {
     const view = toAgendaView(snapshot([next, running, past]), NOW);
     expect(view.headline).toBe('Agora: Daily do time');
     expect(view.rows.map((row) => [row.title, row.time, row.tone, row.badge])).toEqual([
@@ -52,11 +52,11 @@ describe('toAgendaView', () => {
     expect(view.rows[1]?.detail).toBe('Sala 1 · Fulano');
   });
 
-  it('sem reunião em andamento, a manchete é a próxima', () => {
+  it('without a meeting in progress, the headline is the next one', () => {
     expect(toAgendaView(snapshot([past, next]), NOW).headline).toBe('Próxima em 25 min: 1:1');
   });
 
-  it('só oferece Entrar em reunião futura ou em andamento, nunca cancelada nem passada', () => {
+  it('only offers Join for a future or ongoing meeting, never cancelled or past', () => {
     const view = toAgendaView(snapshot([past, running, next, cancelled]), NOW);
     expect(view.rows.map((row) => [row.title, row.joinUrl !== null])).toEqual([
       ['Passada', false],
@@ -67,7 +67,7 @@ describe('toAgendaView', () => {
     expect(view.rows[3]?.tone).toBe('cancelled');
   });
 
-  it('dia inteiro vai para a lista própria como "Dia todo"', () => {
+  it('all-day goes to its own list as "All day"', () => {
     const day = dayBounds(NOW, ZONE);
     const holiday = meeting('Feriado', day.startsAt, day.endsAt + 1000, { allDay: true });
     const view = toAgendaView(snapshot([holiday]), NOW);
@@ -77,7 +77,7 @@ describe('toAgendaView', () => {
     expect(view.isEmpty).toBe(false);
   });
 
-  it('dia sem reuniões fica vazio', () => {
+  it('a day without meetings is empty', () => {
     const view = toAgendaView(snapshot([]), NOW);
     expect(view).toEqual({ headline: null, allDay: [], rows: [], isEmpty: true });
   });
@@ -86,12 +86,12 @@ describe('toAgendaView', () => {
 describe('isStale', () => {
   const day = dayBounds(NOW, ZONE);
 
-  it('o dia vale até o último segundo e vence no seguinte', () => {
+  it('the day is valid until the last second and expires on the next one', () => {
     expect(isStale(snapshot([]), day.endsAt)).toBe(false);
     expect(isStale(snapshot([]), day.endsAt + 1_000)).toBe(true);
   });
 
-  it('às 23:59:59.5 ainda é o mesmo dia e na virada da meia-noite vence', () => {
+  it('at 23:59:59.5 it is still the same day and at midnight it expires', () => {
     const lastInstant = Date.parse('2026-11-06T02:59:59.500Z');
     const midnight = Date.parse('2026-11-06T03:00:00.000Z');
     expect(day.startsAt).toBe(Date.parse('2026-11-05T03:00:00.000Z'));
@@ -100,7 +100,7 @@ describe('isStale', () => {
     expect(isStale(snapshot([]), midnight - 1)).toBe(false);
   });
 
-  it('depois de uma noite inteira o snapshot do dia anterior vence', () => {
+  it("after a whole night the previous day's snapshot expires", () => {
     expect(isStale(snapshot([]), Date.parse('2026-11-07T15:00:00Z'))).toBe(true);
   });
 });

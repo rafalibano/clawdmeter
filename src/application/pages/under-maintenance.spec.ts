@@ -10,7 +10,7 @@ describe('underMaintenance', () => {
   class Placeholder {}
   const page = underMaintenance(real, Placeholder);
 
-  it('mantém id e título, mas sem polling nem conexões', () => {
+  it('keeps id and title, but without polling or connections', () => {
     expect(page.id).toBe('teams');
     expect(page.title).toBe(real.title);
     expect(page.pollIntervalMs).toBeNull();
@@ -19,17 +19,17 @@ describe('underMaintenance', () => {
     expect(page.component).not.toBe(FakeComponent);
   });
 
-  it('load não chama o load real', async () => {
+  it('load does not call the real load', async () => {
     await page.load();
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('habilitada, não exige conexões', () => {
+  it('enabled, requires no connections', () => {
     const settings = { ...createDefaultSettings(), enabledPages: { teams: true } };
     expect(new PageRegistry([page]).requiredConnections(settings)).toEqual([]);
   });
 
-  it('Skills e Agenda estão na lista de manutenção e desligadas por padrão', () => {
+  it('Skills and Agenda are in the maintenance list and off by default', () => {
     expect([...MAINTENANCE_PAGES].sort()).toEqual(['skills', 'teams']);
     const registry = new PageRegistry([real, fakePage({ id: 'skills' })]);
     expect(registry.enabled(createDefaultSettings())).toEqual([]);

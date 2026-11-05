@@ -1,3 +1,4 @@
+import type { ErrorArgs, ErrorCode } from '../coded-error';
 import type { ConnectionProblem } from './connection-problem';
 import type { GitHubCliStep } from './github';
 
@@ -18,7 +19,7 @@ export type ConnectionStatus =
   | { state: 'checking' }
   | { state: 'disconnected'; note?: StatusNote; cli?: GitHubCliStep }
   | { state: 'connected'; account?: string; detail?: string }
-  | { state: 'error'; problem: ConnectionProblem; message?: string; note?: StatusNote; noteArg?: string };
+  | { state: 'error'; problem: ConnectionProblem; message?: string; code?: ErrorCode; args?: ErrorArgs; note?: StatusNote; noteArg?: string };
 
 export const UNKNOWN_STATUS: ConnectionStatus = { state: 'unknown' };
 
@@ -30,6 +31,9 @@ export function noteStatus(problem: ConnectionProblem, note: StatusNote, noteArg
   return noteArg === undefined ? { state: 'error', problem, note } : { state: 'error', problem, note, noteArg };
 }
 
-export function statusForProblem(problem: ConnectionProblem, message?: string): ConnectionStatus {
-  return problem === 'microsoft-not-connected' ? { state: 'disconnected' } : errorStatus(problem, message);
+export function statusForProblem(problem: ConnectionProblem, message?: string, code?: ErrorCode, args?: ErrorArgs): ConnectionStatus {
+  if (problem === 'microsoft-not-connected') return { state: 'disconnected' };
+  const status = errorStatus(problem, message);
+  if (status.state !== 'error' || code === undefined) return status;
+  return { ...status, code, ...(args ? { args } : {}) };
 }

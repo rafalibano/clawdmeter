@@ -109,9 +109,9 @@ export class GraphCalendarGateway implements CalendarGateway {
     });
     if (response.status === 401) throw new ConnectionProblemError('microsoft-expired');
     if (response.status === 403) {
-      throw new ConnectionProblemError('microsoft-expired', 'A Microsoft não liberou a leitura da agenda (Calendars.Read).');
+      throw new ConnectionProblemError('microsoft-expired', undefined, 'microsoft-calendar-denied');
     }
-    if (!response.ok) throw new Error(`Microsoft Graph respondeu ${response.status}`);
+    if (!response.ok) throw new Error(`Microsoft Graph responded ${response.status}`);
     return (await response.json()) as GraphPage;
   }
 }
@@ -123,7 +123,7 @@ function toMeeting(event: GraphEvent, timeZone: string): Meeting | null {
   if (event.id === undefined || startsAt === null || endsAt === null) return null;
   return {
     id: event.id,
-    title: event.subject?.trim() || '(sem título)',
+    title: event.subject?.trim() ?? '',
     startsAt,
     endsAt,
     allDay,

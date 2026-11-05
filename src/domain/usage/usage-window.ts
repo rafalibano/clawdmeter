@@ -15,6 +15,6 @@ export const USAGE_WINDOWS: readonly UsageWindowDefinition[] = [
 
 export function usageWindow(kind: UsageWindowKind): UsageWindowDefinition {
   const definition = USAGE_WINDOWS.find((window) => window.kind === kind);
-  if (!definition) throw new Error(`Janela de usage desconhecida: ${kind}`);
+  if (!definition) throw new Error(`Unknown usage window: ${kind}`);
   return definition;
 }

@@ -54,7 +54,7 @@ function feed(lines: readonly string[]): void {
 }
 
 describe('RunSkill', () => {
-  it('roda claude -p com stream-json, orçamento e ferramentas da config', async () => {
+  it('runs claude -p with stream-json, budget and tools from the config', async () => {
     const { run } = await skills.run.execute('acabativa');
     expect(run.status).toBe('running');
     expect(runner.processes[0]?.spec).toEqual({
@@ -74,15 +74,15 @@ describe('RunSkill', () => {
     });
   });
 
-  it('skill com ferramenta fora da lista não abre processo e explica o motivo', async () => {
+  it('a skill with a tool outside the list opens no process and explains why', async () => {
     const config = new FakeSkillsConfigStore(parseSkillsConfig(null).map((skill) => ({ ...skill, allowedTools: ['Read(./**)', 'Write'] })));
     const guarded = createSkills({ config, runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() }, clock, connections);
-    await expect(guarded.run.execute('acabativa')).rejects.toThrow('usa ferramenta não permitida: Write');
+    await expect(guarded.run.execute('acabativa')).rejects.toThrow('uses a tool that is not allowed: Write');
     expect(runner.processes).toHaveLength(0);
     expect(guarded.board.finished()).toHaveLength(0);
   });
 
-  it('mostra o progresso ao vivo e conclui com custo, sessão e resultado', async () => {
+  it('shows live progress and finishes with cost, session and result', async () => {
     const seen: string[] = [];
     skills.board.subscribe((runs) => seen.push(runs[0]?.status ?? 'vazio'));
     const { run, finished } = await skills.run.execute('acabativa');
@@ -103,7 +103,7 @@ describe('RunSkill', () => {
     expect(seen.at(-1)).toBe('succeeded');
   });
 
-  it('a run segue ocupada entre o result e o exit do processo', async () => {
+  it('the run stays busy between the result and the process exit', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
     expect(skills.board.get(run.id)?.status).toBe('succeeded');
@@ -116,7 +116,7 @@ describe('RunSkill', () => {
     expect(skills.board.finished()).toHaveLength(1);
   });
 
-  it('persiste o histórico sem o log', async () => {
+  it('persists the history without the log', async () => {
     const { finished } = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
     runner.processes[0]?.exit(0);
@@ -125,7 +125,7 @@ describe('RunSkill', () => {
     expect(store.stored[0]).toMatchObject({ status: 'succeeded', log: [] });
   });
 
-  it('falha ao salvar o histórico não trava a run', async () => {
+  it('failing to save the history does not block the run', async () => {
     store.failSave = true;
     const { finished } = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
@@ -133,7 +133,7 @@ describe('RunSkill', () => {
     expect((await finished).status).toBe('succeeded');
   });
 
-  it('detecta MCP sem autenticação e deixa o problema na run', async () => {
+  it('detects an unauthenticated MCP and leaves the problem on the run', async () => {
     const { finished } = await skills.run.execute('acabativa');
     feed(MCP_NEEDS_AUTH_STREAM);
     runner.processes[0]?.exit(1);
@@ -144,40 +144,40 @@ describe('RunSkill', () => {
     });
   });
 
-  it('saída sem resultado falha com o stderr', async () => {
+  it('output without a result fails with the stderr', async () => {
     const { finished } = await skills.run.execute('acabativa');
-    runner.processes[0]?.stderr('Error: credencial inválida');
+    runner.processes[0]?.stderr('Error: invalid credential');
     runner.processes[0]?.exit(1);
-    expect(await finished).toMatchObject({ status: 'failed', error: 'Error: credencial inválida' });
+    expect(await finished).toMatchObject({ status: 'failed', error: 'Error: invalid credential' });
   });
 
-  it('ignora linhas que não são JSON', async () => {
+  it('ignores lines that are not JSON', async () => {
     const { run } = await skills.run.execute('acabativa');
     feed(NOISY_STREAM);
     expect(skills.board.get(run.id)?.log).toEqual([{ kind: 'text', text: 'ok' }]);
   });
 
-  it('Claude Code ausente vira falha com problema claude-code-missing', async () => {
-    runner.startError = new ConnectionProblemError('claude-code-missing', 'claude não encontrado');
+  it('a missing Claude Code becomes a failure with the claude-code-missing problem', async () => {
+    runner.startError = new ConnectionProblemError('claude-code-missing', 'claude not found');
     const { run, finished } = await skills.run.execute('acabativa');
-    expect(await finished).toMatchObject({ status: 'failed', problem: 'claude-code-missing', error: 'claude não encontrado' });
+    expect(await finished).toMatchObject({ status: 'failed', problem: 'claude-code-missing', error: 'claude not found' });
     expect(skills.board.get(run.id)?.status).toBe('failed');
   });
 
-  it('outro erro ao iniciar vira falha sem problema de conexão', async () => {
+  it('another error on start becomes a failure without a connection problem', async () => {
     runner.startError = new Error('spawn falhou');
     const { finished } = await skills.run.execute('acabativa');
     expect(await finished).toMatchObject({ status: 'failed', problem: null, error: 'spawn falhou' });
   });
 
-  it('recusa skill desconhecida e execução simultânea da mesma skill', async () => {
+  it('rejects an unknown skill and simultaneous execution of the same skill', async () => {
     await expect(skills.run.execute('nada')).rejects.toThrow('skill-unknown');
     await skills.run.execute('acabativa');
     await expect(skills.run.execute('acabativa')).rejects.toThrow('skill-running');
     expect(runner.processes).toHaveLength(1);
   });
 
-  it('permite rodar de novo depois de terminar', async () => {
+  it('allows running again after finishing', async () => {
     const first = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
     runner.processes[0]?.exit(0);
@@ -187,7 +187,7 @@ describe('RunSkill', () => {
   });
 });
 
-describe('Notificação ao fim da run', () => {
+describe('Notification at the end of the run', () => {
   async function conclude(lines: readonly string[], code: number): Promise<SkillRun> {
     const { finished } = await skills.run.execute('acabativa');
     feed(lines);
@@ -196,34 +196,34 @@ describe('Notificação ao fim da run', () => {
     return finished;
   }
 
-  it('sucesso notifica com o custo e a duração', async () => {
+  it('success notifies with the cost and the duration', async () => {
     await conclude(SUCCESS_STREAM, 0);
-    expect(notifier.sent).toEqual([{ title: 'Acabativa concluída', body: 'US$ 0,12 · 5s' }]);
+    expect(notifier.sent).toEqual([{ title: 'Acabativa finished', body: 'US$ 0.12 · 5s' }]);
   });
 
-  it('falha notifica com o motivo', async () => {
+  it('failure notifies with the reason', async () => {
     const { finished } = await skills.run.execute('acabativa');
-    runner.processes[0]?.stderr('Error: credencial inválida');
+    runner.processes[0]?.stderr('Error: invalid credential');
     runner.processes[0]?.exit(1);
     await finished;
-    expect(notifier.sent).toEqual([{ title: 'Acabativa falhou', body: 'Error: credencial inválida · 0s' }]);
+    expect(notifier.sent).toEqual([{ title: 'Acabativa failed', body: 'Error: invalid credential · 0s' }]);
   });
 
-  it('cancelada não notifica', async () => {
+  it('cancelled does not notify', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     await skills.cancel.execute(run.id);
     await finished;
     expect(notifier.sent).toEqual([]);
   });
 
-  it('com a conexão de notificações bloqueada não notifica', async () => {
+  it('with the notifications connection blocked does not notify', async () => {
     world.notifications.state = 'denied';
     await connections.check.execute('notifications');
     await conclude(SUCCESS_STREAM, 0);
     expect(notifier.sent).toEqual([]);
   });
 
-  it('com o estado ainda desconhecido verifica a conexão antes de notificar', async () => {
+  it('with the state still unknown checks the connection before notifying', async () => {
     const fresh = createConnections(world.adapters, clock);
     const lazy = createSkills(
       { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() },
@@ -237,21 +237,21 @@ describe('Notificação ao fim da run', () => {
     expect(notifier.sent).toHaveLength(1);
   });
 
-  it('falha ao notificar não trava a run', async () => {
+  it('failing to notify does not block the run', async () => {
     notifier.fail = true;
     expect((await conclude(SUCCESS_STREAM, 0)).status).toBe('succeeded');
   });
 });
 
 describe('CancelSkillRun', () => {
-  it('mata o processo e marca a run como cancelada', async () => {
+  it('kills the process and marks the run as cancelled', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     await skills.cancel.execute(run.id);
     expect(runner.processes[0]?.killed).toBe(1);
     expect(await finished).toMatchObject({ status: 'cancelled', error: null });
   });
 
-  it('cancelar antes do processo estar anexado fica guardado e mata no attach', async () => {
+  it('cancelling before the process is attached is remembered and kills on attach', async () => {
     let release: () => void = () => undefined;
     runner.startGate = new Promise<void>((resolve) => (release = resolve));
     const starting = skills.run.execute('acabativa');
@@ -265,7 +265,7 @@ describe('CancelSkillRun', () => {
     expect(await finished).toMatchObject({ status: 'cancelled', error: null });
   });
 
-  it('cancelar uma run que já terminou não faz nada', async () => {
+  it('cancelling a run that already finished does nothing', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     runner.processes[0]?.exit(1);
     await finished;
@@ -274,8 +274,8 @@ describe('CancelSkillRun', () => {
   });
 });
 
-describe('histórico', () => {
-  it('carrega as runs gravadas para o quadro', async () => {
+describe('history', () => {
+  it('loads the stored runs for the board', async () => {
     const old: SkillRun = {
       id: 'old',
       skillId: 'acabativa',
@@ -301,8 +301,8 @@ describe('histórico', () => {
   });
 });
 
-describe('Continuar no terminal', () => {
-  it('abre o terminal com claude --resume <session_id>', async () => {
+describe('Continue in the terminal', () => {
+  it('opens the terminal with claude --resume <session_id>', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
     runner.processes[0]?.exit(0);
@@ -311,7 +311,7 @@ describe('Continuar no terminal', () => {
     expect(terminal.commands).toEqual([{ program: 'claude', args: ['--resume', FIXTURE_SESSION_ID], cwd: null }]);
   });
 
-  it('retoma na mesma pasta em que a run foi iniciada', async () => {
+  it('resumes in the same folder where the run was started', async () => {
     const config = new FakeSkillsConfigStore(
       parseSkillsConfig({ skills: [{ id: 'proj', name: 'Proj', prompt: '/proj', cwd: '/Users/dev/proj' }] }),
     );
@@ -327,7 +327,7 @@ describe('Continuar no terminal', () => {
     ]);
   });
 
-  it('sem session_id válido recusa', async () => {
+  it('refuses without a valid session_id', async () => {
     const { run } = await skills.run.execute('acabativa');
     await expect(skills.continueInTerminal.execute(run.id)).rejects.toThrow('skill-no-session');
     await expect(skills.continueInTerminal.execute('inexistente')).rejects.toThrow('skill-no-session');
@@ -336,25 +336,25 @@ describe('Continuar no terminal', () => {
 });
 
 describe('FixSkillProblem', () => {
-  it('Reconectar MCP abre o terminal com claude /mcp', async () => {
+  it('Reconnect MCP opens the terminal with claude /mcp', async () => {
     await skills.fix.execute('reconnect-mcp');
     expect(terminal.commands).toEqual([{ program: 'claude', args: ['/mcp'], cwd: null }]);
   });
 
-  it('Reconectar MCP usa o cwd da run', async () => {
+  it('Reconnect MCP uses the run cwd', async () => {
     const { run } = await skills.run.execute('acabativa');
     await skills.fix.execute('reconnect-mcp', run.id);
     expect(terminal.commands).toEqual([{ program: 'claude', args: ['/mcp'], cwd: run.cwd }]);
   });
 
-  it('Instalar abre a página de instalação do Claude Code', async () => {
+  it('Install opens the Claude Code install page', async () => {
     await skills.fix.execute('install-claude-code');
     expect(urls.opened).toEqual([CLAUDE_CODE_INSTALL_URL]);
   });
 });
 
-describe('configuração', () => {
-  it('ListSkills devolve as skills configuradas', async () => {
+describe('configuration', () => {
+  it('ListSkills returns the configured skills', async () => {
     expect((await skills.list.execute()).map((skill) => skill.id)).toEqual(parseSkillsConfig(null).map((skill) => skill.id));
   });
 });

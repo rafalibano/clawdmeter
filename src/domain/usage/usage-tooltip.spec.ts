@@ -18,7 +18,7 @@ const EN: UsageTooltipTexts = {
 };
 
 describe('describeUsageTooltip', () => {
-  it('mostra percentual e reset de cada janela, com o dia da semana quando não é hoje', () => {
+  it('shows the percentage and reset of each window, with the weekday when it is not today', () => {
     const tooltip = describeUsageTooltip(
       {
         fiveHour: { utilization: 24.2, resetsAt: Date.UTC(2026, 10, 5, 14, 9) },
@@ -31,29 +31,29 @@ describe('describeUsageTooltip', () => {
     expect(tooltip).toBe('5h: 24% · reseta 14:09 | 7d: 51% · reseta seg 05:39');
   });
 
-  it('janela sem leitura vira "sem dado" e reset desconhecido some', () => {
+  it('a window without a reading becomes "no data" and an unknown reset disappears', () => {
     expect(
       describeUsageTooltip({ fiveHour: { utilization: 3, resetsAt: null }, sevenDay: null }, NOW, PT, UTC),
     ).toBe('5h: 3% | 7d: sem dado');
   });
 
-  it('usa o fuso informado para decidir se o reset é hoje', () => {
+  it('uses the given time zone to decide whether the reset is today', () => {
     const evening = NOW + 8 * HOUR_MS;
     const snapshot = { fiveHour: { utilization: 10, resetsAt: evening + 5 * HOUR_MS }, sevenDay: null };
     expect(describeUsageTooltip(snapshot, evening, PT, UTC)).toContain('reseta sex 01:00');
     expect(describeUsageTooltip(snapshot, evening, PT, 'America/Sao_Paulo')).toContain('reseta 22:00');
   });
 
-  it('um dia depois do reset ainda cita o dia da semana', () => {
+  it('a day after the reset still mentions the weekday', () => {
     const snapshot = { fiveHour: { utilization: 10, resetsAt: NOW + DAY_MS }, sevenDay: null };
     expect(describeUsageTooltip(snapshot, NOW, PT, UTC)).toContain('reseta sex 12:00');
   });
 
-  it('sem snapshot (erro ou desconectado) avisa que o usage está indisponível', () => {
+  it('without a snapshot (error or disconnected) reports that usage is unavailable', () => {
     expect(describeUsageTooltip(null, NOW, PT, UTC)).toBe('ClawdMeter · usage indisponível');
   });
 
-  it('segue a língua: textos e dia da semana em inglês', () => {
+  it('follows the language: texts and weekday in English', () => {
     const snapshot = { fiveHour: { utilization: 10, resetsAt: NOW + DAY_MS }, sevenDay: null };
     expect(describeUsageTooltip(snapshot, NOW, EN, UTC)).toBe('5h: 10% · resets fri 12:00 | 7d: no data');
     expect(describeUsageTooltip(null, NOW, EN, UTC)).toBe('ClawdMeter · usage unavailable');

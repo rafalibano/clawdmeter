@@ -8,7 +8,7 @@ export const SESSIONS_POLL_INTERVAL_MS = 5_000;
 export function createSessionsPage(deps: { loadSessions: LoadSessions }): PageModule<SessionsData> {
   return {
     id: SESSIONS_PAGE.id,
-    title: 'Sessões',
+    title: 'Sessions',
     requiredConnections: [],
     pollIntervalMs: SESSIONS_POLL_INTERVAL_MS,
     load: () => deps.loadSessions.execute(),

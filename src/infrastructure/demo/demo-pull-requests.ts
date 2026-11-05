@@ -43,16 +43,16 @@ function demoData(): Record<string, PullRequest[]> {
       pr(102, 'acme/api', 'fix: timeout na consulta de extrato', 'dev-demo', 5 * HOUR_MS, { ci: 'pending', review: 'review-required' }),
       pr(87, 'acme/web', 'refactor: componente de tabela', 'dev-demo', 6 * DAY_MS, { ci: 'failure', merge: 'conflicting', review: 'changes-requested' }),
       pr(34, 'acme/mobile', 'wip: nova tela de onboarding', 'dev-demo', 3 * HOUR_MS, { isDraft: true, ci: 'none' }),
-      pr(12, 'acme/k8s', 'chore: subir réplicas da api', 'dev-demo', 1 * DAY_MS, { review: 'review-required' }),
+      pr(12, 'acme/k8s', 'chore: scale up api replicas', 'dev-demo', 1 * DAY_MS, { review: 'review-required' }),
     ],
     toReview: [
-      pr(210, 'acme/api', 'feat: cache de configuração', 'ana-dev', 4 * HOUR_MS, { review: 'review-required' }),
-      pr(55, 'acme/web', 'fix: foco no modal de confirmação', 'bruno-dev', 1 * DAY_MS, { ci: 'failure', review: 'review-required' }),
+      pr(210, 'acme/api', 'feat: configuration cache', 'ana-dev', 4 * HOUR_MS, { review: 'review-required' }),
+      pr(55, 'acme/web', 'fix: focus in the confirmation modal', 'bruno-dev', 1 * DAY_MS, { ci: 'failure', review: 'review-required' }),
       pr(13, 'acme/k8s-prod', 'chore: imagem da api v1.4.2', 'ana-dev', 2 * HOUR_MS, { review: 'review-required' }),
-      pr(14, 'acme/k8s', 'chore: limites de memória do worker', 'carla-dev', 3 * DAY_MS, { review: 'review-required' }),
+      pr(14, 'acme/k8s', 'chore: worker memory limits', 'carla-dev', 3 * DAY_MS, { review: 'review-required' }),
     ],
     reviewedOpen: [
-      pr(205, 'acme/api', 'feat: paginação por cursor', 'bruno-dev', 2 * DAY_MS, { review: 'approved' }),
+      pr(205, 'acme/api', 'feat: cursor pagination', 'bruno-dev', 2 * DAY_MS, { review: 'approved' }),
       pr(52, 'acme/web', 'feat: tema escuro', 'carla-dev', 4 * DAY_MS, { review: 'changes-requested', ci: 'pending' }),
     ],
     reviewedRecent: [

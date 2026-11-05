@@ -1,4 +1,4 @@
-import type { MessageKey } from '../i18n/pt-BR';
+import type { MessageKey } from '../i18n/en';
 
 export interface AccentPreset {
   name: MessageKey;

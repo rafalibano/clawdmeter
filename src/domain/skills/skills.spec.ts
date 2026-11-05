@@ -45,7 +45,7 @@ function replay(lines: readonly string[]): SkillRun {
 }
 
 describe('parseStreamLine', () => {
-  it('lê init com sessão e servidores MCP', () => {
+  it('reads init with session and MCP servers', () => {
     expect(parseStreamLine(SUCCESS_STREAM[0]!)).toEqual({
       type: 'init',
       sessionId: FIXTURE_SESSION_ID,
@@ -53,12 +53,12 @@ describe('parseStreamLine', () => {
     });
   });
 
-  it('lê blocos de texto e de ferramenta do assistant', () => {
+  it('reads text and tool blocks from the assistant', () => {
     expect(parseStreamLine(SUCCESS_STREAM[1]!)).toMatchObject({ type: 'assistant', blocks: [{ kind: 'text', text: 'Vou listar os PRs abertos.' }] });
     expect(parseStreamLine(SUCCESS_STREAM[2]!)).toMatchObject({ type: 'assistant', blocks: [{ kind: 'tool', name: 'Bash' }] });
   });
 
-  it('lê o resultado com custo, duração e sessão', () => {
+  it('reads the result with cost, duration and session', () => {
     expect(parseStreamLine(SUCCESS_STREAM[5]!)).toEqual({
       type: 'result',
       sessionId: FIXTURE_SESSION_ID,
@@ -70,11 +70,11 @@ describe('parseStreamLine', () => {
     });
   });
 
-  it('trata subtype diferente de success como erro', () => {
+  it('treats a subtype other than success as an error', () => {
     expect(parseStreamLine(BUDGET_EXCEEDED_STREAM[2]!)).toMatchObject({ isError: true, subtype: 'error_max_budget_usd', text: null });
   });
 
-  it('ignora linhas vazias, texto solto e JSON quebrado', () => {
+  it('ignores empty lines, loose text and broken JSON', () => {
     const events: Array<StreamEvent | null> = NOISY_STREAM.map(parseStreamLine);
     expect(events.filter((event) => event !== null && event.type !== 'other')).toHaveLength(1);
     expect(events[0]).toBeNull();
@@ -84,14 +84,14 @@ describe('parseStreamLine', () => {
     expect(events[4]).toBeNull();
   });
 
-  it('descarta blocos de texto em branco e tool_result do usuário', () => {
+  it('drops blank text blocks and user tool_result', () => {
     expect(parseStreamLine('{"type":"assistant","message":{"content":[{"type":"text","text":"  "}]}}')).toMatchObject({ blocks: [] });
     expect(parseStreamLine(SUCCESS_STREAM[3]!)).toEqual({ type: 'other' });
   });
 });
 
 describe('applyStreamEvent', () => {
-  it('acumula log, sessão, custo e resultado numa execução bem-sucedida', () => {
+  it('accumulates log, session, cost and result in a successful run', () => {
     const run = replay(SUCCESS_STREAM);
     expect(run).toMatchObject({
       status: 'succeeded',
@@ -105,12 +105,12 @@ describe('applyStreamEvent', () => {
     expect(run.resultText).toContain('Acabativa');
   });
 
-  it('detecta MCP sem autenticação no init e marca o problema', () => {
+  it('detects an unauthenticated MCP at init and flags the problem', () => {
     const run = replay(MCP_NEEDS_AUTH_STREAM);
     expect(run).toMatchObject({ status: 'failed', problem: 'mcp-unauthenticated', mcpNeedingAuth: ['atlassian'] });
   });
 
-  it('MCP pending ou failed no init também viram problema; connected não', () => {
+  it('MCP pending or failed at init also become a problem; connected does not', () => {
     const init = (servers: Array<{ name: string; status: string }>) =>
       applyStreamEvent(startRun('r', SKILL, 0), { type: 'init', sessionId: null, mcpServers: servers });
     const run = init([
@@ -122,11 +122,11 @@ describe('applyStreamEvent', () => {
     expect(init([{ name: 'c', status: 'connected' }]).problem).toBeNull();
   });
 
-  it('erro de orçamento falha com o subtype quando não há texto', () => {
+  it('budget error fails with the subtype when there is no text', () => {
     expect(replay(BUDGET_EXCEEDED_STREAM)).toMatchObject({ status: 'failed', error: 'error_max_budget_usd', costUsd: 2.01 });
   });
 
-  it('limita o log às últimas entradas', () => {
+  it('limits the log to the latest entries', () => {
     let run = startRun('r', SKILL, 0);
     for (let index = 0; index < MAX_LOG_ENTRIES + 5; index += 1) {
       run = applyStreamEvent(run, { type: 'assistant', sessionId: null, blocks: [{ kind: 'text', text: `m${index}` }] });
@@ -136,17 +136,17 @@ describe('applyStreamEvent', () => {
   });
 });
 
-describe('linha truncada pelo Rust', () => {
-  const MARK = ' …[linha truncada]';
+describe('line truncated by Rust', () => {
+  const MARK = ' …[line truncated]';
   const cut = (text: string) => `${text}${MARK}`;
 
-  it('o parser reconhece a marca e não tenta ler JSON cortado', () => {
+  it('the parser recognizes the marker and does not try to read cut JSON', () => {
     expect(parseStreamLine(cut('{"type":"result","result":"aaaa'))).toEqual({ type: 'truncated' });
     expect(parseStreamLine(cut('{"type":"assistant"'))).toEqual({ type: 'truncated' });
-    expect(parseStreamLine('texto solto …[linha truncada]')).toBeNull();
+    expect(parseStreamLine('loose text …[line truncated]')).toBeNull();
   });
 
-  it('result truncado vira erro claro em vez de "encerrou sem resultado"', () => {
+  it('a truncated result becomes a clear error instead of "exited without a result"', () => {
     let run = startRun('r', SKILL, 1_000);
     for (const line of [SUCCESS_STREAM[0]!, cut('{"type":"result","subtype":"success","result":"aaaa')]) {
       const event = parseStreamLine(line);
@@ -156,7 +156,7 @@ describe('linha truncada pelo Rust', () => {
     expect(done).toMatchObject({ status: 'failed', error: null, failure: 'truncated' });
   });
 
-  it('result truncado mostra a marca e, em seguida, o stderr do processo', () => {
+  it('a truncated result shows the marker and then the process stderr', () => {
     let run = startRun('r', SKILL, 1_000);
     for (const line of [SUCCESS_STREAM[0]!, cut('{"type":"result","subtype":"success","result":"aaaa')]) {
       const event = parseStreamLine(line);
@@ -167,7 +167,7 @@ describe('linha truncada pelo Rust', () => {
     expect(done).toMatchObject({ failure: 'truncated', error: 'Error: out of memory' });
   });
 
-  it('evento truncado no meio não derruba uma run que termina com result válido', () => {
+  it('an event truncated in the middle does not break a run that ends with a valid result', () => {
     const run = replay([SUCCESS_STREAM[0]!, cut('{"type":"assistant","message":{"content":[{"type":"text","text":"xx'), SUCCESS_STREAM[5]!]);
     expect(run).toMatchObject({ status: 'succeeded', error: null });
   });
@@ -176,14 +176,14 @@ describe('linha truncada pelo Rust', () => {
 describe('finishRun', () => {
   const running = startRun('r', SKILL, 1_000);
 
-  it('cancelamento prevalece', () => {
+  it('cancellation prevails', () => {
     expect(finishRun(running, { code: null, cancelled: true, stderrTail: '', now: 2_000 })).toMatchObject({
       status: 'cancelled',
       endedAt: 2_000,
     });
   });
 
-  it('saída sem resultado vira falha com o stderr', () => {
+  it('output without a result becomes a failure with the stderr', () => {
     expect(finishRun(running, { code: 1, cancelled: false, stderrTail: 'boom\n', now: 2_000 })).toMatchObject({
       status: 'failed',
       error: 'boom',
@@ -195,17 +195,17 @@ describe('finishRun', () => {
     });
   });
 
-  it('código diferente de zero sem result mostra o stderr inteiro, sem espaços nas pontas', () => {
-    const done = finishRun(running, { code: 137, cancelled: false, stderrTail: '\n  linha 1\nlinha 2  \n', now: 2_000 });
-    expect(done).toMatchObject({ status: 'failed', error: 'linha 1\nlinha 2' });
+  it('a non-zero exit code without a result shows the whole stderr, trimmed', () => {
+    const done = finishRun(running, { code: 137, cancelled: false, stderrTail: '\n  line 1\nline 2  \n', now: 2_000 });
+    expect(done).toMatchObject({ status: 'failed', error: 'line 1\nline 2' });
   });
 
-  it('com result já definido o stderr não altera o erro da run', () => {
+  it('with a result already set the stderr does not change the run error', () => {
     const failed = replay(BUDGET_EXCEEDED_STREAM);
-    expect(finishRun(failed, { code: 1, cancelled: false, stderrTail: 'ruído', now: 9_000 }).error).toBe('error_max_budget_usd');
+    expect(finishRun(failed, { code: 1, cancelled: false, stderrTail: 'noise', now: 9_000 }).error).toBe('error_max_budget_usd');
   });
 
-  it('mantém o status definido pelo resultado', () => {
+  it('keeps the status set by the result', () => {
     const done = replay(SUCCESS_STREAM);
     expect(finishRun(done, { code: 0, cancelled: false, stderrTail: '', now: 9_000 })).toMatchObject({
       status: 'succeeded',
@@ -213,21 +213,21 @@ describe('finishRun', () => {
     });
   });
 
-  it('calcula a duração', () => {
+  it('computes the duration', () => {
     expect(runDurationMs({ ...running, endedAt: 4_000 }, 99_000)).toBe(3_000);
     expect(runDurationMs(running, 6_000)).toBe(5_000);
   });
 });
 
-describe('histórico', () => {
-  it('guarda só as últimas runs, mais recentes primeiro', () => {
+describe('history', () => {
+  it('keeps only the latest runs, most recent first', () => {
     const runs = Array.from({ length: MAX_RUN_HISTORY + 3 }, (_, index) => ({ ...startRun(`r${index}`, SKILL, index), status: 'succeeded' as const }));
     const trimmed = trimHistory(runs);
     expect(trimmed).toHaveLength(MAX_RUN_HISTORY);
     expect(trimmed[0]?.id).toBe(`r${MAX_RUN_HISTORY + 2}`);
   });
 
-  it('serializa sem o log e relê com validação', () => {
+  it('serializes without the log and reads back with validation', () => {
     const run = { ...replay(SUCCESS_STREAM), endedAt: 5_000 };
     const stored = toStoredRun(run);
     expect(stored.log).toEqual([]);
@@ -236,47 +236,47 @@ describe('histórico', () => {
     expect(parsed[0]).toMatchObject({ id: 'r1', costUsd: 0.1234, sessionId: FIXTURE_SESSION_ID });
   });
 
-  it('arquivo inválido vira histórico vazio', () => {
+  it('an invalid file becomes an empty history', () => {
     expect(parseRunHistory(null)).toEqual([]);
     expect(parseRunHistory({ runs: 'x' })).toEqual([]);
   });
 
-  it('só aceita session id em formato de UUID', () => {
+  it('only accepts a session id in UUID format', () => {
     expect(isResumableSession(FIXTURE_SESSION_ID)).toBe(true);
     expect(isResumableSession('abc; rm -rf /')).toBe(false);
     expect(isResumableSession(null)).toBe(false);
   });
 });
 
-describe('configuração de skills', () => {
-  it('usa os padrões sem arquivo ou sem lista', () => {
+describe('skills configuration', () => {
+  it('uses the defaults without a file or without a list', () => {
     expect(parseSkillsConfig(null)[0]).toMatchObject({ id: 'acabativa', prompt: '/acabativa' });
     expect(parseSkillsConfig({ skills: 'x' })).toHaveLength(1);
   });
 
-  it('lê skills válidas e aplica padrões de orçamento e ferramentas', () => {
+  it('reads valid skills and applies budget and tool defaults', () => {
     const [skill] = parseSkillsConfig({ skills: [{ id: 'prs', name: 'PRs', prompt: '/prs' }] });
     expect(skill).toMatchObject({ id: 'prs', maxBudgetUsd: 2, cwd: null });
     expect(skill?.allowedTools.length).toBeGreaterThan(0);
   });
 
-  it('descarta entradas inválidas e ids repetidos', () => {
+  it('drops invalid entries and repeated ids', () => {
     const skills = parseSkillsConfig({
       skills: [
         { id: 'ok', name: 'Ok', prompt: '/ok', maxBudgetUsd: 3, allowedTools: ['Read'] },
-        { id: 'ok', name: 'Repetida', prompt: '/ok' },
-        { id: 'sem prompt', name: 'x', prompt: '/x' },
+        { id: 'ok', name: 'Repeated', prompt: '/ok' },
+        { id: 'no prompt', name: 'x', prompt: '/x' },
         { id: 'flag', name: 'Flag', prompt: '--dangerously-skip-permissions' },
         { id: 'budget', name: 'B', prompt: '/b', maxBudgetUsd: 0 },
         { id: 'tools', name: 'T', prompt: '/t', allowedTools: [1] },
-        'texto',
+        'text',
       ],
     });
     expect(skills.map((skill) => skill.id)).toEqual(['ok']);
     expect(skills[0]).toMatchObject({ maxBudgetUsd: 3, allowedTools: ['Read'] });
   });
 
-  it('orçamento segue as regras do processo nativo', () => {
+  it('budget follows the native process rules', () => {
     const accepted = (maxBudgetUsd: unknown) =>
       parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', maxBudgetUsd }] }).length === 1;
     expect(accepted(1000)).toBe(true);
@@ -289,14 +289,14 @@ describe('configuração de skills', () => {
     expect(accepted('2')).toBe(false);
   });
 
-  it('prompt tem no máximo 8192 bytes', () => {
+  it('prompt has at most 8192 bytes', () => {
     const accepted = (prompt: string) => parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt }] }).length === 1;
     expect(accepted('a'.repeat(8192))).toBe(true);
     expect(accepted('a'.repeat(8193))).toBe(false);
     expect(accepted('é'.repeat(4097))).toBe(false);
   });
 
-  it('cwd precisa ser um caminho absoluto sem ..', () => {
+  it('cwd must be an absolute path without ..', () => {
     const accepted = (cwd: unknown) =>
       parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', cwd }] }).length === 1;
     expect(accepted('/Users/dev/proj')).toBe(true);
@@ -309,7 +309,7 @@ describe('configuração de skills', () => {
     expect(accepted(3)).toBe(false);
   });
 
-  it('rejeita ferramentas que o Rust barraria', () => {
+  it('rejects tools that Rust would block', () => {
     const accepted = (allowedTools: unknown[]) =>
       parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', allowedTools }] }).length === 1;
     expect(accepted(['Read(./**)', 'Bash(gh pr diff:*)'])).toBe(true);
@@ -323,7 +323,7 @@ describe('configuração de skills', () => {
     expect(accepted(['x'.repeat(1_025)])).toBe(false);
   });
 
-  it('a lista permitida é a mesma do Rust (process_policy.rs)', () => {
+  it('the allowed list is the same as Rust (process_policy.rs)', () => {
     const source = readFileSync(resolve(__dirname, '../../../src-tauri/src/commands/process_policy.rs'), 'utf8');
     const block = /ALLOWED_CLAUDE_TOOLS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
     const rust = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
@@ -333,7 +333,7 @@ describe('configuração de skills', () => {
     expect(DEFAULT_ALLOWED_TOOLS.some((tool) => tool.startsWith('mcp__'))).toBe(false);
   });
 
-  it('git diff, git log e git status ficam fora da lista, e Read é restrito ao cwd', () => {
+  it('git diff, git log and git status are out of the list, and Read is restricted to the cwd', () => {
     for (const tool of ['Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Read', 'Grep', 'Glob']) {
       expect(ALLOWED_CLAUDE_TOOLS).not.toContain(tool);
       expect(findDisallowedTools([tool])).toEqual([tool]);
@@ -342,23 +342,23 @@ describe('configuração de skills', () => {
     expect(ALLOWED_CLAUDE_TOOLS).toContain('Read(./**)');
   });
 
-  it('o padrão não concede Bash amplo, escrita nem edição', () => {
+  it('the default grants no broad Bash, writing or editing', () => {
     for (const tool of DEFAULT_ALLOWED_TOOLS) {
       expect(tool).not.toMatch(/^(Write|Edit|MultiEdit|NotebookEdit|Bash|Bash\(\*\)|Bash\((git|gh):\*\))$/);
     }
   });
 
-  it('ferramenta fora da lista invalida a skill com mensagem clara', () => {
+  it('a tool outside the list invalidates the skill with a clear message', () => {
     for (const tool of ['Bash', 'Bash(*)', 'Read', 'Bash(git diff:*)', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash(git:*)', 'Bash(gh:*)', 'mcp__srv__tool', 'Grep', 'Glob']) {
       expect(findDisallowedTools(['Read(./**)', tool])).toEqual([tool]);
       expect(() => buildClaudeArgs({ ...SKILL, allowedTools: ['Read(./**)', tool] })).toThrow(
-        `A skill "${SKILL.name}" usa ferramenta não permitida: ${tool}`,
+        `Skill "${SKILL.name}" uses a tool that is not allowed: ${tool}`,
       );
     }
     expect(findDisallowedTools(ALLOWED_CLAUDE_TOOLS)).toEqual([]);
   });
 
-  it('monta os argumentos do claude sem shell, com stream-json e verbose', () => {
+  it('builds the claude arguments without a shell, with stream-json and verbose', () => {
     expect(buildClaudeArgs({ ...SKILL, allowedTools: ['Read(./**)', 'Bash(gh pr diff:*)'] })).toEqual([
       '-p',
       '/demo',
@@ -374,8 +374,8 @@ describe('configuração de skills', () => {
   });
 });
 
-describe('problemas de run', () => {
-  it('todo problema tem conserto', () => {
+describe('run problems', () => {
+  it('every problem has a fix', () => {
     const problems: RunProblem[] = ['claude-code-missing', 'mcp-unauthenticated'];
     for (const problem of problems) expect(RUN_FIX_FOR[problem]).toBeDefined();
     expect(RUN_FIX_FOR['mcp-unauthenticated']).toBe('reconnect-mcp');

@@ -24,7 +24,7 @@ function gateway(reply: FakeResponse) {
 }
 
 describe('GitHubGraphqlGateway', () => {
-  it('faz um POST em /graphql com token, queries como variáveis e limite', async () => {
+  it('sends a POST to /graphql with token, queries as variables and a limit', async () => {
     const { gateway: gql, requests } = gateway({
       json: { data: { mine: { issueCount: 1, nodes: [NODE] } } },
     });
@@ -57,7 +57,7 @@ describe('GitHubGraphqlGateway', () => {
     });
   });
 
-  it('várias buscas numa só requisição e issueCount maior que o limite', async () => {
+  it('several searches in a single request and an issueCount above the limit', async () => {
     const { gateway: gql, requests } = gateway({
       json: {
         data: {
@@ -73,7 +73,7 @@ describe('GitHubGraphqlGateway', () => {
     expect(result.reviewed).toEqual({ items: [], total: 0 });
   });
 
-  it('mapeia estados ausentes para none/unknown/open', () => {
+  it('maps missing states to none/unknown/open', () => {
     const pr = toPullRequest({ ...NODE, commits: { nodes: [] }, reviewDecision: null, mergeable: 'UNKNOWN', state: 'MERGED', isDraft: true, author: null });
     expect(pr).toMatchObject({ ci: 'none', review: 'none', merge: 'unknown', state: 'merged', isDraft: true, author: 'ghost' });
     expect(toPullRequest({ ...NODE, commits: { nodes: [{ commit: { statusCheckRollup: { state: 'PENDING' } } }] } })?.ci).toBe('pending');
@@ -86,23 +86,23 @@ describe('GitHubGraphqlGateway', () => {
     await expect(gql.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-unauthorized' });
   });
 
-  it('403 com header SSO e 403 com mensagem SAML viram github-org-access', async () => {
+  it('403 with an SSO header and 403 with a SAML message become github-org-access', async () => {
     const sso = gateway({ status: 403, headers: { 'x-github-sso': 'required; url=https://github.com/orgs/x/sso' } });
     await expect(sso.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
     const saml = gateway({ status: 403, json: { message: 'Resource protected by organization SAML enforcement.' } });
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
 
-  it('403 com limite zerado e demais status são erros comuns', async () => {
+  it('403 with an exhausted limit and other statuses are plain errors', async () => {
     const limited = gateway({ status: 403, headers: { 'x-ratelimit-remaining': '0' } });
-    await expect(limited.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('Limite de requisições');
+    await expect(limited.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ code: 'github-rate-limited' });
     const forbidden = gateway({ status: 403 });
     await expect(forbidden.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('403');
     const down = gateway({ status: 502 });
     await expect(down.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('502');
   });
 
-  it('erros GraphQL de escopo e de SAML viram problemas de conexão', async () => {
+  it('GraphQL scope and SAML errors become connection problems', async () => {
     const scope = gateway({ json: { errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'Your token has not been granted the required scopes' }] } });
     await expect(scope.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-missing-scope' });
     const saml = gateway({
@@ -111,19 +111,19 @@ describe('GitHubGraphqlGateway', () => {
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
 
-  it('RATE_LIMITED vira uma mensagem clara', async () => {
+  it('RATE_LIMITED becomes a clear coded error', async () => {
     const limited = gateway({ json: { errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }] } });
-    await expect(limited.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('Limite de requisições do GitHub atingido');
+    await expect(limited.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ code: 'github-rate-limited' });
   });
 
-  it('erro sem dados e resposta vazia sobem como erro comum', async () => {
+  it('an error without data and an empty response surface as a plain error', async () => {
     const other = gateway({ json: { errors: [{ type: 'INTERNAL', message: 'Algo quebrou' }] } });
     await expect(other.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('Algo quebrou');
     const empty = gateway({ json: {} });
-    await expect(empty.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('sem dados');
+    await expect(empty.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('without data');
   });
 
-  it('data parcial com erro comum usa os nós válidos', async () => {
+  it('partial data with a plain error uses the valid nodes', async () => {
     const partial = gateway({
       json: {
         data: { mine: { issueCount: 2, nodes: [NODE, null, { id: 'quebrado' }] }, other: null },
@@ -135,7 +135,7 @@ describe('GitHubGraphqlGateway', () => {
     expect(result.other).toEqual({ items: [], total: 0 });
   });
 
-  it('data parcial com escopo ou SAML continua lançando o problema de conexão', async () => {
+  it('partial data with scope or SAML still throws the connection problem', async () => {
     const scope = gateway({
       json: { data: { mine: { issueCount: 1, nodes: [NODE] } }, errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] },
     });
@@ -146,7 +146,7 @@ describe('GitHubGraphqlGateway', () => {
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
 
-  it('recusa alias inválido antes de montar a query', () => {
-    expect(() => buildSearchQuery(['ok', 'bad alias'])).toThrow('Alias de busca inválido');
+  it('rejects an invalid alias before building the query', () => {
+    expect(() => buildSearchQuery(['ok', 'bad alias'])).toThrow('Invalid search alias');
   });
 });

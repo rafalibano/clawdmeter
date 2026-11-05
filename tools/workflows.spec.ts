@@ -9,8 +9,8 @@ const read = (name: string) => readFileSync(join(WORKFLOWS, name), 'utf8');
 
 const USES = /^\s*- uses: (\S+)@(\S+)(.*)$/gm;
 
-describe('workflows do GitHub Actions', () => {
-  it('toda action fica fixada por SHA com o comentário da versão ao lado', () => {
+describe('GitHub Actions workflows', () => {
+  it('every action is pinned by SHA with the version comment next to it', () => {
     for (const name of files) {
       const uses = [...read(name).matchAll(USES)];
       expect(uses.length, name).toBeGreaterThan(0);
@@ -21,7 +21,7 @@ describe('workflows do GitHub Actions', () => {
     }
   });
 
-  it('todo actions/checkout usa persist-credentials: false', () => {
+  it('every actions/checkout uses persist-credentials: false', () => {
     for (const name of files) {
       const text = read(name);
       const checkouts = text.split('\n').flatMap((line, index) => (line.includes('uses: actions/checkout@') ? [index] : []));
@@ -33,7 +33,7 @@ describe('workflows do GitHub Actions', () => {
     }
   });
 
-  it('o toolchain do CI e do release é o mesmo do rust-toolchain.toml', () => {
+  it('the CI and release toolchain is the same as rust-toolchain.toml', () => {
     const channel = /channel = "([^"]+)"/.exec(readFileSync(join(ROOT, 'rust-toolchain.toml'), 'utf8'))?.[1];
     expect(channel).toMatch(/^\d+\.\d+\.\d+$/);
     for (const name of files) {
@@ -43,7 +43,7 @@ describe('workflows do GitHub Actions', () => {
     }
   });
 
-  it('o dependabot cobre actions, cargo e npm toda semana', () => {
+  it('dependabot covers actions, cargo and npm every week', () => {
     const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8');
     for (const ecosystem of ['github-actions', 'cargo', 'npm']) {
       expect(text).toContain(`package-ecosystem: ${ecosystem}`);

@@ -35,18 +35,18 @@ async function runFix(id: ConnectionId, fix: FixAction): Promise<ConnectionStatu
 }
 
 describe('Claude', () => {
-  it('conecta com a credencial do Claude Code e mostra o plano', async () => {
+  it('connects with the Claude Code credential and shows the plan', async () => {
     expect(await connections.check.execute('claude')).toEqual({ state: 'connected', detail: 'Plano max' });
   });
 
-  it('nunca escreve nem apaga a credencial (só lê)', async () => {
+  it('never writes or deletes the credential (read only)', async () => {
     await connections.check.execute('claude');
     await connections.disconnect.execute('claude');
     expect(world.secrets.values.size).toBe(0);
     expect(world.claude.reads).toBe(1);
   });
 
-  it('keychain negado -> "Refazer permissão" -> releitura conecta', async () => {
+  it('keychain denied -> "Redo permission" -> re-reading connects', async () => {
     world.claude.outcome = new ConnectionProblemError('keychain-denied');
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ state: 'error', problem: 'keychain-denied' });
@@ -55,7 +55,7 @@ describe('Claude', () => {
     expect(await runFix('claude', 'retry-permission')).toEqual({ state: 'connected' });
   });
 
-  it('token vencido -> "Refazer login do Claude" abre o terminal com /login', async () => {
+  it('expired token -> "Sign in to Claude again" opens the terminal with /login', async () => {
     world.claude.outcome = { expiresAt: 5_000, subscriptionType: 'pro' };
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ problem: 'claude-expired' });
@@ -65,7 +65,7 @@ describe('Claude', () => {
     expect(after).toMatchObject({ state: 'error', problem: 'claude-expired' });
   });
 
-  it('Claude Code ausente -> "Instalar Claude Code" abre a página de instalação', async () => {
+  it('Claude Code missing -> "Install Claude Code" opens the install page', async () => {
     world.claude.outcome = new ConnectionProblemError('claude-code-missing');
     const status = await connections.check.execute('claude');
     expect(fixLabel('claude', status)).toBe('install-claude-code');
@@ -73,12 +73,12 @@ describe('Claude', () => {
     expect(world.urls.opened).toEqual([CLAUDE_CODE_INSTALL_URL]);
   });
 
-  it('401 reportado por um gateway marca a conexão como vencida', () => {
+  it('a 401 reported by a gateway marks the connection as expired', () => {
     connections.report.execute('claude', 'claude-expired');
     expect(connections.monitor.get('claude')).toMatchObject({ problem: 'claude-expired' });
   });
 
-  it('Desconectar para de usar a credencial e Conectar volta a lê-la', async () => {
+  it('Disconnect stops using the credential and Connect reads it again', async () => {
     await connections.connect.execute('claude');
     expect(await connections.disconnect.execute('claude')).toEqual({ state: 'disconnected' });
     expect(await connections.check.execute('claude')).toEqual({ state: 'disconnected' });
@@ -88,11 +88,11 @@ describe('Claude', () => {
 });
 
 describe('GitHub', () => {
-  it('sem conexão feita, começa desconectado', async () => {
+  it('with no connection made, starts disconnected', async () => {
     expect(await connections.check.execute('github')).toEqual({ state: 'disconnected' });
   });
 
-  it('conecta pelo gh CLI sem guardar o token', async () => {
+  it('connects through the gh CLI without storing the token', async () => {
     const status = await connections.connect.execute('github');
     expect(status).toEqual({ state: 'connected', account: 'dev' });
     expect(world.prefs.current.github.method).toBe('gh-cli');
@@ -100,7 +100,7 @@ describe('GitHub', () => {
     expect(world.githubAccounts.inspected).toEqual(['gh-token']);
   });
 
-  it('gh instalado sem login: dica de conectar e botão "Conectar GitHub CLI"', async () => {
+  it('gh installed without login: connect hint and "Connect GitHub CLI" button', async () => {
     world.githubCli.outcome = { missing: 'not-logged-in' };
     const status = await connections.connect.execute('github');
     expect(status).toEqual({
@@ -112,7 +112,7 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
-  it('gh não instalado: dica de instalar e botão "Instalar GitHub CLI"', async () => {
+  it('gh not installed: install hint and "Install GitHub CLI" button', async () => {
     world.githubCli.outcome = { missing: 'not-installed' };
     const status = await connections.connect.execute('github');
     expect(status).toEqual({
@@ -123,7 +123,7 @@ describe('GitHub', () => {
     expect(actionsFor('github', status).map((a) => a.label)).toEqual(['install-github-cli']);
   });
 
-  it('a verificação sem método mostra o motivo do gh já na abertura', async () => {
+  it('the check without a method shows the gh reason right on open', async () => {
     world.githubCli.outcome = { missing: 'not-installed' };
     expect(await connections.check.execute('github')).toMatchObject({ state: 'disconnected', cli: 'not-installed' });
     world.githubCli.outcome = { missing: 'not-logged-in' };
@@ -132,7 +132,7 @@ describe('GitHub', () => {
     expect(await connections.check.execute('github')).toEqual({ state: 'disconnected' });
   });
 
-  it('"Conectar GitHub CLI" abre o terminal com gh auth login e "Verificar de novo" conecta', async () => {
+  it('"Connect GitHub CLI" opens the terminal with gh auth login and "Check again" connects', async () => {
     world.githubCli.outcome = { missing: 'not-logged-in' };
     const opened = await runFix('github', 'connect-github-cli');
     expect(world.terminal.commands).toEqual([{ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] }]);
@@ -142,7 +142,7 @@ describe('GitHub', () => {
     expect(await connections.connect.execute('github')).toEqual({ state: 'connected', account: 'dev' });
   });
 
-  it('"Instalar GitHub CLI" abre cli.github.com e depois pede para verificar de novo', async () => {
+  it('"Install GitHub CLI" opens cli.github.com and then asks to check again', async () => {
     world.githubCli.outcome = { missing: 'not-installed' };
     const opened = await runFix('github', 'install-github-cli');
     expect(world.urls.opened).toEqual(['https://cli.github.com']);
@@ -152,7 +152,7 @@ describe('GitHub', () => {
     expect(await connections.connect.execute('github')).toMatchObject({ cli: 'not-logged-in' });
   });
 
-  it('Device Flow abre a página de verificação, guarda o token no cofre e conecta', async () => {
+  it('Device Flow opens the verification page, stores the token in the keychain and connects', async () => {
     const code = await connections.github.startDeviceFlow.execute();
     expect(code).toEqual(DEVICE_CODE);
     const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
@@ -163,28 +163,28 @@ describe('GitHub', () => {
     expect(await connections.check.execute('github')).toMatchObject({ state: 'connected' });
   });
 
-  it('start com falha (client_id placeholder) vira estado de erro com botão, não engole o erro', async () => {
-    world.deviceFlow.startOutcome = new ConnectionProblemError('unexpected', 'client_id do GitHub OAuth App não configurado');
+  it('a failing start (placeholder client_id) becomes an error state with a button, does not swallow the error', async () => {
+    world.deviceFlow.startOutcome = new ConnectionProblemError('unexpected', 'GitHub OAuth App client_id not configured');
     expect(await connections.github.startDeviceFlow.execute()).toBeNull();
     const status = connections.monitor.get('github');
     expect(status).toEqual({
       state: 'error',
       problem: 'unexpected',
-      message: 'client_id do GitHub OAuth App não configurado',
+      message: 'GitHub OAuth App client_id not configured',
     });
     expect(fixLabel('github', status)).toBe('retry');
   });
 
-  it('falha ao abrir a página de verificação também vira estado de erro', async () => {
+  it('failing to open the verification page also becomes an error state', async () => {
     world.urls.open = async () => {
-      throw new Error('sem navegador');
+      throw new Error('no browser');
     };
     const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
-    expect(status).toEqual({ state: 'error', problem: 'unexpected', message: 'sem navegador' });
+    expect(status).toEqual({ state: 'error', problem: 'unexpected', message: 'no browser' });
     expect(world.secrets.values.size).toBe(0);
   });
 
-  it('cancelar o Device Flow volta a desconectado sem gravar nada', async () => {
+  it('cancelling the Device Flow goes back to disconnected without saving anything', async () => {
     world.deviceFlow.waitForAbort = true;
     const controller = new AbortController();
     const pending = connections.github.completeDeviceFlow.execute(DEVICE_CODE, controller.signal);
@@ -197,7 +197,7 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
-  it('cancelar depois de receber o token, antes de gravar, descarta o resultado', async () => {
+  it('cancelling after receiving the token, before saving, discards the result', async () => {
     const controller = new AbortController();
     world.githubAccounts.inspect = async () => {
       controller.abort();
@@ -210,7 +210,7 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
-  it('Device Flow negado não grava nada', async () => {
+  it('a denied Device Flow saves nothing', async () => {
     world.deviceFlow.completion = new ConnectionProblemError('github-unauthorized', 'Acesso negado');
     const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
     expect(status).toMatchObject({ state: 'error', problem: 'github-unauthorized' });
@@ -218,21 +218,21 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
-  it('PAT válido é guardado no cofre', async () => {
+  it('a valid PAT is stored in the keychain', async () => {
     const status = await connections.github.connectWithPat.execute('  ghp_abc  ');
     expect(status).toMatchObject({ state: 'connected' });
     expect(world.secrets.values.get(SECRET_KEYS.githubToken)).toBe('ghp_abc');
     expect(world.prefs.current.github.method).toBe('pat');
   });
 
-  it('PAT inválido ou vazio não é guardado', async () => {
+  it('an invalid or empty PAT is not stored', async () => {
     world.githubAccounts.outcome = new ConnectionProblemError('github-unauthorized');
     expect(await connections.github.connectWithPat.execute('ghp_ruim')).toMatchObject({ problem: 'github-unauthorized' });
     expect(await connections.github.connectWithPat.execute('   ')).toMatchObject({ problem: 'github-unauthorized' });
     expect(world.secrets.values.size).toBe(0);
   });
 
-  it('401 -> "Refazer login do GitHub": gh CLI abre o terminal', async () => {
+  it('401 -> "Sign in to GitHub again": gh CLI opens the terminal', async () => {
     await connections.connect.execute('github');
     world.githubAccounts.outcome = new ConnectionProblemError('github-unauthorized');
     const status = await connections.check.execute('github');
@@ -241,7 +241,7 @@ describe('GitHub', () => {
     expect(world.terminal.commands).toEqual([{ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] }]);
   });
 
-  it('401 -> "Refazer login do GitHub": token guardado é descartado e volta a oferecer o login', async () => {
+  it('401 -> "Sign in to GitHub again": the stored token is discarded and the login is offered again', async () => {
     await connections.github.connectWithPat.execute('ghp_abc');
     const status = await runFix('github', 'relogin-github');
     expect(status).toMatchObject({ state: 'disconnected' });
@@ -250,7 +250,7 @@ describe('GitHub', () => {
     expect(world.terminal.commands).toEqual([]);
   });
 
-  it('escopo faltando -> "Refazer permissões" pede os escopos no gh', async () => {
+  it('missing scope -> "Redo permissions" requests the scopes in gh', async () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['gist'], orgAccess: 'ok' };
     const status = await connections.connect.execute('github');
     expect(status).toMatchObject({ problem: 'github-missing-scope' });
@@ -261,7 +261,7 @@ describe('GitHub', () => {
     ]);
   });
 
-  it('SSO pendente -> "Autorizar na org" abre a URL de SSO enviada pelo GitHub', async () => {
+  it('pending SSO -> "Authorize for the org" opens the SSO URL sent by GitHub', async () => {
     const ssoUrl = 'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC';
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required', ssoUrl };
     const status = await connections.connect.execute('github');
@@ -273,7 +273,7 @@ describe('GitHub', () => {
     expect(after).toMatchObject({ note: 'authorize-org' });
   });
 
-  it('falha ao descobrir a URL de SSO cai na página de SSO da org', async () => {
+  it('failing to find the SSO URL falls back to the org SSO page', async () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required' };
     const status = await connections.connect.execute('github');
     expect(status).toMatchObject({ problem: 'github-org-access' });
@@ -284,14 +284,14 @@ describe('GitHub', () => {
     expect(world.urls.opened).toEqual([GITHUB_ORG_SSO_URL]);
   });
 
-  it('SSO pendente sem URL no header cai na página de SSO da org', async () => {
+  it('pending SSO without a URL in the header falls back to the org SSO page', async () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required' };
     await connections.connect.execute('github');
     await runFix('github', 'authorize-org');
     expect(world.urls.opened).toEqual([GITHUB_ORG_SSO_URL]);
   });
 
-  it('não-membro tem problema e botão próprios e abre a página da org', async () => {
+  it('non-member has its own problem and button and opens the org page', async () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'not-member' };
     const status = await connections.connect.execute('github');
     expect(status).toEqual({ state: 'error', problem: 'github-not-member' });
@@ -300,17 +300,17 @@ describe('GitHub', () => {
     expect(world.urls.opened).toEqual([GITHUB_ORG_URL]);
   });
 
-  it('escopos maiores (admin:org) satisfazem read:org', async () => {
+  it('larger scopes (admin:org) satisfy read:org', async () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'admin:org'], orgAccess: 'ok' };
     expect(await connections.connect.execute('github')).toMatchObject({ state: 'connected' });
   });
 
-  it('token sumiu do cofre -> github-unauthorized', async () => {
+  it('token vanished from the keychain -> github-unauthorized', async () => {
     world.prefs.current = { ...world.prefs.current, github: { method: 'pat' } };
     expect(await connections.check.execute('github')).toMatchObject({ problem: 'github-unauthorized' });
   });
 
-  it('Desconectar apaga o token e esquece o método', async () => {
+  it('Disconnect deletes the token and forgets the method', async () => {
     await connections.github.connectWithPat.execute('ghp_abc');
     expect(await connections.disconnect.execute('github')).toEqual({ state: 'disconnected' });
     expect(world.secrets.values.size).toBe(0);
@@ -319,14 +319,14 @@ describe('GitHub', () => {
 });
 
 describe('Microsoft', () => {
-  it('conecta com PKCE e guarda a conta', async () => {
+  it('connects with PKCE and stores the account', async () => {
     const status = await connections.connect.execute('microsoft');
     expect(status).toEqual({ state: 'connected', account: 'dev@mottu.com.br' });
     expect(world.prefs.current.microsoft.account).toBe('dev@mottu.com.br');
     expect(await connections.check.execute('microsoft')).toMatchObject({ state: 'connected' });
   });
 
-  it('refresh token expirado -> "Refazer login da Microsoft" refaz o PKCE', async () => {
+  it('expired refresh token -> "Sign in to Microsoft again" redoes the PKCE', async () => {
     await connections.connect.execute('microsoft');
     world.microsoft.tokenOutcome = new ConnectionProblemError('microsoft-expired');
     const status = await connections.check.execute('microsoft');
@@ -335,7 +335,7 @@ describe('Microsoft', () => {
     expect(world.microsoft.signedIn).toBe(2);
   });
 
-  it('conta salva mas sem refresh token vira desconectada, com Conectar', async () => {
+  it('a saved account without a refresh token becomes disconnected, with Connect', async () => {
     await connections.connect.execute('microsoft');
     world.microsoft.tokenOutcome = new ConnectionProblemError('microsoft-not-connected');
     const status = await connections.check.execute('microsoft');
@@ -344,7 +344,7 @@ describe('Microsoft', () => {
     expect(await runFix('microsoft', 'connect-microsoft')).toMatchObject({ state: 'connected' });
   });
 
-  it('falha de login vira estado de erro, não exceção', async () => {
+  it('a login failure becomes an error state, not an exception', async () => {
     world.microsoft.signInOutcome = new ConnectionProblemError('microsoft-expired', 'Login cancelado');
     expect(await connections.connect.execute('microsoft')).toMatchObject({
       state: 'error',
@@ -353,7 +353,7 @@ describe('Microsoft', () => {
     });
   });
 
-  it('Desconectar encerra a sessão e esquece a conta', async () => {
+  it('Disconnect ends the session and forgets the account', async () => {
     await connections.connect.execute('microsoft');
     expect(await connections.disconnect.execute('microsoft')).toEqual({ state: 'disconnected' });
     expect(world.microsoft.signedOut).toBe(1);
@@ -361,8 +361,8 @@ describe('Microsoft', () => {
   });
 });
 
-describe('Notificações', () => {
-  it('bloqueadas -> "Abrir ajustes do sistema" abre os ajustes', async () => {
+describe('Notifications', () => {
+  it('blocked -> "Open system settings" opens the settings', async () => {
     world.notifications.state = 'denied';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ problem: 'notifications-blocked' });
@@ -371,7 +371,7 @@ describe('Notificações', () => {
     expect(world.systemSettings.notificationsOpened).toBe(1);
   });
 
-  it('estado não verificável nunca mostra Conectado: "Não verificável" com botão para os ajustes', async () => {
+  it('an unverifiable state never shows Connected: "Cannot verify" with a button to the settings', async () => {
     world.notifications.state = 'unknown';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ state: 'error', problem: 'notifications-unverifiable' });
@@ -381,7 +381,7 @@ describe('Notificações', () => {
     expect(after).toMatchObject({ problem: 'notifications-unverifiable' });
   });
 
-  it('ainda não pedidas (prompt) leva aos ajustes do sistema, sem pedir pelo plugin', async () => {
+  it('not requested yet (prompt) leads to the system settings, without asking through the plugin', async () => {
     world.notifications.state = 'prompt';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
@@ -391,13 +391,13 @@ describe('Notificações', () => {
     expect(after).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
   });
 
-  it('não pode ser desconectada', async () => {
+  it('cannot be disconnected', async () => {
     await expect(connections.disconnect.execute('notifications')).rejects.toThrow('cannot be disconnected');
   });
 });
 
-describe('erros inesperados e monitor', () => {
-  it('erro de rede vira "unexpected" com "Tentar de novo"', async () => {
+describe('unexpected errors and monitor', () => {
+  it('a network error becomes "unexpected" with "Try again"', async () => {
     world.githubAccounts.outcome = new Error('rede fora');
     await connections.connect.execute('github').catch(() => undefined);
     world.prefs.current = { ...world.prefs.current, github: { method: 'gh-cli' } };
@@ -408,11 +408,11 @@ describe('erros inesperados e monitor', () => {
     expect(await runFix('github', 'retry')).toMatchObject({ state: 'connected' });
   });
 
-  it('conserto que não se aplica à conexão vira erro tipado', async () => {
+  it('a fix that does not apply to the connection becomes a typed error', async () => {
     expect(await runFix('claude', 'authorize-org')).toMatchObject({ state: 'error', problem: 'unexpected' });
   });
 
-  it('assinante tardio recebe o problema reportado antes e vê o botão de conserto', () => {
+  it('a late subscriber receives the previously reported problem and sees the fix button', () => {
     connections.report.execute('claude', 'claude-expired');
     const seen: Array<[ConnectionId, ConnectionStatus]> = [];
     connections.monitor.subscribe((id, status) => seen.push([id, status]));
@@ -423,14 +423,14 @@ describe('erros inesperados e monitor', () => {
     expect(actionsFor(id, status).some((action) => action.kind === 'fix')).toBe(true);
   });
 
-  it('o monitor passa por "checking" e termina no estado final', async () => {
+  it('the monitor goes through "checking" and ends in the final state', async () => {
     const seen: string[] = [];
     connections.monitor.subscribe((id, status) => seen.push(`${id}:${status.state}`));
     await connections.check.execute('claude');
     expect(seen).toEqual(['claude:checking', 'claude:connected']);
   });
 
-  it('checkMany verifica todas as conexões pedidas', async () => {
+  it('checkMany checks all the requested connections', async () => {
     await connections.checkMany.execute(['claude', 'notifications']);
     expect(connections.monitor.get('claude').state).toBe('connected');
     expect(connections.monitor.get('notifications').state).toBe('connected');

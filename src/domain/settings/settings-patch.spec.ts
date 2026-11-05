@@ -4,20 +4,20 @@ import { applyPatch, mergePatches } from './settings-patch';
 import { isPageEnabled } from './page-enabled';
 
 describe('applyPatch', () => {
-  it('liga e desliga páginas sem tocar nas outras', () => {
+  it('turns pages on and off without touching the others', () => {
     const base = { ...createDefaultSettings(), enabledPages: { a: true } };
     const next = applyPatch(base, { enabledPages: { b: false } });
     expect(next.enabledPages).toEqual({ a: true, b: false });
     expect(base.enabledPages).toEqual({ a: true });
   });
 
-  it('aplica aparência parcial e normaliza cores', () => {
+  it('applies partial appearance and normalizes colors', () => {
     const next = applyPatch(createDefaultSettings(), { appearance: { accentColor: '#FF0000', theme: 'dark' } });
     expect(next.appearance.accentColor).toBe('#ff0000');
     expect(next.appearance.theme).toBe('dark');
   });
 
-  it('ignora cor e tema inválidos', () => {
+  it('ignores invalid color and theme', () => {
     const base = createDefaultSettings();
     const next = applyPatch(base, {
       appearance: { accentColor: 'azul', popoverBackground: 'x', theme: 'neon' as never },
@@ -25,28 +25,28 @@ describe('applyPatch', () => {
     expect(next.appearance).toEqual(base.appearance);
   });
 
-  it('permite voltar o fundo do popover ao padrão com null', () => {
+  it('allows resetting the popover background to the default with null', () => {
     const colored = applyPatch(createDefaultSettings(), { appearance: { popoverBackground: '#202020' } });
     expect(colored.appearance.popoverBackground).toBe('#202020');
     expect(applyPatch(colored, { appearance: { popoverBackground: null } }).appearance.popoverBackground).toBeNull();
   });
 });
 
-describe('idioma e faixas no patch', () => {
-  it('troca o idioma e ignora valor desconhecido', () => {
+describe('language in the patch', () => {
+  it('changes the language and ignores an unknown value', () => {
     const base = createDefaultSettings();
-    expect(applyPatch(base, { language: 'en' }).language).toBe('en');
-    expect(applyPatch(base, { language: 'fr' as never }).language).toBe('pt-BR');
-    expect(applyPatch(base, {}).language).toBe('pt-BR');
+    expect(applyPatch(base, { language: 'pt-BR' }).language).toBe('pt-BR');
+    expect(applyPatch(base, { language: 'fr' as never }).language).toBe('en');
+    expect(applyPatch(base, {}).language).toBe('en');
   });
 
-  it('o merge preserva o idioma', () => {
-    expect(mergePatches({ language: 'en' }, {}).language).toBe('en');
+  it('the merge preserves the language', () => {
+    expect(mergePatches({ language: 'pt-BR' }, {}).language).toBe('pt-BR');
   });
 });
 
-describe('método de projeção no patch', () => {
-  it('troca o método e ignora valor desconhecido', () => {
+describe('projection method in the patch', () => {
+  it('changes the method and ignores an unknown value', () => {
     const base = createDefaultSettings();
     expect(applyPatch(base, { projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
     expect(applyPatch(base, { projectionMethod: 'regressao' as never }).projectionMethod).toBe('14d');
@@ -56,7 +56,7 @@ describe('método de projeção no patch', () => {
 });
 
 describe('mergePatches', () => {
-  it('o segundo patch vence nos mesmos campos', () => {
+  it('the second patch wins on the same fields', () => {
     const merged = mergePatches(
       { enabledPages: { a: true }, appearance: { accentColor: '#111111' } },
       { enabledPages: { a: false, b: true }, appearance: { theme: 'light' } },
@@ -69,15 +69,15 @@ describe('mergePatches', () => {
 });
 
 describe('isPageEnabled', () => {
-  it('considera ligada a página sem escolha explícita', () => {
+  it('treats a page without an explicit choice as enabled', () => {
     const settings = { ...createDefaultSettings(), enabledPages: { off: false } };
     expect(isPageEnabled(settings, 'novo')).toBe(true);
     expect(isPageEnabled(settings, 'off')).toBe(false);
   });
 });
 
-describe('cores das séries no patch', () => {
-  it('troca cada cor, volta ao padrão com null e ignora hex inválido', () => {
+describe('series colors in the patch', () => {
+  it('changes each color, resets to the default with null and ignores an invalid hex', () => {
     const base = createDefaultSettings();
     const blue = applyPatch(base, { seriesColors: { fiveHour: '#0063F7' } });
     expect(blue.seriesColors).toEqual({ fiveHour: '#0063f7', sevenDay: null });
@@ -86,7 +86,7 @@ describe('cores das séries no patch', () => {
     expect(applyPatch(both, { seriesColors: { fiveHour: null } }).seriesColors).toEqual({ fiveHour: null, sevenDay: '#ef6800' });
   });
 
-  it('mergePatches junta as duas cores', () => {
+  it('mergePatches combines both colors', () => {
     expect(mergePatches({ seriesColors: { fiveHour: '#111111' } }, { seriesColors: { sevenDay: null } }).seriesColors).toEqual({
       fiveHour: '#111111',
       sevenDay: null,

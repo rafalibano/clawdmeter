@@ -48,7 +48,7 @@ beforeEach(async () => {
 });
 
 describe('PRs', () => {
-  it('busca os PRs abertos do usuário e agrupa por repo, com Deploy recolhido', async () => {
+  it('fetches the user open PRs and groups by repo, with Deploy collapsed', async () => {
     gateway.lists.set('mine', {
       items: [pr('a', 'acme/api'), pr('b', 'acme/k8s'), pr('c', 'acme/api')],
       total: 3,
@@ -65,14 +65,14 @@ describe('PRs', () => {
     ]);
   });
 
-  it('usa o PAT do cofre quando o método não é gh-cli', async () => {
+  it('uses the PAT from the keychain when the method is not gh-cli', async () => {
     prefs.current = { ...prefs.current, github: { method: 'pat' } };
     secrets.values.set(SECRET_KEYS.githubToken, 'ghp_cofre');
     await features.loadMine.execute();
     expect(gateway.calls[0]?.token).toBe('ghp_cofre');
   });
 
-  it('sem conexão GitHub vira problema github-unauthorized com instrução', async () => {
+  it('without a GitHub connection becomes a github-unauthorized problem with instructions', async () => {
     prefs.current = { ...prefs.current, github: { method: null } };
     await expect(features.loadMine.execute()).rejects.toMatchObject({
       problem: 'github-unauthorized',
@@ -81,12 +81,12 @@ describe('PRs', () => {
     expect(gateway.calls).toHaveLength(0);
   });
 
-  it('token ausente no CLI vira github-unauthorized', async () => {
+  it('a token missing from the CLI becomes github-unauthorized', async () => {
     cli.outcome = { missing: 'not-logged-in' };
     await expect(features.loadMine.execute()).rejects.toMatchObject({ problem: 'github-unauthorized' });
   });
 
-  it('propaga problemas do gateway, cada um com botão de conserto', async () => {
+  it('propagates gateway problems, each with a fix button', async () => {
     for (const problem of ['github-unauthorized', 'github-missing-scope', 'github-org-access'] as const) {
       gateway.outcome = new ConnectionProblemError(problem);
       const error = await features.loadMine.execute().catch((caught: unknown) => caught);
@@ -97,7 +97,7 @@ describe('PRs', () => {
 });
 
 describe('Reviews', () => {
-  it('monta as três buscas e junta revisados abertos com os dos últimos 30 dias', async () => {
+  it('builds the three searches and merges open reviewed ones with those from the last 30 days', async () => {
     gateway.lists.set('toReview', { items: [pr('t1', 'acme/web')], total: 1 });
     gateway.lists.set('reviewedOpen', { items: [pr('o1', 'acme/api'), pr('shared', 'acme/api')], total: 2 });
     gateway.lists.set('reviewedRecent', {
@@ -118,14 +118,14 @@ describe('Reviews', () => {
     expect(reviewed?.groups[1]?.collapsedByDefault).toBe(true);
   });
 
-  it('sem resultados devolve seções vazias', async () => {
+  it('without results returns empty sections', async () => {
     const data = await features.loadReviews.execute();
     expect(data.sections.map((section) => section.groups)).toEqual([[], []]);
   });
 });
 
 describe('OpenGitHubUrl', () => {
-  it('abre links https de github.com', async () => {
+  it('opens https links on github.com', async () => {
     const opener = new FakeUrlOpener();
     await new OpenGitHubUrl(opener).execute('https://github.com/acme/api/pull/1');
     await new OpenGitHubUrl(opener).execute('https://github.com/pulls?q=a%3Ab');
@@ -141,7 +141,7 @@ describe('OpenGitHubUrl', () => {
     'javascript:alert(1)',
     'file:///etc/passwd',
     'nao-e-url',
-  ])('recusa %s sem abrir nada', async (url) => {
+  ])('rejects %s without opening anything', async (url) => {
     const opener = new FakeUrlOpener();
     await expect(new OpenGitHubUrl(opener).execute(url)).rejects.toThrow('link-invalid-github');
     expect(opener.opened).toEqual([]);

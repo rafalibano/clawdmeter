@@ -55,7 +55,7 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
   async start(): Promise<DeviceCode> {
     const clientId = requireClientId(this.config.clientId, 'GitHub OAuth App');
     const response = await this.post(DEVICE_CODE_URL, { client_id: clientId, scope: this.config.scopes.join(' ') });
-    if (!response.ok) throw new Error(`GitHub respondeu ${response.status} ao pedir o código do dispositivo`);
+    if (!response.ok) throw new Error(`GitHub responded ${response.status} when requesting the device code`);
     const body = (await response.json()) as DeviceCodeResponse;
     return {
       deviceCode: body.device_code,
@@ -89,20 +89,20 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
           interval += SLOW_DOWN_STEP_SECONDS;
           break;
         case 'access_denied':
-          throw new ConnectionProblemError('github-unauthorized', 'Acesso negado no GitHub.');
+          throw new ConnectionProblemError('github-unauthorized', undefined, 'github-access-denied');
         case 'expired_token':
-          throw new ConnectionProblemError('github-unauthorized', 'O código expirou. Tente de novo.');
+          throw new ConnectionProblemError('github-unauthorized', undefined, 'github-code-expired');
         case 'device_flow_disabled':
         case 'incorrect_client_credentials':
-          throw new ConnectionProblemError(
-            'unexpected',
-            `OAuth App do GitHub mal configurada (${body.error}). Confira o client_id e se o Device Flow está habilitado.`,
-          );
-        default:
-          throw new ConnectionProblemError('github-unauthorized', body.error_description ?? body.error ?? 'Falha no login');
+          throw new ConnectionProblemError('unexpected', undefined, 'github-oauth-misconfigured', { error: body.error });
+        default: {
+          const detail = body.error_description ?? body.error;
+          if (detail === undefined) throw new ConnectionProblemError('github-unauthorized', undefined, 'github-login-failed');
+          throw new ConnectionProblemError('github-unauthorized', detail);
+        }
       }
     }
-    throw new ConnectionProblemError('github-unauthorized', 'O código expirou. Tente de novo.');
+    throw new ConnectionProblemError('github-unauthorized', undefined, 'github-code-expired');
   }
 
   private post(url: string, body: Record<string, string>, signal?: AbortSignal): Promise<Response> {

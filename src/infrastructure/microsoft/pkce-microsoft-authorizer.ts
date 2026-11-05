@@ -116,7 +116,7 @@ export class PkceMicrosoftAuthorizer implements MicrosoftAuthorizer {
     if (body.error && REAUTH_ERRORS.includes(body.error)) {
       throw new ConnectionProblemError('microsoft-expired', body.error_description?.split('\r\n')[0]);
     }
-    throw new Error(body.error_description?.split('\r\n')[0] ?? `Microsoft respondeu ${response.status}`);
+    throw new Error(body.error_description?.split('\r\n')[0] ?? `Microsoft responded ${response.status}`);
   }
 
   private async storeTokens(tokens: TokenResponse): Promise<void> {

@@ -4,8 +4,8 @@ import { localMidnightsBetween, projectionDays } from './projection-days';
 
 const NOW = new Date(2026, 10, 5, 15, 0).getTime();
 
-describe('fronteiras de dia', () => {
-  it('lista as 00:00 do fuso local entre agora e o reset, sem repetir o reset', () => {
+describe('day boundaries', () => {
+  it('lists the local 00:00 marks between now and the reset, without repeating the reset', () => {
     const resetsAt = new Date(2026, 10, 9, 10, 0).getTime();
     const midnights = localMidnightsBetween(NOW, resetsAt);
     expect(midnights.map((at) => new Date(at).getDate())).toEqual([6, 7, 8, 9]);
@@ -14,7 +14,7 @@ describe('fronteiras de dia', () => {
     expect(localMidnightsBetween(NOW, atMidnight).map((at) => new Date(at).getDate())).toEqual([6, 7, 8]);
   });
 
-  it('projectionDays traz um ponto por fronteira e o ponto final no reset', () => {
+  it('projectionDays returns one point per boundary and the final point at the reset', () => {
     const resetsAt = new Date(2026, 10, 8, 12, 0).getTime();
     const days = projectionDays({ fromAt: NOW, fromValue: 40, toAt: resetsAt, toValue: 40 + (resetsAt - NOW) / HOUR_MS });
     expect(days.map((day) => day.at)).toEqual([

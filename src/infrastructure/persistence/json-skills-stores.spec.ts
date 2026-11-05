@@ -21,7 +21,7 @@ class MemoryFile implements JsonFile {
 }
 
 describe('JsonSkillsConfigStore', () => {
-  it('sem arquivo ou com JSON quebrado usa as skills padrão sem escrever', async () => {
+  it('without a file or with broken JSON uses the default skills without writing', async () => {
     const missing = new MemoryFile();
     expect((await new JsonSkillsConfigStore(missing).load()).map((skill) => skill.id)).toEqual(
       DEFAULT_SKILLS.map((skill) => skill.id),
@@ -30,7 +30,7 @@ describe('JsonSkillsConfigStore', () => {
     expect(await new JsonSkillsConfigStore(new MemoryFile('{quebrado')).load()).toHaveLength(DEFAULT_SKILLS.length);
   });
 
-  it('lê as skills do arquivo', async () => {
+  it('reads the skills from the file', async () => {
     const file = new MemoryFile(
       JSON.stringify({ skills: [{ id: 'prs', name: 'PRs', prompt: '/prs', maxBudgetUsd: 0.5, allowedTools: ['Read'] }] }),
     );
@@ -41,7 +41,7 @@ describe('JsonSkillsConfigStore', () => {
 });
 
 describe('JsonSkillRunStore', () => {
-  it('grava e relê o histórico', async () => {
+  it('writes and rereads the history', async () => {
     const file = new MemoryFile();
     const store = new JsonSkillRunStore(file);
     const run = { ...startRun('r1', DEFAULT_SKILLS[0]!, 100), status: 'succeeded' as const, endedAt: 200, costUsd: 0.2 };
@@ -50,7 +50,7 @@ describe('JsonSkillRunStore', () => {
     expect(await store.load()).toEqual([run]);
   });
 
-  it('grava em série, na ordem das chamadas, mesmo com escritas lentas', async () => {
+  it('writes in series, in call order, even with slow writes', async () => {
     const order: string[] = [];
     let active = 0;
     let overlapped = false;
@@ -71,7 +71,7 @@ describe('JsonSkillRunStore', () => {
     expect(overlapped).toBe(false);
   });
 
-  it('uma gravação que falha não trava as seguintes', async () => {
+  it('a failed write does not block the following ones', async () => {
     let calls = 0;
     const file = new (class extends MemoryFile {
       override async write(text: string): Promise<void> {
@@ -86,7 +86,7 @@ describe('JsonSkillRunStore', () => {
     expect(file.text).not.toBeNull();
   });
 
-  it('sem arquivo ou corrompido devolve histórico vazio', async () => {
+  it('without a file or with a corrupt one returns an empty history', async () => {
     expect(await new JsonSkillRunStore(new MemoryFile()).load()).toEqual([]);
     expect(await new JsonSkillRunStore(new MemoryFile('nada')).load()).toEqual([]);
   });

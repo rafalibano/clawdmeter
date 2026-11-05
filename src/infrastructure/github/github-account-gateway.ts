@@ -16,7 +16,7 @@ export class GitHubRestAccountGateway implements GitHubAccountGateway {
   async inspect(token: string): Promise<GitHubAccount> {
     const user = await this.get('/user', token);
     if (user.status === 401) throw new ConnectionProblemError('github-unauthorized');
-    if (!user.ok) throw new Error(`GitHub respondeu ${user.status} em /user`);
+    if (!user.ok) throw new Error(`GitHub responded ${user.status} on /user`);
     const { login } = (await user.json()) as { login: string };
     const scopes = parseScopes(user.headers.get('x-oauth-scopes'));
     const org = await this.orgAccess(token);
@@ -38,7 +38,7 @@ export class GitHubRestAccountGateway implements GitHubAccountGateway {
     }
     if (membership.status === 403 || membership.status === 404) return { access: 'not-member' };
     if (membership.status === 401) throw new ConnectionProblemError('github-unauthorized');
-    throw new Error(`GitHub respondeu ${membership.status} ao verificar a org`);
+    throw new Error(`GitHub responded ${membership.status} when checking the org`);
   }
 
   private get(path: string, token: string): Promise<Response> {

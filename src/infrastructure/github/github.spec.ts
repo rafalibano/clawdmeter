@@ -9,34 +9,34 @@ import { GitHubDeviceFlowAuthorizer } from './github-device-flow';
 const CONFIG: AuthConfig['github'] = { clientId: 'Iv1.test', scopes: ['repo', 'read:org'] };
 
 describe('GhCliTokenSource', () => {
-  it('lê o token de `gh auth token`', async () => {
+  it('reads the token from `gh auth token`', async () => {
     const { commands, calls } = createFakeCommands(() => ({ code: 0, stdout: 'gho_abc\n', stderr: '' }));
     expect(await new GhCliTokenSource(new TauriProcessRunner(commands)).token()).toEqual({ token: 'gho_abc' });
     expect(calls[0]?.args).toMatchObject({ program: 'gh', args: ['auth', 'token', '-h', 'github.com'] });
   });
 
-  it('gh instalado com erro de autenticação devolve not-logged-in', async () => {
+  it('gh installed with an authentication error returns not-logged-in', async () => {
     const loggedOut = createFakeCommands(() => ({ code: 1, stdout: '', stderr: 'not logged in' }));
     expect(await new GhCliTokenSource(new TauriProcessRunner(loggedOut.commands)).token()).toEqual({
       missing: 'not-logged-in',
     });
   });
 
-  it('saída vazia com código 0 também é not-logged-in', async () => {
+  it('empty output with exit code 0 is also not-logged-in', async () => {
     const empty = createFakeCommands(() => ({ code: 0, stdout: '\n', stderr: '' }));
     expect(await new GhCliTokenSource(new TauriProcessRunner(empty.commands)).token()).toEqual({
       missing: 'not-logged-in',
     });
   });
 
-  it('program_not_found devolve not-installed', async () => {
-    const missing = createFakeCommands(() => rejectWith('program_not_found', 'gh não encontrado'));
+  it('program_not_found returns not-installed', async () => {
+    const missing = createFakeCommands(() => rejectWith('program_not_found', 'gh not found'));
     expect(await new GhCliTokenSource(new TauriProcessRunner(missing.commands)).token()).toEqual({
       missing: 'not-installed',
     });
   });
 
-  it('outros erros do processo sobem', async () => {
+  it('other process errors surface', async () => {
     const { commands } = createFakeCommands(() => rejectWith('timeout', 'demorou'));
     await expect(new GhCliTokenSource(new TauriProcessRunner(commands)).token()).rejects.toMatchObject({
       kind: 'timeout',
@@ -45,7 +45,7 @@ describe('GhCliTokenSource', () => {
 });
 
 describe('parseScopes', () => {
-  it('separa escopos e distingue header ausente de vazio', () => {
+  it('splits scopes and tells a missing header from an empty one', () => {
     expect(parseScopes('repo, read:org , gist')).toEqual(['repo', 'read:org', 'gist']);
     expect(parseScopes('')).toEqual([]);
     expect(parseScopes(null)).toBeNull();
@@ -64,29 +64,29 @@ describe('GitHubRestAccountGateway', () => {
     return { gateway: new GitHubRestAccountGateway(fetcher), requests };
   }
 
-  it('conta ativa na org com escopos', async () => {
+  it('active account in the org with scopes', async () => {
     const { gateway: api, requests } = gateway({ status: 200, json: { state: 'active' } });
     expect(await api.inspect('tok')).toEqual({ login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'ok' });
     expect(requests[0]?.headers['Authorization']).toBe('Bearer tok');
   });
 
-  it('401 em /user é github-unauthorized', async () => {
+  it('401 on /user is github-unauthorized', async () => {
     const { gateway: api } = gateway({ status: 200 }, { status: 401 });
     await expect(api.inspect('ruim')).rejects.toMatchObject({ problem: 'github-unauthorized' });
   });
 
-  it('403 com X-GitHub-SSO é SSO pendente', async () => {
+  it('403 with X-GitHub-SSO is pending SSO', async () => {
     const { gateway: api } = gateway({ status: 403, headers: { 'x-github-sso': 'required; url=https://x' } });
     expect((await api.inspect('tok')).orgAccess).toBe('sso-required');
   });
 
-  it('guarda a URL de SSO enviada pelo GitHub quando é https em github.com', async () => {
+  it('keeps the SSO URL sent by GitHub when it is https on github.com', async () => {
     const url = 'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC';
     const { gateway: api } = gateway({ status: 403, headers: { 'x-github-sso': `required; url=${url}` } });
     expect(await api.inspect('tok')).toMatchObject({ orgAccess: 'sso-required', ssoUrl: url });
   });
 
-  it('descarta URL de SSO de outro host ou sem https', async () => {
+  it('discards an SSO URL from another host or without https', async () => {
     for (const header of ['required; url=https://evil.example/sso', 'required; url=http://github.com/sso']) {
       const { gateway: api } = gateway({ status: 403, headers: { 'x-github-sso': header } });
       const account = await api.inspect('tok');
@@ -95,19 +95,19 @@ describe('GitHubRestAccountGateway', () => {
     }
   });
 
-  it('404 e convite pendente contam como não-membro', async () => {
+  it('404 and a pending invitation count as not a member', async () => {
     expect((await gateway({ status: 404 }).gateway.inspect('tok')).orgAccess).toBe('not-member');
     expect((await gateway({ status: 200, json: { state: 'pending' } }).gateway.inspect('tok')).orgAccess).toBe(
       'not-member',
     );
   });
 
-  it('token fine-grained sem header de escopos fica com escopos desconhecidos', async () => {
+  it('a fine-grained token without a scopes header has unknown scopes', async () => {
     const { gateway: api } = gateway({ status: 200, json: { state: 'active' } }, { headers: {} });
     expect((await api.inspect('tok')).scopes).toBeNull();
   });
 
-  it('erro inesperado do GitHub sobe como erro comum', async () => {
+  it('an unexpected GitHub error surfaces as a plain error', async () => {
     const { gateway: api } = gateway({ status: 500 });
     await expect(api.inspect('tok')).rejects.toThrow('500');
   });
@@ -116,7 +116,7 @@ describe('GitHubRestAccountGateway', () => {
 describe('GitHubDeviceFlowAuthorizer', () => {
   const noSleep = async () => undefined;
 
-  it('pede o código com client_id e escopos da config', async () => {
+  it('requests the code with the client_id and scopes from the config', async () => {
     const { fetcher, requests } = createFakeFetch(() => ({
       json: {
         device_code: 'dc',
@@ -137,14 +137,14 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ client_id: 'Iv1.test', scope: 'repo read:org' });
   });
 
-  it('com client_id placeholder, falha antes de qualquer chamada', async () => {
+  it('with a placeholder client_id, fails before any call', async () => {
     const { fetcher, requests } = createFakeFetch(() => ({ json: {} }));
     const flow = new GitHubDeviceFlowAuthorizer(fetcher, { ...CONFIG, clientId: 'REPLACE_WITH_X' }, noSleep);
     await expect(flow.start()).rejects.toMatchObject({ problem: 'unexpected' });
     expect(requests).toEqual([]);
   });
 
-  it('faz polling até autorizar, respeitando slow_down', async () => {
+  it('polls until authorized, honoring slow_down', async () => {
     const answers = [{ error: 'authorization_pending' }, { error: 'slow_down' }, { access_token: 'gho_final' }];
     const { fetcher } = createFakeFetch(() => ({ json: answers.shift() }));
     const sleeps: number[] = [];
@@ -160,7 +160,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     expect(sleeps).toEqual([5000, 5000, 10000]);
   });
 
-  it('access_denied e expired_token viram github-unauthorized', async () => {
+  it('access_denied and expired_token become github-unauthorized', async () => {
     const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 5, expiresInSeconds: 900 };
     for (const error of ['access_denied', 'expired_token']) {
       const { fetcher } = createFakeFetch(() => ({ json: { error } }));
@@ -170,7 +170,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     }
   });
 
-  it('device_flow_disabled e incorrect_client_credentials viram unexpected, não github-unauthorized', async () => {
+  it('device_flow_disabled and incorrect_client_credentials become unexpected, not github-unauthorized', async () => {
     const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 5, expiresInSeconds: 900 };
     for (const error of ['device_flow_disabled', 'incorrect_client_credentials']) {
       const { fetcher } = createFakeFetch(() => ({ json: { error } }));
@@ -180,7 +180,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     }
   });
 
-  it('cancelar interrompe o polling sem pedir o token', async () => {
+  it('cancelling stops the polling without requesting the token', async () => {
     const { fetcher, requests } = createFakeFetch(() => ({ json: { error: 'authorization_pending' } }));
     const controller = new AbortController();
     const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG, async () => controller.abort());
@@ -189,7 +189,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     expect(requests).toEqual([]);
   });
 
-  it('passa o AbortSignal ao fetch do polling e ignora token que chega depois do cancelamento', async () => {
+  it('passes the AbortSignal to the polling fetch and ignores a token that arrives after cancellation', async () => {
     const controller = new AbortController();
     const { fetcher, requests } = createFakeFetch(() => {
       controller.abort();
@@ -201,7 +201,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     expect(requests[0]?.signal).toBe(controller.signal);
   });
 
-  it('o sleep real acorda com AbortError quando o sinal é abortado', async () => {
+  it('the real sleep wakes up with AbortError when the signal is aborted', async () => {
     const { fetcher } = createFakeFetch(() => ({ json: {} }));
     const controller = new AbortController();
     const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG);
@@ -211,7 +211,7 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 
-  it('para quando o tempo do código acaba', async () => {
+  it('stops when the code time runs out', async () => {
     const { fetcher } = createFakeFetch(() => ({ json: { error: 'authorization_pending' } }));
     const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG, noSleep);
     await expect(

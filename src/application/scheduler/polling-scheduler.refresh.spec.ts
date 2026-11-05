@@ -6,7 +6,7 @@ import { fakePage } from '../testing/fake-page';
 import { PollingScheduler } from './polling-scheduler';
 
 describe('PollingScheduler.refresh', () => {
-  it('recarrega a página na hora, sem esperar o intervalo', async () => {
+  it('reloads the page right away, without waiting for the interval', async () => {
     const load = vi.fn(async () => 'dados');
     const scheduler = new PollingScheduler(
       new PageRegistry([fakePage({ id: 'usage', pollIntervalMs: 60_000, load })]),
@@ -18,7 +18,7 @@ describe('PollingScheduler.refresh', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('ignora páginas desligadas ou desconhecidas', async () => {
+  it('ignores disabled or unknown pages', async () => {
     const load = vi.fn(async () => 'dados');
     const scheduler = new PollingScheduler(new PageRegistry([fakePage({ id: 'usage', load })]), new FakeClock());
     scheduler.sync({ ...createDefaultSettings(), enabledPages: { usage: false } });

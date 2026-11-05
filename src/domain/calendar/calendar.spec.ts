@@ -23,7 +23,7 @@ function at(iso: string): number {
 function meeting(overrides: Partial<Meeting> & Pick<Meeting, 'startsAt' | 'endsAt'>): Meeting {
   return {
     id: String(overrides.startsAt),
-    title: 'Reunião',
+    title: 'Meeting',
     allDay: false,
     cancelled: false,
     showAs: 'busy',
@@ -34,14 +34,14 @@ function meeting(overrides: Partial<Meeting> & Pick<Meeting, 'startsAt' | 'endsA
   };
 }
 
-describe('fuso e limites do dia', () => {
-  it('o dia em São Paulo vai de 00:00 a 23:59:59 locais (UTC-3)', () => {
+describe('time zone and day bounds', () => {
+  it('the day in São Paulo runs from 00:00 to 23:59:59 local (UTC-3)', () => {
     const bounds = dayBounds(at('2026-11-05T15:00:00Z'), SP);
     expect(bounds.startsAt).toBe(at('2026-11-05T03:00:00Z'));
     expect(bounds.endsAt).toBe(at('2026-11-06T02:59:59Z'));
   });
 
-  it('virada de dia: 23:59:59 local ainda é hoje, 00:00:00 local já é o dia seguinte', () => {
+  it('day rollover: 23:59:59 local is still today, 00:00:00 local is already the next day', () => {
     const lastSecond = at('2026-11-06T02:59:59Z');
     const firstSecond = at('2026-11-06T03:00:00Z');
     expect(dayBounds(lastSecond, SP).startsAt).toBe(at('2026-11-05T03:00:00Z'));
@@ -49,17 +49,17 @@ describe('fuso e limites do dia', () => {
     expect(startOfDay(at('2026-11-06T02:00:00Z'), SP)).toBe(at('2026-11-05T03:00:00Z'));
   });
 
-  it('virada de mês e de ano', () => {
+  it('month and year rollover', () => {
     expect(dayBounds(at('2026-12-31T20:00:00Z'), SP).endsAt).toBe(at('2027-01-01T02:59:59Z'));
   });
 
-  it('o mesmo instante cai em dias diferentes conforme o fuso', () => {
+  it('the same instant falls on different days depending on the time zone', () => {
     const instant = at('2026-11-05T01:30:00Z');
     expect(dayBounds(instant, SP).startsAt).toBe(at('2026-11-04T03:00:00Z'));
     expect(dayBounds(instant, 'UTC').startsAt).toBe(at('2026-11-05T00:00:00Z'));
   });
 
-  it('respeita horário de verão em fusos que o têm', () => {
+  it('honors daylight saving time in zones that have it', () => {
     const ny = 'America/New_York';
     expect(zonedTimeToEpoch({ year: 2026, month: 7, day: 1, hour: 9, minute: 0, second: 0 }, ny)).toBe(at('2026-07-01T13:00:00Z'));
     expect(zonedTimeToEpoch({ year: 2026, month: 12, day: 1, hour: 9, minute: 0, second: 0 }, ny)).toBe(at('2026-12-01T14:00:00Z'));
@@ -67,15 +67,15 @@ describe('fuso e limites do dia', () => {
     expect(springForward.endsAt - springForward.startsAt).toBe(23 * HOUR - 1000);
   });
 
-  it('lê datas do Graph sem offset no fuso pedido e com offset como estão', () => {
+  it('reads Graph dates without an offset in the requested zone and with an offset as they are', () => {
     expect(parseWallClock('2026-11-05T09:30:00.0000000', SP)).toBe(at('2026-11-05T12:30:00Z'));
     expect(parseWallClock('2026-11-05T09:30:00', 'UTC')).toBe(at('2026-11-05T09:30:00Z'));
     expect(parseWallClock('2026-11-05T09:30:00-03:00', 'UTC')).toBe(at('2026-11-05T12:30:00Z'));
     expect(parseWallClock('2026-11-05T09:30:00.0000000Z', SP)).toBe(at('2026-11-05T09:30:00Z'));
-    expect(parseWallClock('lixo', SP)).toBeNull();
+    expect(parseWallClock('garbage', SP)).toBeNull();
   });
 
-  it('formata o horário local e valida nomes de fuso', () => {
+  it('formats the local time and validates time zone names', () => {
     expect(formatClock(at('2026-11-05T12:05:00Z'), SP)).toBe('09:05');
     expect(formatClock(at('2026-11-05T03:00:00Z'), SP)).toBe('00:00');
     expect(isValidTimeZone(SP)).toBe(true);
@@ -86,19 +86,19 @@ describe('fuso e limites do dia', () => {
 describe('meetingsOfDay', () => {
   const day = dayBounds(at('2026-11-05T15:00:00Z'), SP);
 
-  it('mantém o que começa no dia e o que atravessa a meia-noite de entrada', () => {
+  it('keeps what starts on the day and what crosses midnight into it', () => {
     const inside = meeting({ startsAt: day.startsAt + 9 * HOUR, endsAt: day.startsAt + 10 * HOUR });
     const crossing = meeting({ startsAt: day.startsAt - HOUR, endsAt: day.startsAt + 30 * MINUTE });
     expect(meetingsOfDay([inside, crossing], day)).toEqual([inside, crossing]);
   });
 
-  it('descarta o que terminou exatamente à meia-noite e o que começa no dia seguinte', () => {
+  it('drops what ended exactly at midnight and what starts on the next day', () => {
     const endedAtMidnight = meeting({ startsAt: day.startsAt - HOUR, endsAt: day.startsAt });
     const tomorrow = meeting({ startsAt: day.endsAt + 1000, endsAt: day.endsAt + HOUR });
     expect(meetingsOfDay([endedAtMidnight, tomorrow], day)).toEqual([]);
   });
 
-  it('dia inteiro de ontem some e o de hoje fica', () => {
+  it('yesterday all-day events disappear and today ones stay', () => {
     const yesterday = meeting({ allDay: true, startsAt: day.startsAt - 24 * HOUR, endsAt: day.startsAt });
     const today = meeting({ allDay: true, startsAt: day.startsAt, endsAt: day.startsAt + 24 * HOUR });
     expect(meetingsOfDay([yesterday, today], day)).toEqual([today]);
@@ -109,32 +109,32 @@ describe('buildAgenda', () => {
   const base = at('2026-11-05T12:00:00Z');
   const past = meeting({ title: 'Passada', startsAt: base - 2 * HOUR, endsAt: base - HOUR });
   const running = meeting({ title: 'Agora', startsAt: base - 10 * MINUTE, endsAt: base + 20 * MINUTE });
-  const soon = meeting({ title: 'Próxima', startsAt: base + 45 * MINUTE, endsAt: base + 75 * MINUTE });
+  const soon = meeting({ title: 'Soon', startsAt: base + 45 * MINUTE, endsAt: base + 75 * MINUTE });
   const later = meeting({ title: 'Depois', startsAt: base + 3 * HOUR, endsAt: base + 4 * HOUR });
 
-  it('classifica passada, em andamento e futura, ordenando por início', () => {
+  it('classifies past, ongoing and upcoming, sorted by start', () => {
     const agenda = buildAgenda([later, soon, running, past], base);
     expect(agenda.timed.map((item) => [item.meeting.title, item.phase])).toEqual([
       ['Passada', 'past'],
       ['Agora', 'now'],
-      ['Próxima', 'upcoming'],
+      ['Soon', 'upcoming'],
       ['Depois', 'upcoming'],
     ]);
     expect(agenda.current.map((item) => item.title)).toEqual(['Agora']);
     expect(agenda.next).toEqual({ meeting: soon, minutesUntil: 45 });
   });
 
-  it('o instante de início já conta como em andamento e o de fim como encerrada', () => {
+  it('the start instant already counts as ongoing and the end instant as finished', () => {
     expect(buildAgenda([soon], soon.startsAt).timed[0]?.phase).toBe('now');
     expect(buildAgenda([soon], soon.endsAt).timed[0]?.phase).toBe('past');
   });
 
-  it('arredonda os minutos para cima e some quando não há próxima', () => {
+  it('rounds minutes up and disappears when there is no next meeting', () => {
     expect(buildAgenda([soon], soon.startsAt - 30_001).next?.minutesUntil).toBe(1);
     expect(buildAgenda([past, running], base).next).toBeNull();
   });
 
-  it('cancelada fica na lista, mas nunca é "agora" nem "próxima"', () => {
+  it('cancelled stays in the list, but is never "now" or "next"', () => {
     const cancelled = meeting({ title: 'Cancelada', startsAt: base - 5 * MINUTE, endsAt: base + 10 * MINUTE, cancelled: true });
     const cancelledNext = meeting({ title: 'Cancelada 2', startsAt: base + 5 * MINUTE, endsAt: base + 20 * MINUTE, cancelled: true });
     const agenda = buildAgenda([cancelled, cancelledNext, later], base);
@@ -143,7 +143,7 @@ describe('buildAgenda', () => {
     expect(agenda.next?.meeting.title).toBe('Depois');
   });
 
-  it('dia inteiro fica em lista própria e não vira "agora" nem "próxima"', () => {
+  it('all-day goes in its own list and never becomes "now" or "next"', () => {
     const day = dayBounds(base, SP);
     const holiday = meeting({ title: 'Feriado', allDay: true, startsAt: day.startsAt, endsAt: day.endsAt + 1000 });
     const agenda = buildAgenda([holiday], base);
@@ -153,7 +153,7 @@ describe('buildAgenda', () => {
     expect(agenda.next).toBeNull();
   });
 
-  it('reunião que atravessa a meia-noite segue "agora" depois da virada', () => {
+  it('a meeting that crosses midnight stays "now" after the rollover', () => {
     const late = meeting({ startsAt: at('2026-11-06T01:30:00Z'), endsAt: at('2026-11-06T03:30:00Z') });
     expect(buildAgenda([late], at('2026-11-06T03:10:00Z')).current).toEqual([late]);
     expect(buildAgenda([late], at('2026-11-06T03:30:00Z')).current).toEqual([]);
@@ -161,7 +161,7 @@ describe('buildAgenda', () => {
 });
 
 describe('teamsJoinUrl', () => {
-  it('aceita https em teams.microsoft.com e teams.live.com', () => {
+  it('accepts https on teams.microsoft.com and teams.live.com', () => {
     expect(teamsJoinUrl('https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0?context=x')).toBe(
       'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0?context=x',
     );
@@ -179,13 +179,13 @@ describe('teamsJoinUrl', () => {
     'javascript:alert(1)',
     'msteams://teams.microsoft.com/l/meetup-join/x',
     'file:///etc/passwd',
-    'nao é url',
+    'not a url',
     '',
   ])('rejeita %s', (raw) => {
     expect(teamsJoinUrl(raw)).toBeNull();
   });
 
-  it('rejeita null e undefined', () => {
+  it('rejects null and undefined', () => {
     expect(teamsJoinUrl(null)).toBeNull();
     expect(teamsJoinUrl(undefined)).toBeNull();
   });

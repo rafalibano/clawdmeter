@@ -12,7 +12,7 @@ const JOIN = 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0';
 function event(overrides: Record<string, unknown> = {}) {
   return {
     id: 'e1',
-    subject: 'Daily do time',
+    subject: 'Team daily',
     start: { dateTime: '2026-11-05T09:30:00.0000000', timeZone: ZONE },
     end: { dateTime: '2026-11-05T09:45:00.0000000', timeZone: ZONE },
     isAllDay: false,
@@ -21,7 +21,7 @@ function event(overrides: Record<string, unknown> = {}) {
     isOnlineMeeting: true,
     onlineMeeting: { joinUrl: JOIN },
     location: { displayName: 'Sala 1' },
-    organizer: { emailAddress: { name: 'Fulano', address: 'fulano@example.com' } },
+    organizer: { emailAddress: { name: 'John', address: 'john@example.com' } },
     ...overrides,
   };
 }
@@ -33,7 +33,7 @@ function setup(responder: Responder) {
 }
 
 describe('GraphCalendarGateway', () => {
-  it('chama o calendarView do dia com Prefer de fuso, $select, $orderby e Bearer delegado', async () => {
+  it('calls the day\'s calendarView with a time zone Prefer, $select, $orderby and a delegated Bearer', async () => {
     const { gateway, requests } = setup(() => ({ json: { value: [event()] } }));
     const meetings = await gateway.meetings(RANGE, ZONE);
 
@@ -54,20 +54,20 @@ describe('GraphCalendarGateway', () => {
     expect(meetings).toEqual([
       {
         id: 'e1',
-        title: 'Daily do time',
+        title: 'Team daily',
         startsAt: Date.parse('2026-11-05T12:30:00Z'),
         endsAt: Date.parse('2026-11-05T12:45:00Z'),
         allDay: false,
         cancelled: false,
         showAs: 'busy',
-        organizer: 'Fulano',
+        organizer: 'John',
         location: 'Sala 1',
         joinUrl: JOIN,
       },
     ]);
   });
 
-  it('segue @odata.nextLink até acabar, reenviando token e Prefer', async () => {
+  it('follows @odata.nextLink to the end, resending token and Prefer', async () => {
     const next = 'https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=abc';
     const { gateway, requests } = setup((request) =>
       request.url === next
@@ -80,7 +80,7 @@ describe('GraphCalendarGateway', () => {
     expect(requests[1]?.headers).toMatchObject({ Authorization: 'Bearer graph-token', Prefer: expect.stringContaining('outlook.timezone') });
   });
 
-  it('nunca manda o token para um nextLink fora do Graph', async () => {
+  it('never sends the token to a nextLink outside Graph', async () => {
     const { gateway, requests } = setup(() => ({
       json: { value: [event()], '@odata.nextLink': 'https://evil.example.com/steal' },
     }));
@@ -88,7 +88,7 @@ describe('GraphCalendarGateway', () => {
     expect(requests).toHaveLength(1);
   });
 
-  it('para no limite de páginas se o Graph nunca terminar', async () => {
+  it('stops at the page limit if Graph never ends', async () => {
     const { gateway, requests } = setup(() => ({
       json: { value: [event()], '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/calendarView?$skiptoken=loop' },
     }));
@@ -96,7 +96,7 @@ describe('GraphCalendarGateway', () => {
     expect(requests).toHaveLength(10);
   });
 
-  it('mapeia cancelada, dia inteiro (sempre no fuso do calendário) e link inválido', async () => {
+  it('maps cancelled, all-day (always in the calendar time zone) and invalid link', async () => {
     const { gateway } = setup(() => ({
       json: {
         value: [
@@ -123,15 +123,15 @@ describe('GraphCalendarGateway', () => {
       joinUrl: null,
     });
     expect(evil?.joinUrl).toBeNull();
-    expect(untitled).toMatchObject({ title: '(sem título)', location: null, organizer: null });
+    expect(untitled).toMatchObject({ title: '', location: null, organizer: null });
   });
 
-  it('respeita o fuso informado pelo Graph e ignora eventos sem data', async () => {
+  it('respects the time zone reported by Graph and ignores events without a date', async () => {
     const { gateway } = setup(() => ({
       json: {
         value: [
           event({ start: { dateTime: '2026-11-05T12:30:00.0000000', timeZone: 'UTC' }, end: { dateTime: '2026-11-05T13:00:00.0000000', timeZone: 'UTC' } }),
-          event({ id: 'sem-data', start: {} }),
+          event({ id: 'no-date', start: {} }),
         ],
       },
     }));
@@ -140,32 +140,32 @@ describe('GraphCalendarGateway', () => {
     expect(meetings[0]?.startsAt).toBe(Date.parse('2026-11-05T12:30:00Z'));
   });
 
-  it('401 vira microsoft-expired (Refazer login da Microsoft)', async () => {
+  it('401 becomes microsoft-expired (Sign in to Microsoft again)', async () => {
     const { gateway } = setup(() => ({ status: 401, json: { error: { code: 'InvalidAuthenticationToken' } } }));
     await expect(gateway.meetings(RANGE, ZONE)).rejects.toMatchObject({ problem: 'microsoft-expired' });
   });
 
-  it('403 vira microsoft-expired com mensagem sobre a permissão', async () => {
+  it('403 becomes microsoft-expired with a permission code', async () => {
     const { gateway } = setup(() => ({ status: 403, json: {} }));
     await expect(gateway.meetings(RANGE, ZONE)).rejects.toMatchObject({
       problem: 'microsoft-expired',
-      message: expect.stringContaining('Calendars.Read'),
+      code: 'microsoft-calendar-denied',
     });
   });
 
-  it('token expirado no authorizer propaga o problema sem chamar o Graph', async () => {
+  it('an expired token in the authorizer propagates the problem without calling Graph', async () => {
     const { gateway, requests, authorizer } = setup(() => ({ json: { value: [] } }));
     authorizer.tokenOutcome = new ConnectionProblemError('microsoft-expired');
     await expect(gateway.meetings(RANGE, ZONE)).rejects.toMatchObject({ problem: 'microsoft-expired' });
     expect(requests).toEqual([]);
   });
 
-  it('erro de servidor vira erro comum', async () => {
+  it('a server error becomes a plain error', async () => {
     const { gateway } = setup(() => ({ status: 503, json: {} }));
     await expect(gateway.meetings(RANGE, ZONE)).rejects.toThrow('503');
   });
 
-  it('o login pede só Calendars.Read e offline_access (delegado, sem segredo)', () => {
+  it('sign-in asks only for Calendars.Read and offline_access (delegated, no secret)', () => {
     expect(AUTH_CONFIG.microsoft.scopes).toEqual(expect.arrayContaining(['Calendars.Read', 'offline_access']));
     expect(Object.keys(AUTH_CONFIG.microsoft)).not.toContain('clientSecret');
   });

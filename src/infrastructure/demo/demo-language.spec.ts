@@ -8,7 +8,7 @@ function memory(initial?: string) {
 }
 
 describe('?lang= no demo', () => {
-  it('grava o idioma pedido sem perder o resto dos ajustes', () => {
+  it('stores the requested language without losing the rest of the settings', () => {
     const storage = memory(JSON.stringify({ schemaVersion: 3, appearance: { theme: 'dark' } }));
     applyDemoLanguage('?demo=usage:high&lang=en', storage);
     const settings = migrateSettings(JSON.parse(storage.data.get(DEMO_SETTINGS_KEY)!));
@@ -16,14 +16,14 @@ describe('?lang= no demo', () => {
     expect(settings.appearance.theme).toBe('dark');
   });
 
-  it('idioma inválido ou ausente não mexe no armazenamento', () => {
+  it('an invalid or missing language leaves storage untouched', () => {
     const storage = memory();
     applyDemoLanguage('?lang=fr', storage);
     applyDemoLanguage('', storage);
     expect(storage.data.size).toBe(0);
   });
 
-  it('JSON corrompido é substituído só pelo idioma', () => {
+  it('corrupt JSON is replaced by the language only', () => {
     const storage = memory('{nope');
     applyDemoLanguage('?lang=es-MX', storage);
     expect(JSON.parse(storage.data.get(DEMO_SETTINGS_KEY)!)).toEqual({ language: 'es-MX' });

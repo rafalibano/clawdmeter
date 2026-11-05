@@ -1,4 +1,4 @@
-import type { ErrorCode } from '../coded-error';
+import type { ErrorArgs, ErrorCode } from '../coded-error';
 
 export type ConnectionProblem =
   | 'keychain-denied'
@@ -34,6 +34,7 @@ export class ConnectionProblemError extends Error {
     readonly problem: ConnectionProblem,
     message?: string,
     readonly code?: ErrorCode,
+    readonly args?: ErrorArgs,
   ) {
     super(message ?? problem);
     this.name = 'ConnectionProblemError';

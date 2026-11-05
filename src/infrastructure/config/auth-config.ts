@@ -26,7 +26,7 @@ export function isConfigured(clientId: string): boolean {
 
 export function requireClientId(clientId: string, provider: string): string {
   if (!isConfigured(clientId)) {
-    throw new ConnectionProblemError('unexpected', `client_id do ${provider} não configurado em auth-config.ts`);
+    throw new ConnectionProblemError('unexpected', undefined, 'client-id-missing', { provider });
   }
   return clientId;
 }

@@ -39,7 +39,7 @@ const DEMO_DEVICE_APPROVAL_MS = 2500;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function failOnce(world: DemoWorld, id: ConnectionId): void {
-  if (world.failOnce.delete(id)) throw new Error('Sem rede (cenário demo)');
+  if (world.failOnce.delete(id)) throw new Error('No network (demo scenario)');
 }
 
 class DemoPrefsStore implements ConnectionPrefsStore {
@@ -185,12 +185,12 @@ export class DemoCalendar implements CalendarGateway {
     const today = dayBounds(anchor, timeZone);
     const at = (offsetMinutes: number) => anchor + offsetMinutes * MINUTE_MS;
     return [
-      demoMeeting('demo-1', 'Alinhamento rápido', at(-120), 30, { organizer: 'Pessoa A' }),
-      demoMeeting('demo-2', 'Daily do time', at(-10), 30, { organizer: 'Pessoa B' }),
-      demoMeeting('demo-3', '1:1', at(45), 30, { organizer: 'Pessoa C' }),
-      demoMeeting('demo-4', 'Planejamento', at(150), 60, { location: 'Sala de reunião' }),
-      demoMeeting('demo-5', 'Retrospectiva', at(240), 30, { cancelled: true }),
-      demoMeeting('demo-6', 'Dia de foco', today.startsAt, 24 * 60, { allDay: true, showAs: 'free', joinUrl: null }),
+      demoMeeting('demo-1', 'Quick sync', at(-120), 30, { organizer: 'Person A' }),
+      demoMeeting('demo-2', 'Team daily', at(-10), 30, { organizer: 'Person B' }),
+      demoMeeting('demo-3', '1:1', at(45), 30, { organizer: 'Person C' }),
+      demoMeeting('demo-4', 'Planning', at(150), 60, { location: 'Meeting room' }),
+      demoMeeting('demo-5', 'Retrospective', at(240), 30, { cancelled: true }),
+      demoMeeting('demo-6', 'Focus day', today.startsAt, 24 * 60, { allDay: true, showAs: 'free', joinUrl: null }),
     ];
   }
 }

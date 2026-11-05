@@ -29,7 +29,7 @@ const PT = new Localizer('pt-BR');
 const toSessionsView = (data: Parameters<typeof toSessionsViewWith>[0]) => toSessionsViewWith(data, PT);
 
 describe('toSessionsView', () => {
-  it('mostra nome, pasta curta, status e há quanto tempo', () => {
+  it('shows name, short folder, status and how long ago', () => {
     const { rows } = toSessionsView(data([session(1, { name: 'refactor', statusUpdatedAt: NOW - 12 * MINUTE_MS })]));
     expect(rows[0]).toMatchObject({
       key: '1',
@@ -43,12 +43,12 @@ describe('toSessionsView', () => {
     });
   });
 
-  it('sem nome usa a pasta; sem horário mostra traço; status desconhecido', () => {
+  it('without a name uses the folder; without a time shows a dash; unknown status', () => {
     const { rows } = toSessionsView(data([session(2, { status: null, statusUpdatedAt: null, updatedAt: null })]));
     expect(rows[0]).toMatchObject({ title: 'orders-api', since: '—', status: 'unknown', statusLabel: 'Desconhecido' });
   });
 
-  it('destaca sessão ociosa há muito tempo', () => {
+  it('highlights a session idle for a long time', () => {
     const { rows, summary } = toSessionsView(
       data([session(3, { status: 'idle', statusUpdatedAt: NOW - 18 * MINUTE_MS }), session(4)]),
     );
@@ -57,12 +57,12 @@ describe('toSessionsView', () => {
     expect(summary).toBe('2 sessões · 1 pede atenção');
   });
 
-  it('destaca sessão ocupada há muito tempo', () => {
+  it('highlights a session busy for a long time', () => {
     const { rows } = toSessionsView(data([session(5, { statusUpdatedAt: NOW - 45 * MINUTE_MS })]));
     expect(rows[0]).toMatchObject({ attention: 'running-long', attentionLabel: 'Ocupada há 45 min' });
   });
 
-  it('resumo: vazio, singular e sem atenção', () => {
+  it('summary: empty, singular and without attention', () => {
     expect(toSessionsView(data([])).summary).toBe('Nenhuma sessão do Claude Code aberta.');
     expect(toSessionsView(data([session(6)])).summary).toBe('1 sessão');
   });

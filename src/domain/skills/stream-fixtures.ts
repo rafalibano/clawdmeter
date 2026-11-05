@@ -55,8 +55,8 @@ export const MCP_NEEDS_AUTH_STREAM: readonly string[] = [
     { name: 'atlassian', status: 'needs-auth' },
     { name: 'github', status: 'connected' },
   ]),
-  assistantText('Não consegui acessar o Jira.'),
-  result({ is_error: true, subtype: 'error_during_execution', result: 'Servidor MCP atlassian sem autenticação.', total_cost_usd: 0.01 }),
+  assistantText('I could not access Jira.'),
+  result({ is_error: true, subtype: 'error_during_execution', result: 'MCP server atlassian is not authenticated.', total_cost_usd: 0.01 }),
 ];
 
 export const BUDGET_EXCEEDED_STREAM: readonly string[] = [

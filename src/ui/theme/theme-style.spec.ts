@@ -17,7 +17,7 @@ function fakeRoot() {
 const appearance = createDefaultSettings().appearance;
 
 describe('resolveTheme', () => {
-  it('segue o sistema só no modo system', () => {
+  it('follows the system only in system mode', () => {
     expect(resolveTheme('system', true)).toBe('dark');
     expect(resolveTheme('system', false)).toBe('light');
     expect(resolveTheme('light', true)).toBe('light');
@@ -26,7 +26,7 @@ describe('resolveTheme', () => {
 });
 
 describe('applyThemeStyle', () => {
-  it('define tema, destaque e texto legível sobre o destaque', () => {
+  it('sets the theme, the accent and readable text over the accent', () => {
     const { root, properties } = fakeRoot();
     applyThemeStyle(root, { ...appearance, accentColor: '#ffffff' }, 'dark');
     expect(root.dataset['theme']).toBe('dark');
@@ -34,7 +34,7 @@ describe('applyThemeStyle', () => {
     expect(properties.get('--cm-accent-fg')).toBe('#121212');
   });
 
-  it('com o verde Mottu padrão, texto, ativo e fundo ficam por conta dos tokens do tema', () => {
+  it('with the default Mottu green, text, active and background are left to the theme tokens', () => {
     const { root, properties } = fakeRoot();
     applyThemeStyle(root, { ...appearance, accentColor: '#ff0000' }, 'dark');
     expect(properties.get('--cm-accent-text')).toBe('#ff0000');
@@ -48,7 +48,7 @@ describe('applyThemeStyle', () => {
     expect(properties.has('--cm-accent-active')).toBe(false);
   });
 
-  it('sem fundo personalizado deixa o tema decidir bg e fg', () => {
+  it('without a custom background lets the theme decide bg and fg', () => {
     const { root, properties } = fakeRoot();
     applyThemeStyle(root, { ...appearance, popoverBackground: '#000000' }, 'light');
     expect(properties.get('--cm-bg')).toBe('#000000');
@@ -60,13 +60,13 @@ describe('applyThemeStyle', () => {
     }
   });
 
-  it('expõe o fundo padrão de cada tema', () => {
+  it('exposes the default background of each theme', () => {
     expect(THEME_BACKGROUNDS).toEqual({ light: '#f7f7f7', dark: '#1a1a1a' });
   });
 });
 
-describe('cores das séries', () => {
-  it('sem escolha, o 5h segue o destaque e o 7d fica no cinza do tema', () => {
+describe('series colors', () => {
+  it('without a choice, 5h follows the accent and 7d stays on the theme gray', () => {
     const { root, properties } = fakeRoot();
     properties.set('--cm-series-seven', '#ff0000');
     applyThemeStyle(root, appearance, 'light', { fiveHour: null, sevenDay: null });
@@ -76,7 +76,7 @@ describe('cores das séries', () => {
     expect(properties.get('--cm-series-five')).toBe('#0063f7');
   });
 
-  it('cor escolhida vale nas barras do 5h e do 7d, acima do destaque', () => {
+  it('the chosen color applies to the 5h and 7d bars, above the accent', () => {
     const { root, properties } = fakeRoot();
     applyThemeStyle(root, { ...appearance, accentColor: '#0063f7' }, 'dark', { fiveHour: '#ef6800', sevenDay: '#1bd60b' });
     expect(properties.get('--cm-series-five')).toBe('#ef6800');

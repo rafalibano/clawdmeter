@@ -36,7 +36,7 @@ describe('PollingScheduler', () => {
     once.mockClear();
   });
 
-  it('só agenda páginas ligadas', async () => {
+  it('only schedules enabled pages', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ fast: true, slow: false, once: false }));
     await clock.advance(10_000);
@@ -46,7 +46,7 @@ describe('PollingScheduler', () => {
     expect(clock.activeTimers()).toBe(1);
   });
 
-  it('carrega na hora ao ligar e respeita o intervalo de cada página', async () => {
+  it('loads right away when enabled and honors each page interval', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ once: false }));
     await flushPromises();
@@ -57,7 +57,7 @@ describe('PollingScheduler', () => {
     expect(slow).toHaveBeenCalledTimes(2);
   });
 
-  it('página sem intervalo carrega uma vez e não agenda timer', async () => {
+  it('a page without an interval loads once and schedules no timer', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ fast: false, slow: false }));
     await clock.advance(60_000);
@@ -65,7 +65,7 @@ describe('PollingScheduler', () => {
     expect(clock.activeTimers()).toBe(0);
   });
 
-  it('para de agendar ao desligar a página', async () => {
+  it('stops scheduling when the page is turned off', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ slow: false, once: false }));
     await clock.advance(2_000);
@@ -76,7 +76,7 @@ describe('PollingScheduler', () => {
     expect(clock.activeTimers()).toBe(0);
   });
 
-  it('recomeça ao ligar de novo, com carga imediata', async () => {
+  it('restarts when turned on again, with an immediate load', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ slow: false, once: false }));
     await clock.advance(1_000);
@@ -90,7 +90,7 @@ describe('PollingScheduler', () => {
     expect(fast).toHaveBeenCalledTimes(5);
   });
 
-  it('sync repetido com as mesmas configurações não duplica timers nem cargas', async () => {
+  it('a repeated sync with the same settings does not duplicate timers or loads', async () => {
     const scheduler = build();
     const settings = settingsWith({ slow: false, once: false });
     scheduler.sync(settings);
@@ -100,7 +100,7 @@ describe('PollingScheduler', () => {
     expect(clock.activeTimers()).toBe(1);
   });
 
-  it('publica o resultado com o horário do relógio injetado', async () => {
+  it('publishes the result with the injected clock time', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ slow: false, once: false }));
     await clock.advance(1_000);
@@ -110,7 +110,7 @@ describe('PollingScheduler', () => {
     ]);
   });
 
-  it('publica erro de load sem derrubar o agendamento', async () => {
+  it('publishes a load error without breaking the schedule', async () => {
     const failing = vi.fn().mockRejectedValueOnce(new Error('falhou')).mockResolvedValue('ok');
     const registry = new PageRegistry([fakePage({ id: 'flaky', pollIntervalMs: 1_000, load: failing })]);
     const scheduler = new PollingScheduler(registry, clock);
@@ -121,7 +121,7 @@ describe('PollingScheduler', () => {
     expect(updates[0]).toMatchObject({ error: 'falhou' });
   });
 
-  it('não sobrepõe cargas enquanto a anterior não terminou', async () => {
+  it('does not overlap loads while the previous one has not finished', async () => {
     let release: (value: string) => void = () => undefined;
     const hanging = vi.fn(() => new Promise<string>((resolve) => (release = resolve)));
     const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: 1_000, load: hanging })]);
@@ -135,7 +135,7 @@ describe('PollingScheduler', () => {
     expect(hanging).toHaveBeenCalledTimes(2);
   });
 
-  it('refresh durante uma carga em andamento roda de novo ao terminar', async () => {
+  it('a refresh during a load in progress runs again when it finishes', async () => {
     const releases: Array<(value: string) => void> = [];
     const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
     const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
@@ -153,7 +153,7 @@ describe('PollingScheduler', () => {
     expect(updates.map((update) => (update.status === 'ok' ? update.data : update.error))).toEqual(['antiga', 'nova']);
   });
 
-  it('nenhum refresh se perde entre o fim do drain e a liberação do inflight', async () => {
+  it('no refresh is lost between the end of the drain and the release of the inflight', async () => {
     for (let offset = 0; offset <= 16; offset += 1) {
       const started: number[] = [];
       let calls = 0;
@@ -167,12 +167,12 @@ describe('PollingScheduler', () => {
       calls += 1;
       void scheduler.refresh('gap');
       await flushPromises();
-      expect(started.at(-1), `refresh após ${offset} ticks`).toBe(1);
+      expect(started.at(-1), `refresh after ${offset} ticks`).toBe(1);
       scheduler.stopAll();
     }
   });
 
-  it('vários refreshes durante a carga viram uma única recarga', async () => {
+  it('several refreshes during the load become a single reload', async () => {
     const releases: Array<(value: string) => void> = [];
     const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
     const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
@@ -187,7 +187,7 @@ describe('PollingScheduler', () => {
     expect(hanging).toHaveBeenCalledTimes(2);
   });
 
-  it('problema de conexão carrega o problema e deixa o texto para a UI', async () => {
+  it('a connection problem carries the problem and leaves the text to the UI', async () => {
     const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired'));
     const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
     const scheduler = new PollingScheduler(registry, clock);
@@ -197,17 +197,17 @@ describe('PollingScheduler', () => {
     expect(updates[0]).toMatchObject({ status: 'error', error: 'microsoft-expired', problem: 'microsoft-expired' });
   });
 
-  it('problema com mensagem específica mantém a mensagem', async () => {
-    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired', 'Sem permissão'));
+  it('a problem with a specific message keeps the message', async () => {
+    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired', 'No permission'));
     const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
     const scheduler = new PollingScheduler(registry, clock);
     scheduler.subscribe((update) => updates.push(update));
     scheduler.sync(createDefaultSettings());
     await flushPromises();
-    expect(updates[0]).toMatchObject({ error: 'Sem permissão', problem: 'microsoft-expired' });
+    expect(updates[0]).toMatchObject({ error: 'No permission', problem: 'microsoft-expired' });
   });
 
-  it('descarta o resultado de uma carga que terminou depois de a página ser desligada', async () => {
+  it('discards the result of a load that finished after the page was turned off', async () => {
     let release: (value: string) => void = () => undefined;
     const registry = new PageRegistry([
       fakePage({ id: 'late', pollIntervalMs: null, load: () => new Promise<string>((resolve) => (release = resolve)) }),
@@ -221,14 +221,14 @@ describe('PollingScheduler', () => {
     expect(updates).toEqual([]);
   });
 
-  it('stopAll cancela tudo', async () => {
+  it('stopAll cancels everything', async () => {
     const scheduler = build();
     scheduler.sync(createDefaultSettings());
     scheduler.stopAll();
     expect(clock.activeTimers()).toBe(0);
   });
 
-  it('reemite o último resultado para quem assina depois, mesmo sem polling', async () => {
+  it('re-emits the latest result to whoever subscribes later, even without polling', async () => {
     const registry = new PageRegistry([fakePage({ id: 'once', pollIntervalMs: null, load: async () => 'dado' })]);
     const scheduler = new PollingScheduler(registry, clock);
     scheduler.sync(createDefaultSettings());
@@ -239,7 +239,7 @@ describe('PollingScheduler', () => {
     expect(late).toHaveBeenCalledWith({ pageId: 'once', status: 'ok', data: 'dado', at: 0 });
   });
 
-  it('reemite só o resultado mais recente de cada página', async () => {
+  it('re-emits only the most recent result of each page', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ slow: false, once: false }));
     await clock.advance(2_000);
@@ -249,7 +249,7 @@ describe('PollingScheduler', () => {
     expect(late.mock.calls[0]?.[0]).toMatchObject({ pageId: 'fast', at: 2_000 });
   });
 
-  it('não reemite resultado de página desligada', async () => {
+  it('does not re-emit the result of a page that is turned off', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ slow: false, once: false }));
     await flushPromises();
@@ -259,7 +259,7 @@ describe('PollingScheduler', () => {
     expect(late).not.toHaveBeenCalled();
   });
 
-  it('permite cancelar a assinatura', async () => {
+  it('allows unsubscribing', async () => {
     const registry = new PageRegistry([fakePage({ id: 'p', pollIntervalMs: null })]);
     const scheduler = new PollingScheduler(registry, clock);
     const listener = vi.fn();
@@ -269,7 +269,7 @@ describe('PollingScheduler', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('refresh recarrega uma página ligada na hora e ignora página desligada', async () => {
+  it('refresh reloads an enabled page right away and ignores a disabled page', async () => {
     const scheduler = build();
     scheduler.sync(settingsWith({ fast: false, slow: false }));
     await flushPromises();
@@ -281,8 +281,8 @@ describe('PollingScheduler', () => {
   });
 });
 
-describe('PollingScheduler: problemas de conexão e refresh', () => {
-  it('preserva o problema quando o load lança ConnectionProblemError', async () => {
+describe('PollingScheduler: connection problems and refresh', () => {
+  it('preserves the problem when load throws ConnectionProblemError', async () => {
     const clock = new FakeClock();
     const registry = new PageRegistry([
       fakePage({
@@ -294,7 +294,7 @@ describe('PollingScheduler: problemas de conexão e refresh', () => {
       fakePage({
         id: 'net',
         load: async () => {
-          throw new Error('sem rede');
+          throw new Error('no network');
         },
       }),
     ]);
@@ -311,7 +311,7 @@ describe('PollingScheduler: problemas de conexão e refresh', () => {
     expect(updates.find((update) => update.pageId === 'net')).not.toHaveProperty('problem');
   });
 
-  it('refresh recarrega uma página ligada na hora e ignora páginas desligadas', async () => {
+  it('refresh reloads an enabled page right away and ignores disabled pages', async () => {
     const clock = new FakeClock();
     const load = vi.fn(async () => 'ok');
     const scheduler = new PollingScheduler(new PageRegistry([fakePage({ id: 'prs', load })]), clock);

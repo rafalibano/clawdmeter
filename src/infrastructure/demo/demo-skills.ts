@@ -28,7 +28,7 @@ const DEMO_SKILLS: SkillDefinition[] = [
   ...DEFAULT_SKILLS.map((skill) => ({ ...skill })),
   {
     id: 'resumo-prs',
-    name: 'Resumo dos PRs',
+    name: 'PR summary',
     prompt: '/prs',
     maxBudgetUsd: 1,
     allowedTools: ['Read(./**)', 'Bash(gh pr list:*)'],
@@ -59,7 +59,7 @@ class DemoStreamingProcessRunner implements StreamingProcessRunner {
 
   async start(_spec: StreamingProcessSpec, handlers: StreamingProcessHandlers): Promise<StreamingProcessHandle> {
     if (this.world.skills.claudeMissing) {
-      throw new ConnectionProblemError('claude-code-missing', 'claude não encontrado (cenário demo)');
+      throw new ConnectionProblemError('claude-code-missing', 'claude not found (demo scenario)');
     }
     const needsAuth = this.world.skills.mcpNeedsAuth;
     const lines = needsAuth ? MCP_NEEDS_AUTH_STREAM : SUCCESS_STREAM;

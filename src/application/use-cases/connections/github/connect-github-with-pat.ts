@@ -14,7 +14,7 @@ export class ConnectGitHubWithPat {
   execute(pat: string): Promise<ConnectionStatus> {
     return this.runner.run('github', async () => {
       const token = pat.trim();
-      if (token === '') throw new ConnectionProblemError('github-unauthorized', 'Cole um token de acesso pessoal.');
+      if (token === '') throw new ConnectionProblemError('github-unauthorized', undefined, 'github-token-empty');
       const account = await this.accounts.inspect(token);
       await this.secrets.set(SECRET_KEYS.githubToken, token);
       await updatePrefs(this.prefs, (current) => ({ ...current, github: { method: 'pat' } }));

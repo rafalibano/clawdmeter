@@ -41,8 +41,8 @@ async function settle<T>(work: Promise<T>): Promise<T> {
   return work;
 }
 
-describe('demo: PRs e Reviews', () => {
-  it('com GitHub conectado mostra dados genéricos, com Deploy recolhido', async () => {
+describe('demo: PRs and Reviews', () => {
+  it('with GitHub connected shows generic data, with Deploy collapsed', async () => {
     const { pullRequests } = setup('?demo=github:ok');
     const mine = await settle(pullRequests.loadMine.execute());
     const titles = mine.sections[0]?.groups.map((group) => group.title);
@@ -54,7 +54,7 @@ describe('demo: PRs e Reviews', () => {
     expect(reviews.sections[1]?.groups.some((group) => group.title === 'Deploy')).toBe(true);
   });
 
-  it('nunca expõe nomes reais de org', async () => {
+  it('never exposes real org names', async () => {
     const { pullRequests } = setup('?demo=github:ok');
     const mine = await settle(pullRequests.loadMine.execute());
     const reviews = await settle(pullRequests.loadReviews.execute());
@@ -62,7 +62,7 @@ describe('demo: PRs e Reviews', () => {
     expect(everything).not.toMatch(/mottu/i);
   });
 
-  it('sem GitHub conectado pede para conectar', async () => {
+  it('without GitHub connected asks to connect', async () => {
     const { pullRequests } = setup('');
     await expect(pullRequests.loadMine.execute()).rejects.toMatchObject({ problem: 'github-unauthorized' });
   });
@@ -71,7 +71,7 @@ describe('demo: PRs e Reviews', () => {
     ['github:github-unauthorized', 'github-unauthorized'],
     ['github:github-missing-scope', 'github-missing-scope'],
     ['github:github-org-access', 'github-org-access'],
-  ] as const)('?demo=%s falha com %s e o botão de conserto resolve', async (scenario, problem) => {
+  ] as const)('?demo=%s fails with %s and the fix button resolves it', async (scenario, problem) => {
     const { connections, pullRequests } = setup(`?demo=${scenario}`);
     const failure = pullRequests.loadMine.execute().catch((error: unknown) => error);
     expect(await settle(failure)).toMatchObject({ problem });
@@ -80,8 +80,8 @@ describe('demo: PRs e Reviews', () => {
   });
 });
 
-describe('demo: runs de skills', () => {
-  it('simula uma run com stream e conclui com custo e sessão', async () => {
+describe('demo: skill runs', () => {
+  it('simulates a run with a stream and finishes with cost and session', async () => {
     const { skills } = setup('');
     const { run, finished } = await skills.run.execute('acabativa');
     await vi.advanceTimersByTimeAsync(1_500);
@@ -99,7 +99,7 @@ describe('demo: runs de skills', () => {
     expect((await finished).status).toBe('cancelled');
   });
 
-  it('?demo=skills:mcp-needs-auth mostra o problema e Reconectar MCP resolve', async () => {
+  it('?demo=skills:mcp-needs-auth shows the problem and Reconnect MCP resolves it', async () => {
     const { skills } = setup('?demo=skills:mcp-needs-auth');
     const first = await skills.run.execute('acabativa');
     await vi.runAllTimersAsync();
@@ -111,7 +111,7 @@ describe('demo: runs de skills', () => {
     expect(await second.finished).toMatchObject({ status: 'succeeded', problem: null });
   });
 
-  it('?demo=skills:claude-code-missing mostra o problema e Instalar resolve', async () => {
+  it('?demo=skills:claude-code-missing shows the problem and Install resolves it', async () => {
     const { skills } = setup('?demo=skills:claude-code-missing');
     const first = await skills.run.execute('acabativa');
     expect(await first.finished).toMatchObject({ status: 'failed', problem: 'claude-code-missing' });

@@ -6,7 +6,16 @@ export type ErrorCode =
   | 'skill-no-session'
   | 'link-invalid-meeting'
   | 'link-invalid-github'
-  | 'meeting-open-failed';
+  | 'meeting-open-failed'
+  | 'too-many-processes'
+  | 'github-token-empty'
+  | 'github-access-denied'
+  | 'github-code-expired'
+  | 'github-oauth-misconfigured'
+  | 'github-login-failed'
+  | 'github-rate-limited'
+  | 'microsoft-calendar-denied'
+  | 'client-id-missing';
 
 export type ErrorArgs = Record<string, string | number>;
 

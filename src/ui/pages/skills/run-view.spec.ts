@@ -10,7 +10,7 @@ const toRunView = (run: SkillRun, now: number) => toRunViewWith(run, now, PT);
 const RUNNING = startRun('r1', DEFAULT_SKILLS[0]!, 1_000);
 
 describe('formatDuration', () => {
-  it('formata segundos e minutos', () => {
+  it('formats seconds and minutes', () => {
     expect(formatDuration(0)).toBe('0s');
     expect(formatDuration(59_999)).toBe('59s');
     expect(formatDuration(65_000)).toBe('1m 05s');
@@ -18,13 +18,13 @@ describe('formatDuration', () => {
   });
 });
 
-describe('custo por língua', () => {
-  it('usa duas casas, vírgula em pt-BR e ponto em en', () => {
+describe('cost by language', () => {
+  it('uses two decimals, comma in pt-BR and dot in en', () => {
     expect(PT.cost(0.1234)).toBe('US$ 0,12');
     expect(EN.cost(0.1234)).toBe('US$ 0.12');
   });
 
-  it('a view segue a língua do rótulo e do custo', () => {
+  it('the view follows the language of the label and of the cost', () => {
     const run: SkillRun = { ...RUNNING, status: 'succeeded', endedAt: 5_000, costUsd: 0.5 };
     expect(toRunViewWith(run, 6_000, EN)).toMatchObject({ statusLabel: 'Completed', cost: 'US$ 0.50' });
     expect(toRunView(run, 6_000)).toMatchObject({ statusLabel: 'Concluída', cost: 'US$ 0,50' });
@@ -32,7 +32,7 @@ describe('custo por língua', () => {
 });
 
 describe('toRunView', () => {
-  it('run em andamento mostra tempo corrido e as últimas linhas do log', () => {
+  it('a run in progress shows elapsed time and the last log lines', () => {
     const run: SkillRun = {
       ...RUNNING,
       log: Array.from({ length: 8 }, (_, index) => ({ kind: 'text' as const, text: `m${index}` })),
@@ -42,7 +42,7 @@ describe('toRunView', () => {
     expect(view.recentLog.map((entry) => entry.text)).toEqual(['m3', 'm4', 'm5', 'm6', 'm7']);
   });
 
-  it('run concluída mostra custo, resultado e permite continuar no terminal', () => {
+  it('a finished run shows cost, result and allows continuing in the terminal', () => {
     const run: SkillRun = {
       ...RUNNING,
       status: 'succeeded',
@@ -61,7 +61,7 @@ describe('toRunView', () => {
     });
   });
 
-  it('falha mostra o erro; problema de MCP traz mensagem e botão Reconectar MCP', () => {
+  it('failure shows the error; an MCP problem brings a message and a Reconnect MCP button', () => {
     const run: SkillRun = {
       ...RUNNING,
       status: 'failed',
@@ -77,7 +77,7 @@ describe('toRunView', () => {
     });
   });
 
-  it('Claude Code ausente traz o botão Instalar Claude Code', () => {
+  it('missing Claude Code brings the Install Claude Code button', () => {
     const run: SkillRun = { ...RUNNING, status: 'failed', endedAt: 1_100, error: 'x', problem: 'claude-code-missing' };
     expect(toRunView(run, 2_000).problem).toEqual({
       message: 'Claude Code não encontrado.',
@@ -86,7 +86,7 @@ describe('toRunView', () => {
     });
   });
 
-  it('session id inválido não permite continuar', () => {
+  it('an invalid session id does not allow continuing', () => {
     expect(toRunView({ ...RUNNING, status: 'succeeded', sessionId: 'abc' }, 2_000).canContinue).toBe(false);
   });
 });

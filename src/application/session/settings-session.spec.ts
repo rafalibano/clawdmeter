@@ -22,7 +22,7 @@ function setup(store = new FakeSettingsStore()) {
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('SettingsSession', () => {
-  it('carrega e fica pronta', async () => {
+  it('loads and becomes ready', async () => {
     const persisted = { ...createDefaultSettings(), enabledPages: { a: false } };
     const { session } = setup(new FakeSettingsStore(persisted));
     expect(session.current.ready).toBe(false);
@@ -30,7 +30,7 @@ describe('SettingsSession', () => {
     expect(session.current).toEqual({ settings: persisted, ready: true, error: null });
   });
 
-  it('aplica o patch na hora e persiste o resultado', async () => {
+  it('applies the patch right away and persists the result', async () => {
     const { session, store } = setup();
     await session.start();
     session.update({ appearance: { theme: 'dark' } });
@@ -41,7 +41,7 @@ describe('SettingsSession', () => {
     expect(store.saved[0]?.appearance.theme).toBe('dark');
   });
 
-  it('funde patches feitos durante uma gravação em voo em uma única gravação seguinte', async () => {
+  it('merges patches made during an in-flight write into a single following write', async () => {
     const store = new FakeSettingsStore();
     const release: Array<() => void> = [];
     const originalSave = store.save.bind(store);
@@ -64,7 +64,7 @@ describe('SettingsSession', () => {
     expect(session.current.settings).toEqual(store.saved[1]);
   });
 
-  it('o último patch vence sobre os anteriores do mesmo campo', async () => {
+  it('the last patch wins over the previous ones on the same field', async () => {
     const { session, store } = setup();
     await session.start();
     session.update({ appearance: { accentColor: '#111111' } });
@@ -74,7 +74,7 @@ describe('SettingsSession', () => {
     expect(session.current.settings.appearance.accentColor).toBe('#222222');
   });
 
-  it('aplica mudança externa quando ocioso', async () => {
+  it('applies an external change when idle', async () => {
     const { session, store } = setup();
     await session.start();
     const external = { ...createDefaultSettings(), enabledPages: { x: false } };
@@ -82,7 +82,7 @@ describe('SettingsSession', () => {
     expect(session.current.settings).toEqual(external);
   });
 
-  it('ignora mudança externa enquanto há gravação pendente', async () => {
+  it('ignores an external change while a write is pending', async () => {
     const { session, store } = setup();
     await session.start();
     session.update({ appearance: { accentColor: '#222222' } });
@@ -92,7 +92,7 @@ describe('SettingsSession', () => {
     expect(session.current.settings.appearance.accentColor).toBe('#222222');
   });
 
-  it('cai nos defaults com erro visível quando a leitura falha', async () => {
+  it('falls back to the defaults with a visible error when the read fails', async () => {
     const store = new FakeSettingsStore();
     store.load = () => Promise.reject(new Error('disco'));
     const { session } = setup(store);
@@ -100,7 +100,7 @@ describe('SettingsSession', () => {
     expect(session.current).toEqual({ settings: createDefaultSettings(), ready: true, error: 'load' });
   });
 
-  it('mantém o estado otimista e sinaliza erro quando a gravação falha', async () => {
+  it('keeps the optimistic state and flags an error when the write fails', async () => {
     const store = new FakeSettingsStore();
     const { session } = setup(store);
     await session.start();
@@ -111,7 +111,7 @@ describe('SettingsSession', () => {
     expect(session.current.error).toBe('save');
   });
 
-  it('limpa o erro de gravação depois de uma gravação bem-sucedida', async () => {
+  it('clears the write error after a successful write', async () => {
     const store = new FakeSettingsStore();
     const originalSave = store.save.bind(store);
     const { session } = setup(store);
@@ -125,18 +125,18 @@ describe('SettingsSession', () => {
     expect(session.current.error).toBeNull();
   });
 
-  it('sinaliza erro quando não consegue observar o arquivo', async () => {
+  it('flags an error when it cannot watch the file', async () => {
     const store = new FakeSettingsStore();
-    store.watch = () => Promise.reject(new Error('sem watcher'));
+    store.watch = () => Promise.reject(new Error('no watcher'));
     const { session } = setup(store);
     await session.start();
     expect(session.current.ready).toBe(true);
     expect(session.current.error).toBe('watch');
   });
 
-  it('flush bem-sucedido limpa só o erro de gravação e mantém watch', async () => {
+  it('a successful flush clears only the write error and keeps watch', async () => {
     const store = new FakeSettingsStore();
-    store.watch = () => Promise.reject(new Error('sem watcher'));
+    store.watch = () => Promise.reject(new Error('no watcher'));
     const { session } = setup(store);
     await session.start();
     expect(session.current.error).toBe('watch');
@@ -145,10 +145,10 @@ describe('SettingsSession', () => {
     expect(session.current.error).toBe('watch');
   });
 
-  it('mantém o erro de load depois de uma gravação bem-sucedida', async () => {
+  it('keeps the load error after a successful write', async () => {
     const store = new FakeSettingsStore();
     const originalLoad = store.load.bind(store);
-    store.load = () => Promise.reject(new Error('ilegível'));
+    store.load = () => Promise.reject(new Error('unreadable'));
     const { session } = setup(store);
     await session.start();
     store.load = originalLoad;
@@ -157,7 +157,7 @@ describe('SettingsSession', () => {
     expect(session.current.error).toBe('load');
   });
 
-  it('expõe settings.json inválido no start e ao tentar gravar', async () => {
+  it('exposes an invalid settings.json at start and when trying to write', async () => {
     const store = new FakeSettingsStore();
     store.fileStatus = 'invalid';
     const { session } = setup(store);
@@ -169,7 +169,7 @@ describe('SettingsSession', () => {
     expect(store.saved).toHaveLength(0);
   });
 
-  it('expõe versão futura ao falhar a gravação e limpa quando o arquivo volta a ser válido', async () => {
+  it('exposes a future version when the write fails and clears when the file becomes valid again', async () => {
     const store = new FakeSettingsStore();
     const { session } = setup(store);
     await session.start();
@@ -183,7 +183,7 @@ describe('SettingsSession', () => {
     expect(session.current.error).toBeNull();
   });
 
-  it('dispose cancela a observação', async () => {
+  it('dispose cancels the watch', async () => {
     const { session, store } = setup();
     await session.start();
     session.dispose();

@@ -40,47 +40,47 @@ function setup() {
 }
 
 describe('LoadAgenda', () => {
-  it('pede o dia de hoje em America/Sao_Paulo e devolve só o que pertence ao dia', async () => {
+  it('asks for today in America/Sao_Paulo and returns only what belongs to the day', async () => {
     const { calendar, loadAgenda } = setup();
-    const inside = meeting('hoje', DAY.startsAt + 3_600_000, DAY.startsAt + 7_200_000);
-    const tomorrow = meeting('amanhã', DAY.endsAt + 1000, DAY.endsAt + 3_600_000);
+    const inside = meeting('today', DAY.startsAt + 3_600_000, DAY.startsAt + 7_200_000);
+    const tomorrow = meeting('tomorrow', DAY.endsAt + 1000, DAY.endsAt + 3_600_000);
     calendar.outcome = [inside, tomorrow];
     const snapshot = await loadAgenda.execute();
     expect(calendar.ranges).toEqual([{ ...DAY, timeZone: 'America/Sao_Paulo' }]);
     expect(snapshot).toEqual({ meetings: [inside], day: DAY, timeZone: 'America/Sao_Paulo' });
   });
 
-  it('problema de conexão da Microsoft é reportado e relançado', async () => {
+  it('a Microsoft connection problem is reported and rethrown', async () => {
     const { calendar, reporter, loadAgenda } = setup();
     calendar.outcome = new ConnectionProblemError('microsoft-expired');
     await expect(loadAgenda.execute()).rejects.toMatchObject({ problem: 'microsoft-expired' });
     expect(reporter.reports).toEqual([{ id: 'microsoft', problem: 'microsoft-expired' }]);
   });
 
-  it('mantém a mensagem específica do problema ao reportar', async () => {
+  it('keeps the specific problem message when reporting', async () => {
     const { calendar, reporter, loadAgenda } = setup();
-    calendar.outcome = new ConnectionProblemError('microsoft-expired', 'Permissão Calendars.Read não concedida');
-    await expect(loadAgenda.execute()).rejects.toThrow('Permissão');
-    expect(reporter.reports[0]).toMatchObject({ message: 'Permissão Calendars.Read não concedida' });
+    calendar.outcome = new ConnectionProblemError('microsoft-expired', 'Calendars.Read permission not granted');
+    await expect(loadAgenda.execute()).rejects.toThrow('permission');
+    expect(reporter.reports[0]).toMatchObject({ message: 'Calendars.Read permission not granted' });
   });
 
-  it('erro comum (rede) é relançado sem marcar a conexão', async () => {
+  it('an ordinary error (network) is rethrown without flagging the connection', async () => {
     const { calendar, reporter, loadAgenda } = setup();
-    calendar.outcome = new Error('Sem rede');
-    await expect(loadAgenda.execute()).rejects.toThrow('Sem rede');
+    calendar.outcome = new Error('No network');
+    await expect(loadAgenda.execute()).rejects.toThrow('No network');
     expect(reporter.reports).toEqual([]);
   });
 });
 
 describe('JoinMeeting', () => {
-  it('abre o link do Teams', async () => {
+  it('opens the Teams link', async () => {
     const opener = new FakeUrlOpener();
     await new JoinMeeting(opener).execute('https://teams.microsoft.com/l/meetup-join/abc');
     expect(opener.opened).toEqual(['https://teams.microsoft.com/l/meetup-join/abc']);
   });
 
   it.each([null, 'http://teams.microsoft.com/x', 'https://evil.example.com/x', 'file:///etc/passwd'])(
-    'recusa %s sem abrir nada',
+    'rejects %s without opening anything',
     async (url) => {
       const opener = new FakeUrlOpener();
       await expect(new JoinMeeting(opener).execute(url)).rejects.toThrow('link-invalid-meeting');

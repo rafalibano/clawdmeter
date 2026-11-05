@@ -29,7 +29,7 @@ export function createFakeFetch(responder: Responder): { fetcher: FetchLike; req
     };
     requests.push(request);
     const reply = responder(request);
-    if (!reply) throw new Error(`Requisição sem resposta gravada: ${request.method} ${url}`);
+    if (!reply) throw new Error(`Request without a recorded reply: ${request.method} ${url}`);
     return new Response(JSON.stringify(reply.json ?? {}), {
       status: reply.status ?? 200,
       headers: reply.headers ?? {},

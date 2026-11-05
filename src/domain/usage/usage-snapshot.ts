@@ -39,7 +39,7 @@ export function parseUsageResponse(raw: unknown): UsageSnapshot {
     sevenDay: parseWindow(record['seven_day']),
   };
   if (snapshot.fiveHour === null && snapshot.sevenDay === null) {
-    throw new Error('Resposta de usage sem five_hour nem seven_day.');
+    throw new Error('Usage response has neither five_hour nor seven_day.');
   }
   return snapshot;
 }

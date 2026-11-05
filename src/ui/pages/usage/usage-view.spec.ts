@@ -49,24 +49,24 @@ const ready = (valueAtReset: number): Forecast => ({
 });
 
 describe('resetText', () => {
-  it('formata o tempo restante curto, sem horário', () => {
+  it('formats the short remaining time, without a clock time', () => {
     expect(resetText(RESET, NOW)).toBe('reseta em 2h06');
     expect(resetText(NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS, NOW)).toBe('reseta em 6d2h');
   });
 
-  it('sem janela, e janela que já passou do reset', () => {
+  it('without a window, and a window that is past its reset', () => {
     expect(resetText(null, NOW)).toBe('sem janela ativa');
     expect(resetText(NOW - MINUTE_MS, NOW)).toBe('reseta agora');
   });
 });
 
 describe('projectionOf', () => {
-  it('sem previsão pronta não há marca', () => {
+  it('without a ready forecast there is no mark', () => {
     expect(projectionOf({ status: 'collecting' }, 40)).toBeNull();
     expect(projectionOf({ status: 'unavailable' }, 40)).toBeNull();
   });
 
-  it('abaixo de 100%: uma linha vertical no percentual projetado', () => {
+  it('below 100%: a vertical line at the projected percentage', () => {
     expect(projectionOf(ready(78.4), 40)).toEqual({
       at: 78.4,
       exhausts: false,
@@ -75,7 +75,7 @@ describe('projectionOf', () => {
     });
   });
 
-  it('estoura: a linha fica no fim da barra, em vermelho, e a legenda traz o número real', () => {
+  it('overflow: the line sits at the end of the bar, in red, and the legend shows the real number', () => {
     expect(projectionOf(ready(132), 40)).toEqual({
       at: 100,
       exhausts: true,
@@ -86,24 +86,24 @@ describe('projectionOf', () => {
     expect(projectionOf(ready(160), 40)!.label).not.toContain('>');
   });
 
-  it('nunca recua abaixo do valor atual', () => {
+  it('never drops below the current value', () => {
     expect(projectionOf(ready(30), 40)).toMatchObject({ at: 40, exhausts: false, label: 'Projetado 40%' });
   });
 
-  it('a legenda segue a língua', () => {
+  it('the legend follows the language', () => {
     expect(projectionOf(ready(132), 40, new Localizer('en'))!.label).toBe('Projected 132%');
     expect(projectionOf(ready(132), 40, new Localizer('es-MX'))!.label).toBe('Proyectado 132%');
   });
 });
 
-describe('alerta da projeção', () => {
-  it('só o texto alerta, a partir de 100% projetado', () => {
+describe('projection alert', () => {
+  it('only the text alerts, from 100% projected', () => {
     expect(projectionOf(ready(99.9), 10)!.alert).toBe(false);
     expect(projectionOf(ready(100), 10)!.alert).toBe(true);
     expect(projectionOf(ready(132), 10)!.alert).toBe(true);
   });
 
-  it('sem projeção a barra não traz legenda', () => {
+  it('without a projection the bar has no legend', () => {
     const data = dataWith(createEmptyHistory());
     const idle = { fiveHour: { utilization: 40, resetsAt: null }, sevenDay: { utilization: 12, resetsAt: null } };
     const { bars } = toUsageView({ ...data, snapshot: idle }, '1d');
@@ -111,7 +111,7 @@ describe('alerta da projeção', () => {
   });
 });
 
-describe('método de projeção nas barras e no gráfico', () => {
+describe('projection method in the bars and in the chart', () => {
   const DAY = 24 * HOUR_MS;
   const weekly = (): UsageHistory => ({
     fiveHour: [],
@@ -122,7 +122,7 @@ describe('método de projeção nas barras e no gráfico', () => {
     ],
   });
 
-  it('trocar o método muda a projeção do 7d nas barras e no gráfico, e o 5h não muda', () => {
+  it('changing the method changes the 7d projection in the bars and chart, and 5h does not change', () => {
     const byDays = toUsageView(dataWith(weekly()), '7d', '14d');
     const bySince = toUsageView(dataWith(weekly()), '7d', 'since-reset');
     expect(byDays.bars[1]!.projection!.label).not.toBe(bySince.bars[1]!.projection!.label);
@@ -131,7 +131,7 @@ describe('método de projeção nas barras e no gráfico', () => {
     expect(byDays.chart.windows[0]!.trend).toEqual(bySince.chart.windows[0]!.trend);
   });
 
-  it('a mesma regra vale em todos os períodos e no Ciclo (mesma inclinação da linha)', () => {
+  it('the same rule holds in every period and in the Cycle (same line slope)', () => {
     const slope = (range: string, method: ProjectionMethod) => {
       const trend = toUsageView(dataWith(weekly()), range, method).chart.windows[1]!.trend!;
       return ((trend[1]![1] - trend[0]![1]) / (trend[1]![0] - trend[0]![0])) * DAY;
@@ -143,7 +143,7 @@ describe('método de projeção nas barras e no gráfico', () => {
   });
 });
 
-describe('consistência: uma só projeção para barra, linha e tooltip', () => {
+describe('consistency: a single projection for bar, line and tooltip', () => {
   const DAY = 24 * HOUR_MS;
   const history = (): UsageHistory => ({
     fiveHour: [],
@@ -157,11 +157,11 @@ describe('consistência: uma só projeção para barra, linha e tooltip', () => 
   });
 
   for (const method of ['24h', '14d', 'since-reset'] as const) {
-    it(`${method}: o último ponto da linha no reset (Ciclo, sem cap) é o valueAtReset da barra`, () => {
+    it(`${method}: the last point of the line at reset (Cycle, no cap) is the bar's valueAtReset`, () => {
       const data = dataWith(history());
       const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
       const weekly = forecasts.sevenDay;
-      if (weekly.status !== 'ready') throw new Error('esperava projeção pronta');
+      if (weekly.status !== 'ready') throw new Error('expected a ready projection');
       const view = toUsageView(data, 'cycle', method);
       const trend = view.chart.windows[1]!.trend!;
       expect(trend[1]![0]).toBe(weekly.resetsAt);
@@ -172,10 +172,10 @@ describe('consistência: uma só projeção para barra, linha e tooltip', () => 
       expect(trend[1]![1] - trend[0]![1]).toBeCloseTo((weekly.ratePerDay * (weekly.resetsAt - NOW)) / DAY, 9);
     });
 
-    it(`${method}: o 5h na barra e na linha também vêm da mesma projeção`, () => {
+    it(`${method}: 5h in the bar and in the line also come from the same projection`, () => {
       const data = dataWith(history());
       const five = new ProjectUsage().execute(data.history, data.snapshot, data.at, method).fiveHour;
-      if (five.status !== 'ready') throw new Error('esperava projeção pronta');
+      if (five.status !== 'ready') throw new Error('expected a ready projection');
       const view = toUsageView(data, '6h', method);
       const trend = view.chart.windows[0]!.trend!;
       expect(view.bars[0]!.projection!.label).toBe(`Projetado ${Math.round(Math.max(five.valueAtReset, 40))}%`);
@@ -184,7 +184,7 @@ describe('consistência: uma só projeção para barra, linha e tooltip', () => 
     });
   }
 
-  it('os três métodos dão projeções diferentes no 7d, mas o 5h é igual', () => {
+  it('the three methods give different 7d projections, but 5h is the same', () => {
     const data = dataWith(history());
     const run = (method: ProjectionMethod) => new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
     const values = (['24h', '14d', 'since-reset'] as const).map((method) => {
@@ -198,7 +198,7 @@ describe('consistência: uma só projeção para barra, linha e tooltip', () => 
 });
 
 describe('toUsageView', () => {
-  it('monta as duas barras com percentual, reset curto e trecho previsto só onde há previsão', () => {
+  it('builds the two bars with percentage, short reset and projected segment only where there is a forecast', () => {
     const { bars } = toUsageView(dataWith(ramp((i) => 10 + i)), '6h');
     expect(bars.map((bar) => bar.label)).toEqual(['5h', '7d']);
     expect(bars[0]).toMatchObject({ kind: 'fiveHour', percent: '40%', fill: 40, reset: 'reseta em 2h06' });
@@ -207,7 +207,7 @@ describe('toUsageView', () => {
     expect(bars[1]!.projection).not.toBeNull();
   });
 
-  it('um gráfico só, com as duas janelas no mesmo eixo de tempo', () => {
+  it('a single chart, with both windows on the same time axis', () => {
     const { chart } = toUsageView(dataWith(ramp((i) => 10 + i)), '6h');
     expect(chart.windows.map((window) => window.label)).toEqual(['5h', '7d']);
     expect(chart.xMin).toBe(NOW - 6 * HOUR_MS);
@@ -218,7 +218,7 @@ describe('toUsageView', () => {
     expect(chart.windows[1]!.trend).not.toBeNull();
   });
 
-  it('o período escolhido recorta a série', () => {
+  it('the chosen period slices the series', () => {
     const history = ramp((i) => 10 + i);
     const hour = toUsageView(dataWith(history), '1h').chart;
     const day = toUsageView(dataWith(history), '1d').chart;
@@ -226,13 +226,13 @@ describe('toUsageView', () => {
     expect(day.xMax).toBeGreaterThan(hour.xMax);
   });
 
-  it('janela ausente na resposta: barra vazia, sem texto', () => {
+  it('window missing from the response: empty bar, no text', () => {
     const data = dataWith(createEmptyHistory());
     const { bars } = toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, '1d');
     expect(bars[0]).toEqual({ kind: 'fiveHour', label: '5h', percent: '—', fill: 0, reset: '', projection: null });
   });
 
-  it('o seletor Reset só fica disponível com reset semanal conhecido', () => {
+  it('the Reset selector is only available with a known weekly reset', () => {
     const data = dataWith(createEmptyHistory());
     expect(toUsageView(data, 'cycle').cycleAvailable).toBe(true);
     const unknown = { ...data, snapshot: { ...data.snapshot, sevenDay: { utilization: 12, resetsAt: null } } };
@@ -240,20 +240,20 @@ describe('toUsageView', () => {
     expect(toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, 'cycle').cycleAvailable).toBe(false);
   });
 
-  it('o período Reset monta o eixo do último reset semanal até o próximo', () => {
+  it('the Reset period builds the axis from the last weekly reset to the next one', () => {
     const { chart } = toUsageView(dataWith(ramp((i) => 10 + i)), 'cycle');
     const weeklyReset = NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS;
     expect(chart).toMatchObject({ cycle: true, xMin: weeklyReset - 7 * 24 * HOUR_MS, xMax: weeklyReset });
   });
 
-  it('percentual acima de 100 enche a barra sem passar do trilho', () => {
+  it('percentage above 100 fills the bar without passing the track', () => {
     const data = dataWith(createEmptyHistory(), 130);
     expect(toUsageView(data, '1d').bars[0]).toMatchObject({ percent: '130%', fill: 100 });
   });
 });
 
 describe('toUsageErrorView', () => {
-  it('401: mostra a mensagem da conexão e o botão "Refazer login do Claude"', () => {
+  it('401: shows the connection message and the "Sign in to Claude again" button', () => {
     const status = errorStatus('claude-expired');
     const row = toRowView('claude', status, PT);
     const view = toUsageErrorView('claude-expired', row);
@@ -263,12 +263,12 @@ describe('toUsageErrorView', () => {
     expect(view.actions.some((action) => action.kind === 'disconnect')).toBe(false);
   });
 
-  it('desconectado: oferece Conectar', () => {
+  it('disconnected: offers Connect', () => {
     const view = toUsageErrorView('Claude desconectado.', toRowView('claude', { state: 'disconnected' }, PT));
     expect(view.actions.map((action) => action.label)).toEqual(['connect']);
   });
 
-  it('erro de rede com a conexão ok: só a mensagem, sem botão', () => {
+  it('network error with the connection ok: only the message, no button', () => {
     const view = toUsageErrorView('Anthropic respondeu 500', toRowView('claude', { state: 'connected' }, PT));
     expect(view).toEqual({ message: 'Anthropic respondeu 500', actions: [] });
     expect(toUsageErrorView('x', undefined)).toEqual({ message: 'x', actions: [] });

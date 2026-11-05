@@ -17,7 +17,7 @@ describe('TauriSessionDirectory', () => {
     for (const mock of Object.values(fs)) mock.mockReset();
   });
 
-  it('lê só os .json de ~/.claude/sessions', async () => {
+  it('reads only the .json files in ~/.claude/sessions', async () => {
     fs.exists.mockResolvedValue(true);
     fs.readDir.mockResolvedValue([
       file('111.json'),
@@ -34,13 +34,13 @@ describe('TauriSessionDirectory', () => {
     expect(fs.readDir).toHaveBeenCalledWith('/home/dev/.claude/sessions');
   });
 
-  it('pasta inexistente (Claude Code nunca rodou): lista vazia sem tentar ler', async () => {
+  it('missing folder (Claude Code never ran): empty list without trying to read', async () => {
     fs.exists.mockResolvedValue(false);
     expect(await new TauriSessionDirectory().readAll()).toEqual([]);
     expect(fs.readDir).not.toHaveBeenCalled();
   });
 
-  it('arquivo que some entre a listagem e a leitura é ignorado', async () => {
+  it('a file that disappears between listing and reading is ignored', async () => {
     fs.exists.mockResolvedValue(true);
     fs.readDir.mockResolvedValue([file('1.json'), file('2.json')]);
     fs.readTextFile.mockImplementation(async (path: string) => {
@@ -50,7 +50,7 @@ describe('TauriSessionDirectory', () => {
     expect(await new TauriSessionDirectory().readAll()).toEqual(['{"pid":2}']);
   });
 
-  it('falha ao listar a pasta propaga o erro', async () => {
+  it('failing to list the folder propagates the error', async () => {
     fs.exists.mockResolvedValue(true);
     fs.readDir.mockRejectedValue(new Error('forbidden path'));
     await expect(new TauriSessionDirectory().readAll()).rejects.toThrow('forbidden path');

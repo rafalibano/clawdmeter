@@ -6,7 +6,7 @@ export type SettingsFileStatus = 'ok' | 'invalid' | 'future';
 
 export class SettingsWriteBlockedError extends Error {
   constructor(readonly reason: Exclude<SettingsFileStatus, 'ok'>) {
-    super(`settings.json bloqueado para gravação: ${reason}`);
+    super(`settings.json is locked for writing: ${reason}`);
     this.name = 'SettingsWriteBlockedError';
   }
 }

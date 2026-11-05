@@ -1,11 +1,11 @@
 import type { MessageArgs, Translator } from '../../application/ports';
 import { DEFAULT_LANGUAGE, type AppLanguage } from '../../domain/settings';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../domain/time';
-import { en } from './en';
+import { en, type MessageKey } from './en';
 import { esMX } from './es-MX';
-import { ptBR, type MessageKey } from './pt-BR';
+import { ptBR } from './pt-BR';
 
-export type { MessageKey } from './pt-BR';
+export type { MessageKey } from './en';
 export type { MessageArgs } from '../../application/ports';
 
 export const DICTIONARIES: Record<AppLanguage, Record<MessageKey, string>> = { 'pt-BR': ptBR, en, 'es-MX': esMX };
@@ -20,11 +20,11 @@ export function interpolate(template: string, args?: MessageArgs): string {
 }
 
 export function translate(language: AppLanguage, key: MessageKey, args?: MessageArgs): string {
-  return interpolate(DICTIONARIES[language][key] ?? ptBR[key], args);
+  return interpolate(DICTIONARIES[language][key] ?? en[key], args);
 }
 
 export function hasMessage(key: string): key is MessageKey {
-  return key in ptBR;
+  return key in en;
 }
 
 export class Localizer implements Translator {

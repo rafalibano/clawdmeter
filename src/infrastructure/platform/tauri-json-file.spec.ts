@@ -39,48 +39,48 @@ describe('TauriJsonFile', () => {
     fs.rename.mockResolvedValue(undefined);
   });
 
-  it('read devolve null quando o arquivo não existe, sem tentar ler', async () => {
+  it('read returns null when the file does not exist, without trying to read', async () => {
     fs.exists.mockResolvedValue(false);
     expect(await new TauriJsonFile('settings.json').read()).toBeNull();
     expect(fs.exists).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json');
     expect(fs.readTextFile).not.toHaveBeenCalled();
   });
 
-  it('read devolve o conteúdo do arquivo na pasta de config', async () => {
+  it('read returns the file contents from the config folder', async () => {
     fs.exists.mockResolvedValue(true);
     fs.readTextFile.mockResolvedValue('{"a":1}');
     expect(await new TauriJsonFile('settings.json').read()).toBe('{"a":1}');
     expect(fs.readTextFile).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json');
   });
 
-  it('write garante a pasta antes de gravar', async () => {
+  it('write ensures the folder before writing', async () => {
     const order: string[] = [];
     fs.mkdir.mockImplementation(async () => void order.push('mkdir'));
     fs.writeTextFile.mockImplementation(async () => void order.push('write'));
-    await new TauriJsonFile('settings.json').write('texto');
+    await new TauriJsonFile('settings.json').write('text');
     expect(order).toEqual(['mkdir', 'write']);
     expect(fs.mkdir).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter', { recursive: true });
-    expect(fs.writeTextFile).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json', 'texto');
+    expect(fs.writeTextFile).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json', 'text');
   });
 
-  it('writeAtomic grava num .tmp e só então renomeia sobre o arquivo final', async () => {
+  it('writeAtomic writes to a .tmp and only then renames over the final file', async () => {
     const order: string[] = [];
     fs.writeTextFile.mockImplementation(async (path: string) => void order.push(`write ${path}`));
     fs.rename.mockImplementation(async (from: string, to: string) => void order.push(`rename ${from} ${to}`));
-    await new TauriJsonFile('usage-history.json').writeAtomic('texto');
+    await new TauriJsonFile('usage-history.json').writeAtomic('text');
     expect(order).toEqual([
       'write /cfg/com.mottu.clawdmeter/usage-history.json.tmp',
       'rename /cfg/com.mottu.clawdmeter/usage-history.json.tmp /cfg/com.mottu.clawdmeter/usage-history.json',
     ]);
   });
 
-  it('writeAtomic não renomeia se a gravação do temporário falhar', async () => {
+  it('writeAtomic does not rename if writing the temporary file fails', async () => {
     fs.writeTextFile.mockRejectedValue(new Error('disco cheio'));
     await expect(new TauriJsonFile('usage-history.json').writeAtomic('x')).rejects.toThrow('disco cheio');
     expect(fs.rename).not.toHaveBeenCalled();
   });
 
-  it('quarantine renomeia o arquivo para .corrupt, e não faz nada se ele não existe', async () => {
+  it('quarantine renames the file to .corrupt, and does nothing if it does not exist', async () => {
     fs.exists.mockResolvedValue(true);
     await new TauriJsonFile('usage-history.json').quarantine();
     expect(fs.rename).toHaveBeenCalledWith(
@@ -93,7 +93,7 @@ describe('TauriJsonFile', () => {
     expect(fs.rename).not.toHaveBeenCalled();
   });
 
-  it('watch observa a pasta sem recursão, com debounce de 150 ms', async () => {
+  it('watch observes the folder without recursion, with a 150 ms debounce', async () => {
     emitter();
     await new TauriJsonFile('settings.json').watch(() => undefined);
     expect(fs.watch).toHaveBeenCalledTimes(1);
@@ -101,7 +101,7 @@ describe('TauriJsonFile', () => {
     expect(fs.watch.mock.calls[0]?.[2]).toEqual({ recursive: false, delayMs: 150 });
   });
 
-  it('watch só notifica eventos do arquivo exato, em paths POSIX e Windows', async () => {
+  it('watch only notifies events of the exact file, on POSIX and Windows paths', async () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
@@ -110,7 +110,7 @@ describe('TauriJsonFile', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
-  it('watch ignora arquivos de nome parecido e outros arquivos da pasta', async () => {
+  it('watch ignores similarly named files and other files in the folder', async () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
@@ -122,7 +122,7 @@ describe('TauriJsonFile', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('watch notifica quando o arquivo está entre vários paths do evento', async () => {
+  it('watch notifies when the file is among several paths of the event', async () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
@@ -130,7 +130,7 @@ describe('TauriJsonFile', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it('watch devolve a função que cancela a observação do plugin', async () => {
+  it('watch returns the function that cancels the plugin observation', async () => {
     const { stop } = emitter();
     const unwatch = await new TauriJsonFile('settings.json').watch(() => undefined);
     unwatch();
