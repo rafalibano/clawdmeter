@@ -43,9 +43,9 @@ src-tauri/            Rust: bandeja, janela do popover, plugins
 1. `domain` não importa nada de fora do próprio `domain`.
 2. `application` importa só `domain` e as próprias portas; sem `@angular/*` e sem `@tauri-apps/*`.
 3. `infrastructure` implementa portas; nunca é importada pela `ui`.
-4. A `ui` chama casos de uso; nunca chama `fetch`, `invoke` ou plugin do Tauri.
+4. A `ui` chama casos de uso; nunca chama `fetch` (nem `window.fetch`/`globalThis.fetch`), `HttpClient` (`@angular/common/http`), `invoke` ou plugin do Tauri.
 5. As regras 1 a 4 são verificadas pelo `yarn lint` (`eslint-plugin-boundaries` + `no-restricted-imports`). `tools/architecture-lint.spec.ts` prova que cada violação é barrada.
-6. Detecção de SO (`navigator.platform`, `if (os === ...)`) só existe no `composition-root` e em `src-tauri/`.
+6. Detecção de SO (`navigator.platform`, `window.navigator.*`, `process.platform`, `@tauri-apps/plugin-os`) só existe no `composition-root` (`src/*.ts`) e em `src-tauri/`.
 
 ### Como adicionar uma página
 
