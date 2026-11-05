@@ -17,6 +17,10 @@ function readVersion(raw: Record<string, unknown>): number {
   return typeof version === 'number' && Number.isInteger(version) && version >= 0 ? version : 0;
 }
 
+export function isFutureSchema(raw: unknown): boolean {
+  return isRecord(raw) && readVersion(raw) > SCHEMA_VERSION;
+}
+
 function readEnabledPages(value: unknown): Record<string, boolean> {
   if (!isRecord(value)) return {};
   const pages: Record<string, boolean> = {};

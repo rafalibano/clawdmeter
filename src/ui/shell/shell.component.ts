@@ -1,6 +1,7 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
+import type { SettingsSessionError } from '../../application/session';
 import { formatUpdatedAgo } from './elapsed';
 import { APPLICATION } from './application.token';
 import { PageStateService } from './page-state.service';
@@ -8,6 +9,14 @@ import { SettingsFacade } from './settings.facade';
 import { SettingsComponent } from '../settings/settings.component';
 
 const CLOCK_TICK_MS = 1_000;
+
+const ERROR_MESSAGES: Record<SettingsSessionError, string> = {
+  load: 'Não foi possível ler as configurações. Usando os padrões.',
+  save: 'Não foi possível salvar as configurações.',
+  watch: 'Edições manuais em settings.json não serão recarregadas.',
+  invalid: 'settings.json inválido — ajustes não estão sendo salvos.',
+  future: 'settings.json de versão mais nova — ajustes não estão sendo salvos.',
+};
 
 @Component({
   selector: 'dp-shell',
@@ -25,12 +34,16 @@ export class ShellComponent {
 
   protected readonly showingSettings = signal(false);
   protected readonly pages = this.facade.enabledPages;
+  protected readonly errorMessage = computed(() => {
+    const error = this.facade.error();
+    return error === null ? null : ERROR_MESSAGES[error];
+  });
   protected readonly current = computed<PageModule | null>(
     () => this.pages().find((page) => page.id === this.requestedPageId()) ?? this.pages()[0] ?? null,
   );
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
-    const update = page ? this.pageState.of(page.id)() : undefined;
+    const update = page ? this.pageState.get(page) : undefined;
     return formatUpdatedAgo(update?.at ?? null, this.now());
   });
 

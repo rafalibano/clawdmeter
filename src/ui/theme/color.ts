@@ -6,3 +6,11 @@ export function readableTextOn(background: string): string {
   const luminance = (0.299 * red! + 0.587 * green! + 0.114 * blue!) / 255;
   return luminance > 0.6 ? '#1c1c1e' : '#f5f5f7';
 }
+
+export function parseHexInput(text: string): string | null {
+  const digits = text.trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(digits)) {
+    return `#${[...digits].map((digit) => digit + digit).join('')}`.toLowerCase();
+  }
+  return /^[0-9a-f]{6}$/i.test(digits) ? `#${digits}`.toLowerCase() : null;
+}

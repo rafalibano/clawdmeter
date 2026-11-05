@@ -155,6 +155,37 @@ describe('PollingScheduler', () => {
     expect(clock.activeTimers()).toBe(0);
   });
 
+  it('reemite o último resultado para quem assina depois, mesmo sem polling', async () => {
+    const registry = new PageRegistry([fakePage({ id: 'once', pollIntervalMs: null, load: async () => 'dado' })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    const late = vi.fn();
+    scheduler.subscribe(late);
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(late).toHaveBeenCalledWith({ pageId: 'once', status: 'ok', data: 'dado', at: 0 });
+  });
+
+  it('reemite só o resultado mais recente de cada página', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await clock.advance(2_000);
+    const late = vi.fn();
+    scheduler.subscribe(late);
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(late.mock.calls[0]?.[0]).toMatchObject({ pageId: 'fast', at: 2_000 });
+  });
+
+  it('não reemite resultado de página desligada', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await flushPromises();
+    scheduler.sync(settingsWith({ fast: false, slow: false, once: false }));
+    const late = vi.fn();
+    scheduler.subscribe(late);
+    expect(late).not.toHaveBeenCalled();
+  });
+
   it('permite cancelar a assinatura', async () => {
     const registry = new PageRegistry([fakePage({ id: 'p', pollIntervalMs: null })]);
     const scheduler = new PollingScheduler(registry, clock);

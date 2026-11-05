@@ -22,10 +22,14 @@ export class TauriJsonFile implements JsonFile {
     return watch(
       await appConfigDir(),
       (event) => {
-        if (event.paths.some((path) => path.endsWith(this.fileName))) onChange();
+        if (event.paths.some((path) => this.isTarget(path))) onChange();
       },
       { recursive: false, delayMs: WATCH_DEBOUNCE_MS },
     );
+  }
+
+  private isTarget(path: string): boolean {
+    return path.split(/[\\/]/).pop() === this.fileName;
   }
 
   private async path(): Promise<string> {

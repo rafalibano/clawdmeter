@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
-import { createDefaultSettings, applyPatch, mergePatches, type AppSettings, type SettingsPatch } from '../../domain/settings';
+import { createDefaultSettings, type AppSettings, type SettingsPatch } from '../../domain/settings';
+import { SettingsSession, type SettingsSessionError } from '../../application/session';
 import { APPLICATION } from './application.token';
 
 @Injectable({ providedIn: 'root' })
@@ -7,45 +8,31 @@ export class SettingsFacade {
   private readonly app = inject(APPLICATION);
   private readonly state = signal<AppSettings>(createDefaultSettings());
   private readonly loaded = signal(false);
-  private pending: SettingsPatch[] = [];
-  private flushing = false;
+  private readonly failure = signal<SettingsSessionError | null>(null);
+  private readonly session = new SettingsSession(this.app, (state) => {
+    this.state.set(state.settings);
+    this.loaded.set(state.ready);
+    this.failure.set(state.error);
+  });
 
   readonly settings = this.state.asReadonly();
   readonly ready = this.loaded.asReadonly();
+  readonly error = this.failure.asReadonly();
   readonly pages = computed(() => this.app.registry.all());
   readonly enabledPages = computed(() => this.app.registry.enabled(this.state()));
 
   constructor() {
-    const destroyRef = inject(DestroyRef);
     effect(() => {
       if (this.loaded()) this.app.scheduler.sync(this.state());
     });
-    destroyRef.onDestroy(() => this.app.scheduler.stopAll());
-    void this.start(destroyRef);
+    inject(DestroyRef).onDestroy(() => {
+      this.session.dispose();
+      this.app.scheduler.stopAll();
+    });
+    void this.session.start();
   }
 
   update(patch: SettingsPatch): void {
-    this.state.update((current) => applyPatch(current, patch));
-    this.pending.push(patch);
-    if (!this.flushing) void this.flush();
-  }
-
-  private async start(destroyRef: DestroyRef): Promise<void> {
-    this.state.set(await this.app.getSettings.execute());
-    this.loaded.set(true);
-    const stop = await this.app.watchSettings.execute((settings) => this.state.set(settings));
-    destroyRef.onDestroy(stop);
-  }
-
-  private async flush(): Promise<void> {
-    this.flushing = true;
-    try {
-      while (this.pending.length > 0) {
-        const batch = this.pending.splice(0).reduce(mergePatches);
-        await this.app.updateSettings.execute(batch);
-      }
-    } finally {
-      this.flushing = false;
-    }
+    this.session.update(patch);
   }
 }

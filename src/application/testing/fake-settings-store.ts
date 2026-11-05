@@ -1,9 +1,10 @@
 import type { AppSettings } from '../../domain/settings';
 import { createDefaultSettings } from '../../domain/settings';
-import type { SettingsStore, Unsubscribe } from '../ports';
+import { SettingsWriteBlockedError, type SettingsFileStatus, type SettingsStore, type Unsubscribe } from '../ports';
 
 export class FakeSettingsStore implements SettingsStore {
   saved: AppSettings[] = [];
+  fileStatus: SettingsFileStatus = 'ok';
   private readonly listeners = new Set<(settings: AppSettings) => void>();
 
   constructor(private current: AppSettings = createDefaultSettings()) {}
@@ -13,8 +14,13 @@ export class FakeSettingsStore implements SettingsStore {
   }
 
   async save(settings: AppSettings): Promise<void> {
+    if (this.fileStatus !== 'ok') throw new SettingsWriteBlockedError(this.fileStatus);
     this.current = settings;
     this.saved.push(settings);
+  }
+
+  status(): SettingsFileStatus {
+    return this.fileStatus;
   }
 
   async watch(listener: (settings: AppSettings) => void): Promise<Unsubscribe> {

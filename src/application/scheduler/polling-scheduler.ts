@@ -3,8 +3,8 @@ import type { PageModule } from '../pages/page-module';
 import type { PageRegistry } from '../pages/page-registry';
 import type { Clock, Unsubscribe } from '../ports';
 
-export type PageUpdate =
-  | { pageId: PageId; status: 'ok'; data: unknown; at: number }
+export type PageUpdate<T = unknown> =
+  | { pageId: PageId; status: 'ok'; data: T; at: number }
   | { pageId: PageId; status: 'error'; error: string; at: number };
 
 type PageUpdateListener = (update: PageUpdate) => void;
@@ -17,6 +17,7 @@ interface Run {
 export class PollingScheduler {
   private readonly runs = new Map<PageId, Run>();
   private readonly listeners = new Set<PageUpdateListener>();
+  private readonly latest = new Map<PageId, PageUpdate>();
 
   constructor(
     private readonly registry: PageRegistry,
@@ -25,6 +26,7 @@ export class PollingScheduler {
 
   subscribe(listener: PageUpdateListener): Unsubscribe {
     this.listeners.add(listener);
+    for (const update of this.latest.values()) listener(update);
     return () => this.listeners.delete(listener);
   }
 
@@ -35,6 +37,7 @@ export class PollingScheduler {
       if (enabledIds.has(id)) continue;
       run.cancel();
       this.runs.delete(id);
+      this.latest.delete(id);
     }
     for (const page of enabled) {
       if (!this.runs.has(page.id)) this.start(page);
@@ -44,6 +47,7 @@ export class PollingScheduler {
   stopAll(): void {
     for (const run of this.runs.values()) run.cancel();
     this.runs.clear();
+    this.latest.clear();
   }
 
   private start(page: PageModule): void {
@@ -71,6 +75,7 @@ export class PollingScheduler {
 
   private publish(page: PageModule, run: Run, update: PageUpdate): void {
     if (this.runs.get(page.id) !== run) return;
+    this.latest.set(page.id, update);
     for (const listener of this.listeners) listener(update);
   }
 }

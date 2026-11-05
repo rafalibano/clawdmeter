@@ -19,6 +19,10 @@
     }
   </header>
 
+  @if (errorMessage(); as message) {
+    <p class="error" role="alert">{{ message }}</p>
+  }
+
   <main class="content">
     @if (showingSettings()) {
       <dp-settings />
