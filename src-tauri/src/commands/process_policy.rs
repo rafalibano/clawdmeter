@@ -1105,7 +1105,9 @@ mod tests {
         assert!(!paths.is_empty());
         for path in paths {
             assert!(
-                path.starts_with("$APPCONFIG") || path.starts_with("$HOME/.claude/sessions"),
+                path.starts_with("$APPCONFIG")
+                    || path.starts_with("$HOME/.claude/sessions")
+                    || path == "$HOME/.config/claude-usage-bar/history.json",
                 "{path} fora do escopo esperado do webview"
             );
         }
