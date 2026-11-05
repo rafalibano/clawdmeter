@@ -335,7 +335,7 @@ describe('configuração de skills', () => {
   });
 
   it('git diff, git log e git status ficam fora da lista, e Read é restrito ao cwd', () => {
-    for (const tool of ['Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Read']) {
+    for (const tool of ['Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git status:*)', 'Read', 'Grep', 'Glob']) {
       expect(ALLOWED_CLAUDE_TOOLS).not.toContain(tool);
       expect(findDisallowedTools([tool])).toEqual([tool]);
     }
@@ -350,8 +350,8 @@ describe('configuração de skills', () => {
   });
 
   it('ferramenta fora da lista invalida a skill com mensagem clara', () => {
-    for (const tool of ['Bash', 'Bash(*)', 'Read', 'Bash(git diff:*)', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash(git:*)', 'Bash(gh:*)', 'mcp__srv__tool']) {
-      expect(findDisallowedTools(['Grep', tool])).toEqual([tool]);
+    for (const tool of ['Bash', 'Bash(*)', 'Read', 'Bash(git diff:*)', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash(git:*)', 'Bash(gh:*)', 'mcp__srv__tool', 'Grep', 'Glob']) {
+      expect(findDisallowedTools(['Read(./**)', tool])).toEqual([tool]);
       expect(() => buildClaudeArgs({ ...SKILL, allowedTools: ['Read(./**)', tool] })).toThrow(
         `A skill "${SKILL.name}" usa ferramenta não permitida: ${tool}`,
       );

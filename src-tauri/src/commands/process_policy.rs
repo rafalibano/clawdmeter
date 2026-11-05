@@ -8,8 +8,6 @@ const MAX_ARG_BYTES: usize = 8_192;
 const MAX_ALLOWED_TOOLS_BYTES: usize = 1_024;
 pub const ALLOWED_CLAUDE_TOOLS: &[&str] = &[
     "Read(./**)",
-    "Grep",
-    "Glob",
     "Bash(gh pr list:*)",
     "Bash(gh pr view:*)",
     "Bash(gh pr checks:*)",
@@ -244,7 +242,7 @@ pub fn resolve_working_dir(
 ) -> CommandResult<Option<PathBuf>> {
     match (cwd, default_dir) {
         (None, Some(dir)) => Ok(Some(dir.to_path_buf())),
-        (None, None) => validate_cwd(home.and_then(Path::to_str), home, protected),
+        (None, None) => validate_cwd_in(home.and_then(Path::to_str), home, protected, true),
         (Some(_), _) => validate_cwd(cwd, home, protected),
     }
 }
@@ -257,7 +255,7 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
-fn is_protected_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
+pub fn is_protected_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
     std::iter::once(home.join(".claude"))
         .chain(protected.iter().cloned())
         .filter_map(|dir| dir.canonicalize().ok())
@@ -268,6 +266,15 @@ pub fn validate_cwd(
     cwd: Option<&str>,
     home: Option<&Path>,
     protected: &[PathBuf],
+) -> CommandResult<Option<PathBuf>> {
+    validate_cwd_in(cwd, home, protected, false)
+}
+
+fn validate_cwd_in(
+    cwd: Option<&str>,
+    home: Option<&Path>,
+    protected: &[PathBuf],
+    allow_home: bool,
 ) -> CommandResult<Option<PathBuf>> {
     let Some(raw) = cwd else {
         return Ok(None);
@@ -284,6 +291,11 @@ pub fn validate_cwd(
         .map_err(|_| invalid("diretório de trabalho inexistente"))?;
     if !resolved.starts_with(&home) {
         return Err(invalid("diretório de trabalho fora da pasta do usuário"));
+    }
+    if !allow_home && resolved == home {
+        return Err(invalid(
+            "diretório de trabalho não pode ser a pasta do usuário",
+        ));
     }
     if is_protected_dir(&resolved, &home, protected) {
         return Err(invalid(
@@ -372,7 +384,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read(./**),Grep,Bash(gh pr diff:*)",
+            "Read(./**),Bash(gh pr diff:*)",
         ];
         assert!(validate_invocation("claude", &args(&with_tools)).is_ok());
     }
@@ -388,7 +400,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read(./**),Grep,Glob,Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh pr diff:*),Bash(gh search prs:*)",
+            "Read(./**),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh pr diff:*),Bash(gh search prs:*)",
         ];
         assert!(validate_invocation("claude", &args(&argv)).is_ok());
         let without_tools = [
@@ -513,7 +525,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read(./**),Grep,Bash(gh pr diff:*)",
+            "Read(./**),Bash(gh pr diff:*)",
         ];
         let argv = prepare_invocation("claude", &args(&from_ts)).unwrap();
         let expected: Vec<&str> = from_ts.iter().chain(HARDENING.iter()).copied().collect();
@@ -529,7 +541,7 @@ mod tests {
                 "--max-budget-usd",
                 "2",
                 "--allowedTools",
-                "Read(./**),Grep,Bash(gh pr diff:*)",
+                "Read(./**),Bash(gh pr diff:*)",
                 "--setting-sources",
                 "user",
                 "--permission-mode",
@@ -766,7 +778,7 @@ mod tests {
             "a|b",
             "Read,",
             ",Read",
-            "Read,,Grep",
+            "Read,,Bash(gh pr diff:*)",
         ] {
             let call: Vec<&str> = head
                 .into_iter()
@@ -936,13 +948,10 @@ mod tests {
     }
 
     #[test]
-    fn cwd_accepts_home_and_its_subdirectories() {
+    fn cwd_accepts_subdirectories_of_the_home() {
         let tree = TempTree::new("cwd-ok");
         let home = tree.home();
         let inside = home.join("work");
-        assert!(validate_cwd(home.to_str(), Some(&home), &[])
-            .unwrap()
-            .is_some());
         assert!(validate_cwd(inside.to_str(), Some(&home), &[])
             .unwrap()
             .is_some());
@@ -979,9 +988,6 @@ mod tests {
         assert!(validate_cwd(sibling.to_str(), Some(&home), &protected)
             .unwrap()
             .is_some());
-        assert!(validate_cwd(home.to_str(), Some(&home), &protected)
-            .unwrap()
-            .is_some());
         let parent = home.join("Library");
         assert!(validate_cwd(parent.to_str(), Some(&home), &protected)
             .unwrap()
@@ -1009,7 +1015,8 @@ mod tests {
         let tree = TempTree::new("cwd-missing-config");
         let home = tree.home();
         let protected = [home.join("nao-existe")];
-        assert!(validate_cwd(home.to_str(), Some(&home), &protected)
+        let inside = home.join("work");
+        assert!(validate_cwd(inside.to_str(), Some(&home), &protected)
             .unwrap()
             .is_some());
     }
@@ -1059,6 +1066,18 @@ mod tests {
         let outside = tree.root.join("outside");
         assert!(resolve_working_dir(outside.to_str(), Some(&home), &[], Some(&workdir)).is_err());
         assert!(resolve_working_dir(Some("relativo"), Some(&home), &[], Some(&workdir)).is_err());
+    }
+
+    #[test]
+    fn an_explicit_cwd_equal_to_the_home_is_rejected() {
+        let tree = TempTree::new("workdir-home-explicit");
+        let home = tree.home();
+        let workdir = tree.root.join("cache").join("skill-cwd");
+        std::fs::create_dir_all(&workdir).unwrap();
+        assert!(resolve_working_dir(home.to_str(), Some(&home), &[], Some(&workdir)).is_err());
+        assert!(validate_cwd(home.to_str(), Some(&home), &[]).is_err());
+        let sub = home.join("work");
+        assert!(validate_cwd(sub.to_str(), Some(&home), &[]).is_ok());
     }
 
     #[test]

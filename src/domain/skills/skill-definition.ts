@@ -11,8 +11,6 @@ export const SKILLS_SCHEMA_VERSION = 1;
 export const DEFAULT_MAX_BUDGET_USD = 2;
 export const ALLOWED_CLAUDE_TOOLS: readonly string[] = [
   'Read(./**)',
-  'Grep',
-  'Glob',
   'Bash(gh pr list:*)',
   'Bash(gh pr view:*)',
   'Bash(gh pr checks:*)',
@@ -23,8 +21,6 @@ export const ALLOWED_CLAUDE_TOOLS: readonly string[] = [
 ];
 export const DEFAULT_ALLOWED_TOOLS: readonly string[] = [
   'Read(./**)',
-  'Grep',
-  'Glob',
   'Bash(gh pr list:*)',
   'Bash(gh pr view:*)',
   'Bash(gh pr checks:*)',
@@ -116,7 +112,7 @@ export function assertAllowedTools(skill: SkillDefinition): void {
   const disallowed = findDisallowedTools(skill.allowedTools);
   if (disallowed.length > 0) {
     throw new Error(
-      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Atualize o skills.json (ex.: "Read" virou "Read(./**)" e "Bash(git diff|log|status:*)" saiu da lista; use "Bash(gh pr diff:*)"). Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
+      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Atualize o skills.json (ex.: "Read" virou "Read(./**)" e "Bash(git diff|log|status:*)" saiu da lista; use "Bash(gh pr diff:*)"; "Grep" e "Glob" também saíram, dentro do cwd da run eles funcionam sem regra). Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
     );
   }
 }
