@@ -47,6 +47,16 @@ impl UsageIcon {
     }
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn to_pixel(value: f64, max: u32) -> u32 {
+    value.clamp(0.0, f64::from(max)) as u32
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn to_byte(value: f32) -> u8 {
+    value.round().clamp(0.0, 255.0) as u8
+}
+
 pub fn normalize_percent(value: Option<f64>) -> Option<f64> {
     value.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 100.0))
 }
@@ -73,19 +83,19 @@ impl Canvas {
         alpha: f32,
         inside: impl Fn(f64, f64) -> bool,
     ) {
-        let x0 = bounds.0.floor().max(0.0) as u32;
-        let y0 = bounds.1.floor().max(0.0) as u32;
-        let x1 = (bounds.2.ceil() as u32).min(self.width);
-        let y1 = (bounds.3.ceil() as u32).min(self.height);
+        let x0 = to_pixel(bounds.0.floor(), self.width);
+        let y0 = to_pixel(bounds.1.floor(), self.height);
+        let x1 = to_pixel(bounds.2.ceil(), self.width);
+        let y1 = to_pixel(bounds.3.ceil(), self.height);
         let total = (SAMPLES * SAMPLES) as f32;
-        let rgb = color.map(|c| c as f32 / 255.0);
+        let rgb = color.map(|c| f32::from(c) / 255.0);
         for y in y0..y1 {
             for x in x0..x1 {
                 let mut hits = 0u32;
                 for sy in 0..SAMPLES {
                     for sx in 0..SAMPLES {
-                        let px = x as f64 + (sx as f64 + 0.5) / SAMPLES as f64;
-                        let py = y as f64 + (sy as f64 + 0.5) / SAMPLES as f64;
+                        let px = f64::from(x) + (f64::from(sx) + 0.5) / f64::from(SAMPLES);
+                        let py = f64::from(y) + (f64::from(sy) + 0.5) / f64::from(SAMPLES);
                         if inside(px, py) {
                             hits += 1;
                         }
@@ -112,9 +122,9 @@ impl Canvas {
                 continue;
             }
             for channel in [r, g, b] {
-                rgba.push((channel / a * 255.0).round().clamp(0.0, 255.0) as u8);
+                rgba.push(to_byte(channel / a * 255.0));
             }
-            rgba.push((a * 255.0).round().clamp(0.0, 255.0) as u8);
+            rgba.push(to_byte(a * 255.0));
         }
         UsageIcon {
             width: self.width,
@@ -421,10 +431,7 @@ mod tests {
             .map(|x| column(&icon, x, top_edge))
             .collect();
         assert!(on_edge.iter().any(|alpha| *alpha >= 140), "sem traço");
-        assert!(
-            on_edge.iter().any(|alpha| *alpha == 0),
-            "sem intervalo entre os traços"
-        );
+        assert!(on_edge.contains(&0), "sem intervalo entre os traços");
         let zero = render_usage_icon(Some(0.0), Some(0.0), SCALE);
         assert_ne!(icon.rgba, zero.rgba);
     }
@@ -526,5 +533,24 @@ mod tests {
         assert_eq!(sanitize_tooltip("5h: 24%\n7d: 51%"), "5h: 24%7d: 51%");
         assert_eq!(sanitize_tooltip(&"a".repeat(500)).chars().count(), 120);
         assert_eq!(sanitize_tooltip("reseta 14:09 · seg"), "reseta 14:09 · seg");
+    }
+
+    #[test]
+    fn pixel_and_byte_conversions_clamp_before_casting() {
+        assert_eq!(to_pixel(-5.0, 10), 0);
+        assert_eq!(to_pixel(3.9, 10), 3);
+        assert_eq!(to_pixel(1.0e12, 10), 10);
+        assert_eq!(to_pixel(f64::NAN, 10), 0);
+        assert_eq!(to_byte(-3.0), 0);
+        assert_eq!(to_byte(127.6), 128);
+        assert_eq!(to_byte(1.0e9), 255);
+        assert_eq!(to_byte(f32::NAN), 0);
+    }
+
+    #[test]
+    fn out_of_range_percentages_render_like_the_clamped_ones() {
+        let wild = render_usage_icon(Some(1.0e9), Some(-50.0), 2);
+        let clamped = render_usage_icon(Some(100.0), Some(0.0), 2);
+        assert_eq!(wild.rgba, clamped.rgba);
     }
 }

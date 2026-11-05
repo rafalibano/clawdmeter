@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use dev_pulse_lib::usage_icon::{render_usage_icon, render_usage_icon_square, UsageIcon};
 
@@ -100,7 +100,7 @@ fn composite(
     }
 }
 
-fn write(dir: &PathBuf, name: &str, icon: &UsageIcon) {
+fn write(dir: &Path, name: &str, icon: &UsageIcon) {
     let path = dir.join(name);
     fs::write(&path, encode_png(icon)).expect("falha ao gravar o PNG");
     println!("{}", path.display());

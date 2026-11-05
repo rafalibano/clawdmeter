@@ -19,8 +19,9 @@ static LAST_BLUR_HIDE_MS: AtomicU64 = AtomicU64::new(0);
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0)
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
