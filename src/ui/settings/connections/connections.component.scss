@@ -24,12 +24,12 @@
   margin-bottom: 8px;
   padding: 10px 12px;
   border: 1px solid var(--dp-border);
-  border-radius: 8px;
+  border-radius: var(--dp-radius-md);
   background: var(--dp-surface);
 }
 
 .conn[data-tone='error'] {
-  border-color: var(--dp-danger, #d9534f);
+  border-color: var(--dp-danger);
 }
 
 .head {
@@ -45,11 +45,11 @@
 }
 
 .icon[data-tone='ok'] {
-  color: var(--dp-ok, #2e9e5b);
+  color: var(--dp-ok-text);
 }
 
 .icon[data-tone='error'] {
-  color: var(--dp-danger, #d9534f);
+  color: var(--dp-danger-text);
 }
 
 .icon[data-tone='idle'],
@@ -74,7 +74,7 @@
 }
 
 .message.error {
-  color: var(--dp-danger, #d9534f);
+  color: var(--dp-danger-text);
 }
 
 .actions,
@@ -88,7 +88,7 @@
 .btn {
   padding: 4px 10px;
   border: 1px solid var(--dp-border);
-  border-radius: 6px;
+  border-radius: var(--dp-radius-btn);
   background: transparent;
   cursor: pointer;
 }
@@ -104,8 +104,14 @@
   color: var(--dp-accent-fg);
 }
 
+.btn.primary:active:not(:disabled) {
+  border-color: var(--dp-accent-active);
+  background: var(--dp-accent-active);
+  color: var(--dp-accent-fg-active);
+}
+
 .btn.danger {
-  color: var(--dp-danger, #d9534f);
+  color: var(--dp-danger-text);
 }
 
 .device {
@@ -119,7 +125,7 @@
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: var(--dp-accent);
+  color: var(--dp-accent-text);
   user-select: text;
 }
 
@@ -128,7 +134,7 @@
   min-width: 0;
   padding: 4px 8px;
   border: 1px solid var(--dp-border);
-  border-radius: 6px;
+  border-radius: var(--dp-radius-sm);
   background: var(--dp-bg);
   color: var(--dp-fg);
   user-select: text;

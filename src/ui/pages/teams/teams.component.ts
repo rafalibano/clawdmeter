@@ -36,7 +36,7 @@ const CLOCK_TICK_MS = 1_000;
       gap: 8px;
       padding: 8px 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 8px;
+      border-radius: var(--dp-radius-md);
       background: var(--dp-surface);
     }
     .row[data-tone='now'] {
@@ -67,7 +67,7 @@ const CLOCK_TICK_MS = 1_000;
     .badge {
       margin-left: 6px;
       padding: 1px 6px;
-      border-radius: 999px;
+      border-radius: var(--dp-radius-pill);
       background: var(--dp-accent);
       color: var(--dp-accent-fg);
       font-size: 11px;
@@ -76,10 +76,15 @@ const CLOCK_TICK_MS = 1_000;
     .btn {
       padding: 4px 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 6px;
+      border-radius: var(--dp-radius-btn);
       background: var(--dp-accent);
       color: var(--dp-accent-fg);
       cursor: pointer;
+    }
+    .btn:active:not(.secondary) {
+      border-color: var(--dp-accent-active);
+      background: var(--dp-accent-active);
+      color: var(--dp-accent-fg-active);
     }
     .btn.secondary {
       background: transparent;
@@ -88,8 +93,8 @@ const CLOCK_TICK_MS = 1_000;
     .problem {
       padding: 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 8px;
-      background: color-mix(in srgb, #ef4444 14%, transparent);
+      border-radius: var(--dp-radius-md);
+      background: color-mix(in srgb, var(--dp-danger) 14%, transparent);
     }
     .problem p {
       margin: 0 0 8px;

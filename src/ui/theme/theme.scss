@@ -1,18 +1,47 @@
+@use './mottu-tokens';
+
 :root {
   color-scheme: light;
-  --dp-accent: #6366f1;
-  --dp-accent-fg: #f5f5f7;
-  --dp-bg: #ffffff;
-  --dp-fg: #1c1c1e;
-  --dp-muted: color-mix(in srgb, var(--dp-fg) 58%, transparent);
-  --dp-border: color-mix(in srgb, var(--dp-fg) 14%, transparent);
-  --dp-surface: color-mix(in srgb, var(--dp-fg) 6%, transparent);
+  --dp-font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --dp-accent: var(--me-primary-base);
+  --dp-accent-fg: var(--me-neutral-extra-dark);
+  --dp-accent-active: var(--me-primary-dark);
+  --dp-accent-fg-active: var(--me-neutral-white);
+  --dp-accent-text: var(--me-primary-50);
+  --dp-bg: var(--me-neutral-100);
+  --dp-fg: var(--me-neutral-10);
+  --dp-muted: var(--me-neutral-40);
+  --dp-border: var(--me-neutral-90);
+  --dp-surface: var(--me-neutral-99);
+  --dp-ok: var(--me-primary-base);
+  --dp-ok-text: var(--me-primary-50);
+  --dp-warning: var(--me-warning-base);
+  --dp-warning-text: var(--me-warning-50);
+  --dp-danger: var(--me-alert-base);
+  --dp-danger-text: var(--me-alert-40);
+  --dp-info: var(--me-info-base);
+  --dp-info-text: var(--me-info-50);
+  --dp-sla-attention: #ffc700;
+  --dp-sla-fg: var(--me-neutral-extra-dark);
+  --dp-radius-btn: var(--me-radius-2);
+  --dp-radius-sm: var(--me-radius-4);
+  --dp-radius-md: var(--me-radius-8);
+  --dp-radius-pill: var(--me-radius-1000);
+  --dp-shadow: var(--me-shadow-2);
   --dp-popover-width: 380px;
   --dp-popover-height: 520px;
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --dp-bg: #1c1c1e;
-  --dp-fg: #f5f5f7;
+  --dp-accent-text: var(--me-primary-alt);
+  --dp-bg: var(--me-background-change);
+  --dp-fg: var(--me-text-change);
+  --dp-muted: var(--me-neutral-60);
+  --dp-border: var(--me-neutral-20);
+  --dp-surface: var(--me-component-change);
+  --dp-ok-text: var(--me-primary-alt);
+  --dp-warning-text: var(--me-warning-base);
+  --dp-danger-text: var(--me-alert-base);
+  --dp-info-text: var(--me-info-70);
 }

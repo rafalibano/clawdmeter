@@ -53,7 +53,7 @@ src/
 ├─ ui/
 │  ├─ shell/          popover, rodapé "atualizado há Xs" e botão ⚙
 │  ├─ settings/       Ajustes: páginas, conexões, aparência
-│  ├─ theme/          tokens CSS: destaque, fundo, claro/escuro/sistema
+│  ├─ theme/          snapshot dos tokens --me-* do DS Mottu, vars --dp-*, destaque, fundo, claro/escuro/sistema
 │  └─ pages/          uma pasta por página
 ├─ composition-root.ts        DI manual com os adapters reais (Tauri)
 └─ composition-root.demo.ts   DI do modo demo no navegador (localStorage)
@@ -114,6 +114,24 @@ O arquivo tem `schemaVersion`; versões antigas são migradas e regravadas na le
 Um `settings.json` com JSON inválido nunca é sobrescrito: o app usa o último estado válido em memória (ou os padrões, se o boot já o encontrou quebrado) e só grava os padrões quando o arquivo não existe. Enquanto o arquivo estiver quebrado, os ajustes feitos na UI valem na sessão mas não são persistidos; ao corrigir o arquivo, o app recarrega o conteúdo do disco. Falha de leitura ou gravação aparece como aviso no topo do popover.
 
 O seletor de cor nativo (`<input type="color">`) é proibido na `ui`: ele abre numa janela separada e o popover se fecha por perder o foco. O lint de arquitetura barra o uso.
+
+### Tema e cores (DS Mottu)
+
+A fonte da verdade das cores é o DS externo da Mottu (`@mottu-ops/ds-core-external`, GitHub Packages privado, **não** é dependência do app). `src/ui/theme/mottu-tokens.scss` é um snapshot, com os mesmos nomes `--me-*`, só do que o app usa (escalas primary, warning, alert, info e neutral, aliases `*-base/-dark/-alt/-light`, `background-change`/`component-change`/`text-change`, radius 2/4/8/16/1000 e shadow 1/2/3). `mottu-tokens.ts` espelha em hex o que o ECharts precisa (canvas não resolve `var()`), e `tools/theme-tokens.spec.ts` prova que os dois batem. Para atualizar, copie os valores do `dist/mottu-ds.css` do pacote.
+
+`theme.scss` define as vars do app (`--dp-*`) em cima dos tokens via `var(--me-*)`. Componentes usam só `--dp-*`; hex fora de `src/ui/theme` e de `domain` é barrado por teste.
+
+| Tema | Fundo | Superfície | Texto |
+|---|---|---|---|
+| Escuro | `background-change` `#000` | `component-change` `#121212` | `text-change` `#fff` |
+| Claro | `neutral-100` | `neutral-99`, borda `neutral-90` | `neutral-10` |
+
+- **Destaque = verde Mottu** (`--dp-accent`, padrão `#00b131` = `primary-base`): aba ativa, botões primários (receita do `me-button`: radius 2px, `:active` em `primary-dark`), seletor de período, foco, checkbox, "agora" e "próxima" da agenda. Texto e linhas finas usam `--dp-accent-text`: `primary-alt` (`#1bd60b`) no escuro, `primary-50` no claro. O texto sobre o destaque é escolhido por contraste WCAG (escuro `#121212` ou branco, o que passar de AA); no verde base sai escuro. Uma cor de destaque personalizada vale para tudo isso, inclusive os gráficos.
+- **Semânticos:** erro = `alert`, aviso = `warning`, info = `info`, sucesso = `primary` (`--dp-danger`, `--dp-warning`, `--dp-info`, `--dp-ok`; as variantes `*-text` usam o passo do DS com contraste em cada tema).
+- **Usage:** série e área (opacidade 0,12) em `primary-base`, tendência tracejada em `primary-alt`, linha de 100% em `alert-base`, números grandes em verde. A previsão fica verde abaixo de 80%, `warning` de 80 a 99% e `alert` quando estoura (`chart-palette.ts`).
+- **SLA nos PRs (PRs e Reviews):** selo de idade e marca na borda esquerda da linha, pela idade desde a abertura de PRs abertos (`domain/pull-requests/sla.ts`): menos de 3 dias neutro, 3 a 6d23h amarelo `#FFC700` (Amarelo 1 da paleta oficial; o DS externo não tem amarelo) com texto escuro, 7 dias ou mais `alert-base`. Em Reviews a referência também é a abertura: o modelo de PR não traz a data do pedido de review. Vermelho nessas páginas só aparece para CI falhando e conflito; "Mudanças pedidas" usa `info`.
+- **Fonte:** `"Helvetica Neue", Helvetica, Arial, sans-serif` em todo o app (`--dp-font-family`) e no `textStyle` do ECharts. Não há outra fonte.
+- **Migração:** `schemaVersion` 2 troca o destaque antigo `#6366f1` (índigo, antigo padrão) por `#00b131`. Quem escolheu outra cor mantém a sua; quem tinha escolhido o índigo de propósito também é migrado, porque o valor é igual ao do padrão antigo.
 
 ### Conexões
 

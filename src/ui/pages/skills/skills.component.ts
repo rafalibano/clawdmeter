@@ -26,7 +26,7 @@ const CLOCK_TICK_MS = 1_000;
       margin-bottom: 8px;
       padding: 8px 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 8px;
+      border-radius: var(--dp-radius-md);
       background: var(--dp-surface);
     }
     .row {
@@ -48,7 +48,7 @@ const CLOCK_TICK_MS = 1_000;
     .btn {
       padding: 3px 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 6px;
+      border-radius: var(--dp-radius-btn);
       background: var(--dp-bg);
       color: inherit;
       cursor: pointer;
@@ -58,18 +58,23 @@ const CLOCK_TICK_MS = 1_000;
       background: var(--dp-accent);
       color: var(--dp-accent-fg);
     }
+    .btn.primary:active:not(:disabled) {
+      border-color: var(--dp-accent-active);
+      background: var(--dp-accent-active);
+      color: var(--dp-accent-fg-active);
+    }
     .btn:disabled {
       opacity: 0.5;
       cursor: default;
     }
     .status[data-status='running'] {
-      color: var(--dp-accent);
+      color: var(--dp-accent-text);
     }
     .status[data-status='succeeded'] {
-      color: #16a34a;
+      color: var(--dp-ok-text);
     }
     .status[data-status='failed'] {
-      color: #dc2626;
+      color: var(--dp-danger-text);
     }
     .log {
       margin: 6px 0 0;
@@ -90,7 +95,7 @@ const CLOCK_TICK_MS = 1_000;
       max-height: 160px;
       overflow: auto;
       padding: 6px;
-      border-radius: 6px;
+      border-radius: var(--dp-radius-sm);
       background: var(--dp-bg);
       font: inherit;
       font-size: 12px;
@@ -100,15 +105,15 @@ const CLOCK_TICK_MS = 1_000;
     .problem {
       margin: 6px 0 0;
       padding: 6px 8px;
-      border-radius: 6px;
-      background: color-mix(in srgb, #ef4444 12%, transparent);
+      border-radius: var(--dp-radius-sm);
+      background: color-mix(in srgb, var(--dp-danger) 12%, transparent);
     }
     .problem p {
       margin: 0 0 6px;
     }
     .error {
       margin: 6px 0 0;
-      color: #dc2626;
+      color: var(--dp-danger-text);
       font-size: 12px;
     }
     .actions {

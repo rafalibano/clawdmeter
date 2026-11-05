@@ -49,7 +49,7 @@
   padding: 4px 7px;
   font-size: 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dp-radius-btn);
   background: transparent;
   cursor: pointer;
 }
@@ -68,7 +68,7 @@
   margin: 0;
   padding: 6px 12px;
   border-bottom: 1px solid var(--dp-border);
-  background: color-mix(in srgb, #ef4444 14%, transparent);
+  background: color-mix(in srgb, var(--dp-danger) 14%, transparent);
   font-size: 12px;
 }
 
@@ -100,7 +100,7 @@
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dp-radius-btn);
   background: transparent;
   font-size: 16px;
   line-height: 1;
@@ -111,5 +111,5 @@
 .gear:hover,
 .gear.active {
   background: var(--dp-surface);
-  color: var(--dp-accent);
+  color: var(--dp-accent-text);
 }

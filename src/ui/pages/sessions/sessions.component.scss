@@ -12,18 +12,18 @@
   margin-bottom: 8px;
   padding: 8px 12px;
   border: 1px solid var(--dp-border);
-  border-radius: 8px;
+  border-radius: var(--dp-radius-md);
   background: var(--dp-surface);
 }
 
 .card.error {
-  border-color: var(--dp-danger, #d9534f);
-  color: var(--dp-danger, #d9534f);
+  border-color: var(--dp-danger);
+  color: var(--dp-danger-text);
 }
 
 .card[data-attention] {
-  border-color: #d98e04;
-  background: color-mix(in srgb, #d98e04 12%, transparent);
+  border-color: var(--dp-warning);
+  background: color-mix(in srgb, var(--dp-warning) 12%, transparent);
 }
 
 .head {
@@ -41,11 +41,11 @@
 }
 
 .card[data-status='busy'] .dot {
-  background: var(--dp-ok, #2e9e5b);
+  background: var(--dp-ok);
 }
 
 .card[data-status='idle'] .dot {
-  background: #d98e04;
+  background: var(--dp-warning);
 }
 
 .title {
@@ -71,7 +71,7 @@
 
 .attention {
   margin: 4px 0 0 16px;
-  color: #d98e04;
+  color: var(--dp-warning-text);
   font-size: 12px;
   font-weight: 600;
 }

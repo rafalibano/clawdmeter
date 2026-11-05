@@ -26,19 +26,18 @@
   width: 78px;
   padding: 3px 6px;
   border: 1px solid var(--dp-border);
-  border-radius: 6px;
+  border-radius: var(--dp-radius-btn);
   background: var(--dp-surface);
   color: var(--dp-fg);
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   user-select: text;
 }
 
 .hex:focus {
-  outline: 2px solid var(--dp-accent);
+  outline: 2px solid var(--dp-accent-text);
   outline-offset: 1px;
 }
 
 .hex.invalid {
-  border-color: #ef4444;
+  border-color: var(--dp-danger);
 }
