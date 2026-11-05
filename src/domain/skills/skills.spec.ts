@@ -331,6 +331,7 @@ describe('skills configuration', () => {
     expect([...ALLOWED_CLAUDE_TOOLS]).toEqual(rust);
     expect(DEFAULT_ALLOWED_TOOLS.every((tool) => ALLOWED_CLAUDE_TOOLS.includes(tool))).toBe(true);
     expect(DEFAULT_ALLOWED_TOOLS.some((tool) => tool.startsWith('mcp__'))).toBe(false);
+    expect(ALLOWED_CLAUDE_TOOLS.some((tool) => tool.startsWith('mcp__'))).toBe(false);
   });
 
   it('git diff, git log and git status are out of the list, and Read is restricted to the cwd', () => {

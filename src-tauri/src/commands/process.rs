@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::{home_dir, protected_dirs, skill_workdir};
+use super::home::{app_dirs, claude_settings_file, home_dir, skill_workdir};
 use super::process_policy::{prepare_invocation, resolve_working_dir, validate_program, GH_ENV};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
@@ -203,14 +203,31 @@ pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
         })
 }
 
-fn build_command(
-    program: &str,
-    args: &[String],
-    cwd: Option<&str>,
-    protected: &[PathBuf],
-    default_dir: Option<&Path>,
-) -> CommandResult<Command> {
-    let argv = prepare_invocation(program, args)?;
+#[derive(Clone, Copy)]
+struct Launch<'a> {
+    cwd: Option<&'a str>,
+    protected: &'a [PathBuf],
+    default_dir: Option<&'a Path>,
+    claude_settings: Option<&'a Path>,
+}
+
+impl Launch<'_> {
+    const NONE: Launch<'static> = Launch {
+        cwd: None,
+        protected: &[],
+        default_dir: None,
+        claude_settings: None,
+    };
+}
+
+fn build_command(program: &str, args: &[String], launch: &Launch) -> CommandResult<Command> {
+    let Launch {
+        cwd,
+        protected,
+        default_dir,
+        claude_settings,
+    } = *launch;
+    let argv = prepare_invocation(program, args, claude_settings)?;
     let dir = resolve_working_dir(cwd, home_dir().as_deref(), protected, default_dir)?;
     let mut command = Command::new(resolve_program(program)?);
     command
@@ -313,7 +330,7 @@ fn run_to_completion(
             "process_run only runs gh",
         ));
     }
-    let mut child = build_command(program, args, None, &[], None)?
+    let mut child = build_command(program, args, &Launch::NONE)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
@@ -473,9 +490,16 @@ pub fn process_spawn(
     cwd: Option<String>,
 ) -> CommandResult<u32> {
     registry.ensure_capacity()?;
-    let protected = protected_dirs(&app)?;
+    let protected = app_dirs(&app)?;
     let workdir = skill_workdir(&app)?;
-    let mut child = build_command(&program, &args, cwd.as_deref(), &protected, Some(&workdir))?
+    let settings = claude_settings_file(&app)?;
+    let launch = Launch {
+        cwd: cwd.as_deref(),
+        protected: &protected,
+        default_dir: Some(&workdir),
+        claude_settings: Some(&settings),
+    };
+    let mut child = build_command(&program, &args, &launch)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let pid = child.id();

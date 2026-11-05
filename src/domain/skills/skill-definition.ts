@@ -16,8 +16,6 @@ export const ALLOWED_CLAUDE_TOOLS: readonly string[] = [
   'Bash(gh pr checks:*)',
   'Bash(gh pr diff:*)',
   'Bash(gh search prs:*)',
-  'mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql',
-  'mcp__plugin_atlassian_atlassian__getJiraIssue',
 ];
 export const DEFAULT_ALLOWED_TOOLS: readonly string[] = [
   'Read(./**)',
