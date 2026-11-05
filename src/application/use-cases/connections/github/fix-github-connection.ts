@@ -22,6 +22,7 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
     private readonly urls: UrlOpener,
     private readonly tokens: GitHubTokenResolver,
     private readonly accounts: GitHubAccountGateway,
+    private readonly connect: StatusUseCase,
   ) {}
 
   async execute(fix: FixAction): Promise<ConnectionStatus> {
@@ -29,6 +30,8 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
       case 'retry-permission':
       case 'retry':
         return this.check.execute();
+      case 'use-github-cli':
+        return this.connect.execute();
       case 'relogin-github':
         return this.reauthenticate(['auth', 'login', '-h', 'github.com', '-w'], 'github-unauthorized');
       case 'connect-github-cli':

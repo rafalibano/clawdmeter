@@ -58,6 +58,7 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
   const checkMicrosoft = new CheckMicrosoftConnection(adapters.prefs, adapters.microsoft);
   const checkNotifications = new CheckNotifications(adapters.notifications);
 
+  const connectGitHub = new ConnectGitHub(adapters.prefs, adapters.githubCli, adapters.githubAccounts);
   const connectMicrosoft = new ConnectMicrosoft(adapters.prefs, adapters.microsoft);
   const disconnectGitHub = new DisconnectGitHub(adapters.secrets, adapters.prefs);
 
@@ -76,7 +77,7 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
     connect: new ConnectConnection(
       {
         claude: new ConnectClaude(adapters.prefs, checkClaude),
-        github: new ConnectGitHub(adapters.prefs, adapters.githubCli, adapters.githubAccounts),
+        github: connectGitHub,
         microsoft: connectMicrosoft,
         notifications: new ConnectNotifications(adapters.notifications),
       },
@@ -101,6 +102,7 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
           adapters.urlOpener,
           tokens,
           adapters.githubAccounts,
+          connectGitHub,
         ),
         microsoft: new FixMicrosoftConnection(checkMicrosoft, connectMicrosoft),
         notifications: new FixNotifications(checkNotifications, adapters.systemSettings),

@@ -14,6 +14,7 @@ describe('fix table', () => {
 
   it.each([
     ['keychain-denied', 'retry-permission'],
+    ['keyring-unavailable', 'use-github-cli'],
     ['claude-expired', 'relogin-claude'],
     ['claude-code-missing', 'install-claude-code'],
     ['github-unauthorized', 'relogin-github'],

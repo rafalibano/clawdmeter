@@ -16,6 +16,8 @@ export const esMX: Record<MessageKey, string> = {
   'shell.error.save': 'No se pudo guardar la configuración.',
   'shell.error.watch': 'Las ediciones manuales en settings.json no se recargarán.',
   'shell.error.invalid': 'settings.json inválido — los ajustes no se están guardando.',
+  'shell.notice.no-tray': 'Tu escritorio no tiene bandeja del sistema. Instala la extensión AppIndicator o usa Ctrl+Alt+D.',
+  'shell.notice.dismiss': 'Descartar',
   'shell.error.future': 'settings.json de una versión más nueva — los ajustes no se están guardando.',
 
   'page.usage': 'Uso',
@@ -92,6 +94,7 @@ export const esMX: Record<MessageKey, string> = {
   'connections.pat.create': 'Crear token en GitHub',
 
   'problem.keychain-denied': 'Se negó el acceso al llavero del sistema.',
+  'problem.keyring-unavailable': 'Llavero del sistema no disponible — usa el GitHub CLI',
   'problem.claude-expired': 'Token vencido — abre Claude Code para renovarlo o vuelve a iniciar sesión.',
   'problem.claude-code-missing': 'No se encontró Claude Code.',
   'problem.github-unauthorized': 'El token de GitHub es inválido o fue revocado.',
@@ -123,6 +126,7 @@ export const esMX: Record<MessageKey, string> = {
   'action.install-claude-code': 'Instalar Claude Code',
   'action.relogin-github': 'Volver a iniciar sesión en GitHub',
   'action.connect-github-cli': 'Conectar GitHub CLI',
+  'action.use-github-cli': 'Usar el GitHub CLI',
   'action.install-github-cli': 'Instalar GitHub CLI',
   'action.regrant-scopes': 'Rehacer permisos',
   'action.authorize-org': 'Autorizar en la org',

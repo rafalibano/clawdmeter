@@ -6,6 +6,7 @@ export type FixAction =
   | 'install-claude-code'
   | 'relogin-github'
   | 'connect-github-cli'
+  | 'use-github-cli'
   | 'install-github-cli'
   | 'regrant-scopes'
   | 'authorize-org'
@@ -17,6 +18,7 @@ export type FixAction =
 
 export const FIX_FOR: Record<ConnectionProblem, FixAction> = {
   'keychain-denied': 'retry-permission',
+  'keyring-unavailable': 'use-github-cli',
   'claude-expired': 'relogin-claude',
   'claude-code-missing': 'install-claude-code',
   'github-unauthorized': 'relogin-github',

@@ -79,6 +79,32 @@
   font-size: 12px;
 }
 
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--cm-border);
+  background: color-mix(in srgb, var(--cm-accent) 12%, transparent);
+  font-size: 12px;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 0;
+  border-radius: var(--cm-radius-btn);
+  background: transparent;
+  color: var(--cm-accent-text);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background: var(--cm-hover);
+}
+
 .content {
   flex: 1;
   min-height: 0;

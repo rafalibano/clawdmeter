@@ -11,6 +11,7 @@ export * from './secret-store';
 export * from './session-source';
 export * from './settings-store';
 export * from './skills-stores';
+export * from './startup-notices';
 export * from './streaming-process-runner';
 export * from './system-actions';
 export * from './translator';

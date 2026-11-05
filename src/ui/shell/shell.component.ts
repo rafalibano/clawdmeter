@@ -1,6 +1,7 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterRenderEffect, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
+import type { StartupNotice } from '../../application/ports';
 import { I18n } from '../i18n';
 import { REFRESH_COOLDOWN_MS, refreshState } from './refresh-state';
 import { APPLICATION } from './application.token';
@@ -20,9 +21,10 @@ const CLOCK_TICK_MS = 1_000;
 export class ShellComponent {
   private readonly facade = inject(SettingsFacade);
   protected readonly i18n = inject(I18n);
-  private readonly scheduler = inject(APPLICATION).scheduler;
+  private readonly app = inject(APPLICATION);
+  private readonly scheduler = this.app.scheduler;
   private readonly pageState = inject(PageStateService);
-  private readonly clock = inject(APPLICATION).clock;
+  private readonly clock = this.app.clock;
   private readonly now = signal(this.clock.now());
   private readonly requestedPageId = signal<string | null>(null);
 
@@ -30,6 +32,11 @@ export class ShellComponent {
   private readonly cooldowns = signal<ReadonlyMap<string, number>>(new Map());
 
   protected readonly showingSettings = signal(false);
+  private readonly pendingNotice = signal<StartupNotice | null>(null);
+  protected readonly noticeMessage = computed(() => {
+    const notice = this.pendingNotice();
+    return notice === null ? null : this.i18n.t(`shell.notice.${notice}`);
+  });
   protected readonly pages = this.facade.enabledPages;
   protected readonly errorMessage = computed(() => {
     const error = this.facade.error();
@@ -65,6 +72,7 @@ export class ShellComponent {
       if (!id || this.showingSettings()) return;
       host.querySelector(`.tab[data-page-id="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     });
+    void this.app.loadStartupNotice.execute().then((notice) => this.pendingNotice.set(notice));
     const stop = this.clock.every(CLOCK_TICK_MS, () => this.now.set(this.clock.now()));
     inject(DestroyRef).onDestroy(stop);
   }
@@ -84,6 +92,10 @@ export class ShellComponent {
     } finally {
       this.refreshing.set(false);
     }
+  }
+
+  protected dismissNotice(): void {
+    this.pendingNotice.set(null);
   }
 
   protected toggleSettings(): void {

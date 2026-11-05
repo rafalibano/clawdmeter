@@ -26,6 +26,8 @@ export const en = {
   'shell.error.save': 'Could not save the settings.',
   'shell.error.watch': 'Manual edits to settings.json will not be reloaded.',
   'shell.error.invalid': 'Invalid settings.json — changes are not being saved.',
+  'shell.notice.no-tray': 'Your desktop has no tray. Install the AppIndicator extension or use Ctrl+Alt+D.',
+  'shell.notice.dismiss': 'Dismiss',
   'shell.error.future': 'settings.json is from a newer version — changes are not being saved.',
 
   'page.usage': 'Usage',
@@ -102,6 +104,7 @@ export const en = {
   'connections.pat.create': 'Create token on GitHub',
 
   'problem.keychain-denied': 'Access to the system keychain was denied.',
+  'problem.keyring-unavailable': 'System keyring unavailable — use the GitHub CLI',
   'problem.claude-expired': 'Token expired — open Claude Code to renew it or sign in again.',
   'problem.claude-code-missing': 'Claude Code not found.',
   'problem.github-unauthorized': 'The GitHub token is invalid or was revoked.',
@@ -133,6 +136,7 @@ export const en = {
   'action.install-claude-code': 'Install Claude Code',
   'action.relogin-github': 'Sign in to GitHub again',
   'action.connect-github-cli': 'Connect GitHub CLI',
+  'action.use-github-cli': 'Use the GitHub CLI',
   'action.install-github-cli': 'Install GitHub CLI',
   'action.regrant-scopes': 'Redo permissions',
   'action.authorize-org': 'Authorize for the org',

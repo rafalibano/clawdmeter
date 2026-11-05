@@ -29,6 +29,8 @@ export function toDomainError(raw: unknown): Error {
   switch (raw.kind) {
     case 'keychain_denied':
       return new ConnectionProblemError('keychain-denied', raw.message);
+    case 'keyring_unavailable':
+      return new ConnectionProblemError('keyring-unavailable');
     case 'claude_code_missing':
       return new ConnectionProblemError('claude-code-missing', raw.message);
     case 'claude_expired':

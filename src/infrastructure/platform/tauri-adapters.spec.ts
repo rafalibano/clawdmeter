@@ -12,6 +12,7 @@ import { TauriNotifier } from './tauri-notifier';
 import { TauriOAuthLoopback } from './tauri-oauth-loopback';
 import { TauriProcessRunner } from './tauri-process-runner';
 import { TauriSecretStore } from './tauri-secret-store';
+import { TauriStartupNotices } from './tauri-startup-notices';
 import { TauriSystemSettings, TauriTerminalLauncher, TauriUrlOpener } from './tauri-system-actions';
 import { FakeTranslator } from '../../application/testing/fake-translator';
 import { TauriUsageIndicator } from './tauri-usage-indicator';
@@ -23,6 +24,12 @@ describe('toDomainError', () => {
       message: 'negado',
     });
     expect(toDomainError({ kind: 'claude_code_missing', message: 'x' })).toBeInstanceOf(ConnectionProblemError);
+  });
+
+  it('keyring_unavailable becomes a problem without a Rust message, so the translated text shows', () => {
+    const error = toDomainError({ kind: 'keyring_unavailable', message: 'no secret service' });
+    expect(error).toBeInstanceOf(ConnectionProblemError);
+    expect(error).toMatchObject({ problem: 'keyring-unavailable', message: 'keyring-unavailable' });
   });
 
   it('claude_expired becomes a connection problem and too_many_processes becomes a coded error', () => {
@@ -61,6 +68,18 @@ describe('TauriSecretStore', () => {
   it('propagates a denied keychain as a connection problem', async () => {
     const { commands } = createFakeCommands(() => rejectWith('keychain_denied', 'negado'));
     await expect(new TauriSecretStore(commands).get('k')).rejects.toMatchObject({ problem: 'keychain-denied' });
+  });
+});
+
+describe('TauriStartupNotices', () => {
+  it('reads the pending notice and ignores values it does not know', async () => {
+    const answers = ['no-tray', 'other', null];
+    const { commands, calls } = createFakeCommands(() => answers.shift());
+    const notices = new TauriStartupNotices(commands);
+    expect(await notices.pending()).toBe('no-tray');
+    expect(await notices.pending()).toBeNull();
+    expect(await notices.pending()).toBeNull();
+    expect(calls[0]).toEqual({ command: 'startup_notice', args: undefined });
   });
 });
 

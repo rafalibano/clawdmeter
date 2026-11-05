@@ -152,6 +152,26 @@ describe('GitHub', () => {
     expect(await connections.connect.execute('github')).toMatchObject({ cli: 'not-logged-in' });
   });
 
+  it('keyring unavailable on a saved token -> "Use the GitHub CLI" connects through gh and stops reading the keyring', async () => {
+    world.prefs.current = { ...world.prefs.current, github: { method: 'pat' } };
+    world.secrets.get = async () => {
+      throw new ConnectionProblemError('keyring-unavailable');
+    };
+    const status = await connections.check.execute('github');
+    expect(status).toMatchObject({ state: 'error', problem: 'keyring-unavailable' });
+    expect(fixLabel('github', status)).toBe('use-github-cli');
+    expect(await runFix('github', 'use-github-cli')).toEqual({ state: 'connected', account: 'dev' });
+    expect(world.prefs.current.github.method).toBe('gh-cli');
+    expect(await connections.check.execute('github')).toEqual({ state: 'connected', account: 'dev' });
+  });
+
+  it('"Use the GitHub CLI" with gh not installed points to the install step', async () => {
+    world.githubCli.outcome = { missing: 'not-installed' };
+    const status = await runFix('github', 'use-github-cli');
+    expect(status).toMatchObject({ state: 'disconnected', cli: 'not-installed' });
+    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['install-github-cli']);
+  });
+
   it('Device Flow opens the verification page, stores the token in the keychain and connects', async () => {
     const code = await connections.github.startDeviceFlow.execute();
     expect(code).toEqual(DEVICE_CODE);

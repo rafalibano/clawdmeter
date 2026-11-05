@@ -2,6 +2,7 @@ import type { ErrorArgs, ErrorCode } from '../coded-error';
 
 export type ConnectionProblem =
   | 'keychain-denied'
+  | 'keyring-unavailable'
   | 'claude-expired'
   | 'claude-code-missing'
   | 'github-unauthorized'
@@ -16,6 +17,7 @@ export type ConnectionProblem =
 
 export const CONNECTION_PROBLEMS: readonly ConnectionProblem[] = [
   'keychain-denied',
+  'keyring-unavailable',
   'claude-expired',
   'claude-code-missing',
   'github-unauthorized',

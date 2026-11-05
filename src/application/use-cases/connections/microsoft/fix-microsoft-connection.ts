@@ -10,6 +10,7 @@ export class FixMicrosoftConnection implements StatusUseCase<FixAction> {
   execute(fix: FixAction): Promise<ConnectionStatus> {
     switch (fix) {
       case 'retry-permission':
+      case 'use-github-cli':
       case 'retry':
         return this.check.execute();
       case 'relogin-microsoft':

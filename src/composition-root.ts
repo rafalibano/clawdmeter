@@ -34,6 +34,7 @@ import {
   TauriProcessProbe,
   TauriProcessRunner,
   TauriSecretStore,
+  TauriStartupNotices,
   TauriStreamingProcessRunner,
   TauriSystemSettings,
   TauriTerminalLauncher,
@@ -94,6 +95,7 @@ export function createComposition(): Application {
     clock,
     language,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
+    startupNotices: new TauriStartupNotices(commands),
     connectionAdapters,
     skills: ({ connections }) =>
       createSkills(

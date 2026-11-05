@@ -24,6 +24,13 @@
     <p class="error" role="alert">{{ message }}</p>
   }
 
+  @if (noticeMessage(); as notice) {
+    <p class="notice" role="status">
+      <span>{{ notice }}</span>
+      <button type="button" class="dismiss" (click)="dismissNotice()">{{ i18n.t('shell.notice.dismiss') }}</button>
+    </p>
+  }
+
   <main class="content">
     @if (showingSettings()) {
       <cm-settings />

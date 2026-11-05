@@ -16,6 +16,8 @@ export const ptBR: Record<MessageKey, string> = {
   'shell.error.save': 'Não foi possível salvar as configurações.',
   'shell.error.watch': 'Edições manuais em settings.json não serão recarregadas.',
   'shell.error.invalid': 'settings.json inválido — ajustes não estão sendo salvos.',
+  'shell.notice.no-tray': 'Seu desktop não tem bandeja do sistema. Instale a extensão AppIndicator ou use Ctrl+Alt+D.',
+  'shell.notice.dismiss': 'Dispensar',
   'shell.error.future': 'settings.json de versão mais nova — ajustes não estão sendo salvos.',
 
   'page.usage': 'Uso',
@@ -92,6 +94,7 @@ export const ptBR: Record<MessageKey, string> = {
   'connections.pat.create': 'Criar token no GitHub',
 
   'problem.keychain-denied': 'Acesso ao cofre do sistema negado.',
+  'problem.keyring-unavailable': 'Cofre de chaves do sistema indisponível — use o GitHub CLI',
   'problem.claude-expired': 'Token vencido — abra o Claude Code para renová-lo ou refaça o login.',
   'problem.claude-code-missing': 'Claude Code não encontrado.',
   'problem.github-unauthorized': 'O token do GitHub é inválido ou foi revogado.',
@@ -123,6 +126,7 @@ export const ptBR: Record<MessageKey, string> = {
   'action.install-claude-code': 'Instalar Claude Code',
   'action.relogin-github': 'Refazer login do GitHub',
   'action.connect-github-cli': 'Conectar GitHub CLI',
+  'action.use-github-cli': 'Usar o GitHub CLI',
   'action.install-github-cli': 'Instalar GitHub CLI',
   'action.regrant-scopes': 'Refazer permissões',
   'action.authorize-org': 'Autorizar na org',

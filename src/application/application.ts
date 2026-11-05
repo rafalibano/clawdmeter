@@ -3,10 +3,10 @@ import { createConnections, type Connections } from './connections/create-connec
 import type { PageModule } from './pages/page-module';
 import { PageRegistry } from './pages/page-registry';
 import { CurrentLanguage } from './language';
-import type { Clock, SettingsStore } from './ports';
+import type { Clock, SettingsStore, StartupNotices } from './ports';
 import { PollingScheduler } from './scheduler/polling-scheduler';
 import type { Skills } from './skills';
-import { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from './use-cases';
+import { GetSettings, GetSettingsStatus, LoadStartupNotice, UpdateSettings, WatchSettings } from './use-cases';
 import { JoinMeeting } from './use-cases/calendar';
 import { OpenGitHubUrl } from './use-cases/pull-requests';
 
@@ -23,6 +23,7 @@ export interface Application {
   getSettingsStatus: GetSettingsStatus;
   updateSettings: UpdateSettings;
   watchSettings: WatchSettings;
+  loadStartupNotice: LoadStartupNotice;
 }
 
 export interface SkillsContext {
@@ -37,6 +38,7 @@ export interface ApplicationDeps {
   clock: Clock;
   language?: CurrentLanguage;
   settingsStore: SettingsStore;
+  startupNotices?: StartupNotices;
   connectionAdapters: ConnectionAdapters;
   skills: Skills | ((context: SkillsContext) => Skills);
   pages: readonly PageModule[] | ((context: PageContext) => readonly PageModule[]);
@@ -59,5 +61,6 @@ export function createApplication(deps: ApplicationDeps): Application {
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),
     updateSettings: new UpdateSettings(deps.settingsStore),
     watchSettings: new WatchSettings(deps.settingsStore),
+    loadStartupNotice: new LoadStartupNotice(deps.startupNotices ?? { pending: async () => null }),
   };
 }
