@@ -11,13 +11,13 @@ import { PlatformCommandError, type TauriCommands } from './tauri-commands';
 export type Listen = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
 
 interface OutputPayload {
-  pid: number;
+  id: number;
   stream: 'stdout' | 'stderr';
   line: string;
 }
 
 interface ExitPayload {
-  pid: number;
+  id: number;
   code: number | null;
 }
 
@@ -30,7 +30,7 @@ export class TauriStreamingProcessRunner implements StreamingProcessRunner {
   ) {}
 
   async start(spec: StreamingProcessSpec, handlers: StreamingProcessHandlers): Promise<StreamingProcessHandle> {
-    let pid: number | null = null;
+    let id: number | null = null;
     let stopped = false;
     const buffered: Buffered[] = [];
     const unlisteners: Array<() => void> = [];
@@ -41,7 +41,7 @@ export class TauriStreamingProcessRunner implements StreamingProcessRunner {
       for (const unlisten of unlisteners) unlisten();
     };
     const deliver = (item: Buffered): void => {
-      if (item.payload.pid !== pid) return;
+      if (item.payload.id !== id) return;
       if (item.kind === 'line') {
         handlers.onLine(item.payload.line, item.payload.stream);
         return;
@@ -50,7 +50,7 @@ export class TauriStreamingProcessRunner implements StreamingProcessRunner {
       handlers.onExit(item.payload.code);
     };
     const receive = (item: Buffered): void => {
-      if (pid === null) buffered.push(item);
+      if (id === null) buffered.push(item);
       else deliver(item);
     };
 
@@ -60,15 +60,15 @@ export class TauriStreamingProcessRunner implements StreamingProcessRunner {
     );
 
     try {
-      pid = await this.commands.call<number>('process_spawn', { program: spec.program, args: spec.args, cwd: spec.cwd });
+      id = await this.commands.call<number>('process_spawn', { program: spec.program, args: spec.args, cwd: spec.cwd });
     } catch (error) {
       stop();
       throw mapSpawnError(error, spec.program);
     }
 
-    const spawned = pid;
+    const spawned = id;
     for (const item of buffered.splice(0)) deliver(item);
-    return { kill: () => this.commands.call<void>('process_kill', { pid: spawned }) };
+    return { kill: () => this.commands.call<void>('process_kill', { id: spawned }) };
   }
 }
 
