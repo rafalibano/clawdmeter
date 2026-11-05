@@ -1,4 +1,5 @@
 import { DEFAULT_LANGUAGE, type AppSettings } from './app-settings';
+import { DEFAULT_PROJECTION_METHOD } from '../usage/projection-method';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
 
@@ -14,5 +15,6 @@ export function createDefaultSettings(): AppSettings {
       theme: 'system',
     },
     language: DEFAULT_LANGUAGE,
+    projectionMethod: DEFAULT_PROJECTION_METHOD,
   };
 }

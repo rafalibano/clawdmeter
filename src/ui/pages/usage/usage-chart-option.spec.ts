@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { usageRange, type Forecast, type UsagePoint } from '../../../domain/usage';
+import { forecastWindow, usageRange, type Forecast, type ProjectionMethod, type UsagePoint } from '../../../domain/usage';
 import { chartPalette } from '../../theme/chart-palette';
 import { Localizer } from '../../i18n';
-import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
+import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, estimatedValueAt, FUTURE_SHARE, fillGaps, type WindowInput } from './usage-chart-model';
 import { buildChartOption as buildOption, tooltipFormatter } from './usage-chart-option';
 
 const PT = new Localizer('pt-BR');
@@ -22,6 +22,7 @@ const points = Array.from({ length: 10 }, (_, index) => ({
 const ready = (toValue: number, exhaustsAt: number | null = null): Forecast => ({
   status: 'ready',
   resetsAt: NOW + 4 * HOUR_MS,
+  ratePerDay: 0,
   valueAtReset: toValue,
   trend: { fromAt: NOW, fromValue: 29, toAt: NOW + 4 * HOUR_MS, toValue },
   exhaustsAt,
@@ -29,23 +30,34 @@ const ready = (toValue: number, exhaustsAt: number | null = null): Forecast => (
 });
 
 const WEEKLY_RESET = NOW + 3 * 24 * HOUR_MS;
-const cycleInputs = (): WindowInput[] => {
+const withWeekly = (list: WindowInput[], method: ProjectionMethod = '14d'): WindowInput[] =>
+  list.map((input) => {
+    if (input.kind !== 'sevenDay') return input;
+    const last = input.points[input.points.length - 1]!;
+    return { ...input, forecast: forecastWindow('sevenDay', method, input.points, NOW, last.utilization, input.resetsAt) };
+  });
+const cycleInputs = (method: ProjectionMethod = '14d'): WindowInput[] => {
   const history: UsagePoint[] = [
     { at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS },
     { at: NOW - 3 * 24 * HOUR_MS, utilization: 5, resetsAt: NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS },
     { at: NOW - 2 * 24 * HOUR_MS, utilization: 20, resetsAt: NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS },
     { at: NOW - HOUR_MS, utilization: 30, resetsAt: NOW + 4 * HOUR_MS },
   ];
-  return [
-    { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
-    { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
-  ];
+  return withWeekly(
+    [
+      { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
+      { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
+    ],
+    method,
+  );
 };
 const steepCycle = (factor: number): WindowInput[] =>
-  cycleInputs().map((input) =>
-    input.kind === 'sevenDay'
-      ? { ...input, points: input.points.map((point) => ({ ...point, utilization: point.at < NOW - 4 * DAY_MS ? 0 : point.utilization * factor })) }
-      : input,
+  withWeekly(
+    cycleInputs().map((input) =>
+      input.kind === 'sevenDay'
+        ? { ...input, points: input.points.map((point) => ({ ...point, utilization: point.at < NOW - 4 * DAY_MS ? 0 : point.utilization * factor })) }
+        : input,
+    ),
   );
 
 function inputs(forecast: Forecast, weekly: Forecast = { status: 'collecting' }): WindowInput[] {
@@ -282,8 +294,9 @@ describe('período Reset (ciclo semanal)', () => {
   it('eixo vai de (reset semanal - 7d) até o reset semanal e só traz pontos desse ciclo', () => {
     const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
     expect(model).toMatchObject({ cycle: true, xMin: WEEKLY_RESET - CYCLE_MS, xMax: WEEKLY_RESET, rangeMs: CYCLE_MS });
-    const values = model.windows[0]!.points.map((point) => point[1]).filter((value) => value !== null);
-    expect(values).toEqual([5, 20, 30]);
+    const window = model.windows[0]!;
+    const values = [...window.points, ...window.estimated].map((point) => point[1]).filter((value) => value !== null);
+    expect([...new Set(values)].sort((a, b) => a! - b!)).toEqual([0, 5, 20, 30]);
     expect(values.includes(90)).toBe(false);
   });
 
@@ -302,10 +315,10 @@ describe('período Reset (ciclo semanal)', () => {
     expect(trend[1]![1]).toBeCloseTo(30 + rate * 3, 5);
   });
 
-  it('sem dados suficientes cai na regressão atual', () => {
-    const short = cycleInputs().map((input) => ({ ...input, points: input.points.filter((point) => point.at > NOW - 2 * HOUR_MS) }));
+  it('sem dados suficientes cai no consumo desde o reset', () => {
+    const short = withWeekly(cycleInputs().map((input) => ({ ...input, points: input.points.filter((point) => point.at > NOW - 2 * HOUR_MS) })));
     const model = buildChartModel(short, usageRange('cycle'), NOW);
-    expect(model.windows[1]!.trend![1]![1]).toBeCloseTo(75, 5);
+    expect(model.windows[1]!.trend![1]![1]).toBeCloseTo(30 + (30 / 4) * 3, 5);
   });
 
   it('períodos comuns mantêm a regressão e a projeção do 5h', () => {
@@ -342,7 +355,7 @@ describe('período Reset (ciclo semanal)', () => {
       expect(future).toBe(`${PT.weekday(mid)} ${PT.axisTick(mid, CYCLE_MS)} ${PT.clock(mid)}<br/><span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${palette.series.sevenDay.line}"></span>Projetado ${Math.round(project(mid))}%`);
       expect(future).not.toContain('5h');
       expect(project(mid)).toBeGreaterThan(project(NOW + HOUR_MS));
-      const past = NOW - 2 * HOUR_MS;
+      const past = NOW - HOUR_MS;
       const text = format([{ axisValue: past, seriesIndex: 1, marker: '', seriesName: '7d', value: [past, 42.4] }]);
       expect(text).toContain('7d 42%');
       expect(text).not.toContain('Projetado');
@@ -381,19 +394,135 @@ describe('período Reset (ciclo semanal)', () => {
       expect(run('30d').filter((point) => point[1] !== null)).toHaveLength(7);
     });
 
-    it('lacuna maior que 30 min no bruto quebra a linha; menor mantém', () => {
-      const points = run('7d');
-      const breaks = points.filter((point) => point[1] === null);
-      expect(breaks).toHaveLength(2);
-      expect(points.some((point) => point[0] === NOW - 5 * DAY_MS + 10 * MINUTE_MS + 1)).toBe(true);
+    it('lacuna de até 2h é ligada em reta na linha medida; acima de 2h vira trecho estimado', () => {
+      const model = buildChartModel(
+        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
+        usageRange('7d'),
+        NOW,
+      );
+      const window = model.windows[0]!;
+      expect(window.estimatedSpans).toEqual([
+        [NOW - 6 * DAY_MS, NOW - 5 * DAY_MS],
+        [NOW - 5 * DAY_MS + 10 * MINUTE_MS, NOW - HOUR_MS],
+      ]);
+      expect(window.points.filter((point) => point[1] === null)).toHaveLength(2);
+      expect(window.estimated.filter((point) => point[1] !== null).map((point) => point[0])).toEqual([
+        NOW - 6 * DAY_MS,
+        NOW - 5 * DAY_MS,
+        NOW - 5 * DAY_MS + 10 * MINUTE_MS,
+        NOW - HOUR_MS,
+      ]);
     });
 
-    it('a série não é suavizada e não liga lacunas', () => {
+    it('2h exatos ainda é medido; acima disso é estimado', () => {
+      const pair = (gap: number): UsagePoint[] => [
+        { at: NOW - 3 * HOUR_MS, utilization: 10, resetsAt: null },
+        { at: NOW - 3 * HOUR_MS + gap, utilization: 20, resetsAt: null },
+      ];
+      expect(fillGaps(pair(2 * HOUR_MS)).spans).toEqual([]);
+      expect(fillGaps(pair(2 * HOUR_MS + 1)).spans).toHaveLength(1);
+      expect(fillGaps(pair(2 * HOUR_MS)).measured).toEqual([
+        [NOW - 3 * HOUR_MS, 10],
+        [NOW - HOUR_MS, 20],
+      ]);
+    });
+
+    it('a série não é suavizada e não usa connectNulls', () => {
       const out = buildChartOption(
         buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange('7d'), NOW),
         palette,
-      ) as unknown as { series: { smooth: boolean; connectNulls: boolean }[] };
-      expect(out.series[0]).toMatchObject({ smooth: false, connectNulls: false });
+      ) as unknown as { series: { smooth: boolean; connectNulls?: boolean; lineStyle: { color: string } }[] };
+      expect(out.series[0]).toMatchObject({ smooth: false });
+      expect(out.series[0]).not.toHaveProperty('connectNulls');
+    });
+
+    it('o trecho estimado vai numa série auxiliar com a cor da série e opacidade menor', () => {
+      const out = buildChartOption(
+        buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange('7d'), NOW),
+        palette,
+      ) as unknown as { series: { smooth: boolean; lineStyle: { color: string }; areaStyle?: unknown }[] };
+      const aux = out.series[out.series.length - 1]!;
+      expect(aux.lineStyle.color).toMatch(/^rgba\(|^#[0-9a-f]{8}$/i);
+      expect(aux.lineStyle.color).not.toBe(out.series[0]!.lineStyle.color);
+      expect(aux.areaStyle).toBeUndefined();
+    });
+
+    it('tooltip no trecho estimado mostra o valor interpolado com o sufixo "(estimado)"', () => {
+      const model = buildChartModel(
+        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
+        usageRange('7d'),
+        NOW,
+      );
+      const format = tooltipFormatter(model, palette, PT);
+      const mid = NOW - 5 * DAY_MS - 12 * HOUR_MS;
+      const text = format([{ axisValue: mid, seriesIndex: 0, marker: '', seriesName: '7d', value: [mid, 15] }]);
+      expect(text).toContain('7d 16% (estimado)');
+      const measured = NOW - 5 * DAY_MS + 5 * MINUTE_MS;
+      const real = format([{ axisValue: measured, seriesIndex: 0, marker: '', seriesName: '7d', value: [measured, 16.5] }]);
+      expect(real).toContain('7d 17%');
+      expect(real).not.toContain('estimado');
+    });
+  });
+
+  describe('preenchimento e reset em degrau', () => {
+    const at = (minutes: number) => NOW - 60 * MINUTE_MS + minutes * MINUTE_MS;
+    const p = (minutes: number, utilization: number, resetsAt: number | null = null): UsagePoint => ({ at: at(minutes), utilization, resetsAt });
+
+    it('no mesmo ciclo liga os pontos em reta, sem nulls', () => {
+      const filled = fillGaps([p(0, 10, at(500)), p(20, 30, at(500)), p(50, 40, at(500))]);
+      expect(filled.measured).toEqual([
+        [at(0), 10],
+        [at(20), 30],
+        [at(50), 40],
+      ]);
+      expect(filled.spans).toEqual([]);
+    });
+
+    it('reset com resets_at conhecido: mantém o valor até o reset, cai a 0 ali e sobe em reta', () => {
+      const filled = fillGaps([p(0, 80, at(10)), p(30, 5, at(300))]);
+      expect(filled.measured).toEqual([
+        [at(0), 80],
+        [at(10), 80],
+        [at(10), 0],
+        [at(30), 5],
+      ]);
+    });
+
+    it('reset sem resets_at: o degrau cai no meio da lacuna', () => {
+      const filled = fillGaps([p(0, 80), p(30, 5)]);
+      expect(filled.measured).toEqual([
+        [at(0), 80],
+        [at(15), 80],
+        [at(15), 0],
+        [at(30), 5],
+      ]);
+    });
+
+    it('resets_at do ponto anterior já passado marca reset mesmo sem queda visível', () => {
+      const filled = fillGaps([p(0, 0, at(10)), p(30, 0, at(300))]);
+      expect(filled.measured.map((point) => point[0])).toEqual([at(0), at(10), at(30)]);
+    });
+
+    it('reset dentro de lacuna longa: o degrau todo é estimado', () => {
+      const long = (minutes: number) => minutes + 180;
+      const filled = fillGaps([p(0, 80, at(60)), p(long(0), 5, at(600))]);
+      expect(filled.spans).toHaveLength(1);
+      expect(filled.estimated.filter((point) => point[1] !== null)).toEqual([
+        [at(0), 80],
+        [at(60), 80],
+        [at(60), 0],
+        [at(180), 5],
+      ]);
+      expect(estimatedValueAt(filled.estimated, at(120))).toBeCloseTo(2.5, 5);
+    });
+
+    it('vale também para o 5h', () => {
+      const model = buildChartModel(
+        [{ kind: 'fiveHour', label: '5h', points: [p(0, 90, at(10)), p(30, 4, at(400))], forecast: { status: 'collecting' }, resetsAt: at(400) }],
+        usageRange('1h'),
+        NOW,
+      );
+      expect(model.windows[0]!.points.map((point) => point[1])).toEqual([90, 90, 0, 4]);
     });
   });
 

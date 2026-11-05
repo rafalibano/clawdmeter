@@ -1,3 +1,4 @@
+import type { ProjectionMethod } from '../usage/projection-method';
 import type { PageId } from './page-id';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -25,4 +26,5 @@ export interface AppSettings {
   enabledPages: Record<PageId, boolean>;
   appearance: AppearanceSettings;
   language: AppLanguage;
+  projectionMethod: ProjectionMethod;
 }

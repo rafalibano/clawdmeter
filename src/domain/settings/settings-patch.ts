@@ -1,5 +1,6 @@
 import type { AppLanguage, AppSettings, AppearanceSettings } from './app-settings';
 import { THEME_MODES, isAppLanguage } from './app-settings';
+import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { isHexColor } from './hex-color';
 import type { PageId } from './page-id';
 
@@ -7,6 +8,7 @@ export interface SettingsPatch {
   enabledPages?: Record<PageId, boolean>;
   appearance?: Partial<AppearanceSettings>;
   language?: AppLanguage;
+  projectionMethod?: ProjectionMethod;
 }
 
 export function mergePatches(first: SettingsPatch, second: SettingsPatch): SettingsPatch {
@@ -16,6 +18,8 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   };
   const language = second.language ?? first.language;
   if (language !== undefined) merged.language = language;
+  const projectionMethod = second.projectionMethod ?? first.projectionMethod;
+  if (projectionMethod !== undefined) merged.projectionMethod = projectionMethod;
   return merged;
 }
 
@@ -34,5 +38,6 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     enabledPages: { ...current.enabledPages, ...patch.enabledPages },
     appearance: applyAppearance(current.appearance, patch.appearance ?? {}),
     language: isAppLanguage(patch.language) ? patch.language : current.language,
+    projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
   };
 }

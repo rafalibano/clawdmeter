@@ -53,6 +53,13 @@
   background: var(--dp-surface);
 }
 
+.hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--dp-muted);
+}
+
 .segment {
   padding: 4px 12px;
   border: 0;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageData } from '../../../application/use-cases';
+import { ProjectUsage, type UsageData } from '../../../application/use-cases';
 import { actionsFor, errorStatus } from '../../../domain/connections';
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { buildForecasts, createEmptyHistory, type Forecast, type UsageHistory } from '../../../domain/usage';
+import { createEmptyHistory, type Forecast, type ProjectionMethod, type UsageHistory } from '../../../domain/usage';
 import { toRowView } from '../../settings/connections/connection-view';
 import { Localizer } from '../../i18n';
 import {
@@ -15,7 +15,8 @@ import {
 const PT = new Localizer('pt-BR');
 const projectionOf = (forecast: Forecast, current: number, l = PT) => projectionWith(forecast, current, l);
 const resetText = (resetsAt: number | null, now: number, l = PT) => resetTextWith(resetsAt, now, l);
-const toUsageView = (data: UsageData, rangeId: string, l = PT) => toUsageViewWith(data, rangeId, l);
+const toUsageView = (data: UsageData, rangeId: string, method: ProjectionMethod = '14d', l = PT) =>
+  toUsageViewWith(data, rangeId, l, method);
 
 const NOW = new Date(2026, 10, 5, 14, 0).getTime();
 const RESET = new Date(2026, 10, 5, 16, 6).getTime();
@@ -25,7 +26,7 @@ function dataWith(history: UsageHistory, fiveHour = 40): UsageData {
     fiveHour: { utilization: fiveHour, resetsAt: RESET },
     sevenDay: { utilization: 12.4, resetsAt: NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS },
   };
-  return { at: NOW, snapshot, history, forecasts: buildForecasts(history, snapshot, NOW) };
+  return { at: NOW, snapshot, history };
 }
 
 function ramp(valueAt: (index: number) => number): UsageHistory {
@@ -40,6 +41,7 @@ function ramp(valueAt: (index: number) => number): UsageHistory {
 const ready = (valueAtReset: number): Forecast => ({
   status: 'ready',
   resetsAt: RESET,
+  ratePerDay: 0,
   valueAtReset,
   trend: { fromAt: NOW, fromValue: 40, toAt: RESET, toValue: valueAtReset },
   exhaustsAt: valueAtReset >= 100 ? NOW + HOUR_MS : null,
@@ -102,8 +104,96 @@ describe('alerta da projeção', () => {
   });
 
   it('sem projeção a barra não traz legenda', () => {
-    const { bars } = toUsageView(dataWith(createEmptyHistory()), '1d');
+    const data = dataWith(createEmptyHistory());
+    const idle = { fiveHour: { utilization: 40, resetsAt: null }, sevenDay: { utilization: 12, resetsAt: null } };
+    const { bars } = toUsageView({ ...data, snapshot: idle }, '1d');
     expect(bars.every((bar) => bar.projection === null)).toBe(true);
+  });
+});
+
+describe('método de projeção nas barras e no gráfico', () => {
+  const DAY = 24 * HOUR_MS;
+  const weekly = (): UsageHistory => ({
+    fiveHour: [],
+    sevenDay: [
+      { at: NOW - 4 * DAY, utilization: 2, resetsAt: null },
+      { at: NOW - 2 * DAY, utilization: 8, resetsAt: null },
+      { at: NOW, utilization: 12.4, resetsAt: null },
+    ],
+  });
+
+  it('trocar o método muda a projeção do 7d nas barras e no gráfico, e o 5h não muda', () => {
+    const byDays = toUsageView(dataWith(weekly()), '7d', '14d');
+    const bySince = toUsageView(dataWith(weekly()), '7d', 'since-reset');
+    expect(byDays.bars[1]!.projection!.label).not.toBe(bySince.bars[1]!.projection!.label);
+    expect(byDays.chart.windows[1]!.trend![1]![1]).not.toBe(bySince.chart.windows[1]!.trend![1]![1]);
+    expect(byDays.bars[0]!.projection).toEqual(bySince.bars[0]!.projection);
+    expect(byDays.chart.windows[0]!.trend).toEqual(bySince.chart.windows[0]!.trend);
+  });
+
+  it('a mesma regra vale em todos os períodos e no Ciclo (mesma inclinação da linha)', () => {
+    const slope = (range: string, method: ProjectionMethod) => {
+      const trend = toUsageView(dataWith(weekly()), range, method).chart.windows[1]!.trend!;
+      return ((trend[1]![1] - trend[0]![1]) / (trend[1]![0] - trend[0]![0])) * DAY;
+    };
+    for (const range of ['7d', '30d', 'cycle']) {
+      expect(slope(range, '14d')).toBeCloseTo(((8 - 2 + (12.4 - 8)) / 4), 5);
+      expect(slope(range, 'since-reset')).toBeCloseTo((12.4 / 22) * 24, 5);
+    }
+  });
+});
+
+describe('consistência: uma só projeção para barra, linha e tooltip', () => {
+  const DAY = 24 * HOUR_MS;
+  const history = (): UsageHistory => ({
+    fiveHour: [],
+    sevenDay: [
+      { at: NOW - 4 * DAY, utilization: 2, resetsAt: null },
+      { at: NOW - 2 * DAY, utilization: 8, resetsAt: null },
+      { at: NOW - 20 * HOUR_MS, utilization: 9, resetsAt: null },
+      { at: NOW - 10 * HOUR_MS, utilization: 11.5, resetsAt: null },
+      { at: NOW, utilization: 12.4, resetsAt: null },
+    ],
+  });
+
+  for (const method of ['24h', '14d', 'since-reset'] as const) {
+    it(`${method}: o último ponto da linha no reset (Ciclo, sem cap) é o valueAtReset da barra`, () => {
+      const data = dataWith(history());
+      const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
+      const weekly = forecasts.sevenDay;
+      if (weekly.status !== 'ready') throw new Error('esperava projeção pronta');
+      const view = toUsageView(data, 'cycle', method);
+      const trend = view.chart.windows[1]!.trend!;
+      expect(trend[1]![0]).toBe(weekly.resetsAt);
+      expect(trend[1]![1]).toBeCloseTo(weekly.valueAtReset, 9);
+      expect(view.chart.windows[1]!.projectAt!(weekly.resetsAt)).toBeCloseTo(weekly.valueAtReset, 9);
+      expect(view.bars[1]!.projection!.label).toBe(`Projetado ${Math.round(Math.max(weekly.valueAtReset, 12.4))}%`);
+      expect(Math.round(trend[1]![1])).toBe(Math.round(weekly.valueAtReset));
+      expect(trend[1]![1] - trend[0]![1]).toBeCloseTo((weekly.ratePerDay * (weekly.resetsAt - NOW)) / DAY, 9);
+    });
+
+    it(`${method}: o 5h na barra e na linha também vêm da mesma projeção`, () => {
+      const data = dataWith(history());
+      const five = new ProjectUsage().execute(data.history, data.snapshot, data.at, method).fiveHour;
+      if (five.status !== 'ready') throw new Error('esperava projeção pronta');
+      const view = toUsageView(data, '6h', method);
+      const trend = view.chart.windows[0]!.trend!;
+      expect(view.bars[0]!.projection!.label).toBe(`Projetado ${Math.round(Math.max(five.valueAtReset, 40))}%`);
+      expect(trend[0]).toEqual([NOW, 40]);
+      expect(five.valueAtReset).toBeGreaterThan(40);
+    });
+  }
+
+  it('os três métodos dão projeções diferentes no 7d, mas o 5h é igual', () => {
+    const data = dataWith(history());
+    const run = (method: ProjectionMethod) => new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
+    const values = (['24h', '14d', 'since-reset'] as const).map((method) => {
+      const weekly = run(method).sevenDay;
+      return weekly.status === 'ready' ? weekly.valueAtReset : null;
+    });
+    expect(new Set(values).size).toBe(3);
+    expect(run('24h').fiveHour).toEqual(run('14d').fiveHour);
+    expect(run('14d').fiveHour).toEqual(run('since-reset').fiveHour);
   });
 });
 
@@ -113,7 +203,8 @@ describe('toUsageView', () => {
     expect(bars.map((bar) => bar.label)).toEqual(['5h', '7d']);
     expect(bars[0]).toMatchObject({ kind: 'fiveHour', percent: '40%', fill: 40, reset: 'reseta em 2h06' });
     expect(bars[0]!.projection).not.toBeNull();
-    expect(bars[1]).toMatchObject({ kind: 'sevenDay', percent: '12%', reset: 'reseta em 6d2h', projection: null });
+    expect(bars[1]).toMatchObject({ kind: 'sevenDay', percent: '12%', reset: 'reseta em 6d2h' });
+    expect(bars[1]!.projection).not.toBeNull();
   });
 
   it('um gráfico só, com as duas janelas no mesmo eixo de tempo', () => {
@@ -121,7 +212,7 @@ describe('toUsageView', () => {
     expect(chart.windows.map((window) => window.label)).toEqual(['5h', '7d']);
     expect(chart.xMin).toBe(NOW - 6 * HOUR_MS);
     expect(chart.windows[0]!.trend?.[0]).toEqual(chart.windows[0]!.points[chart.windows[0]!.points.length - 1]);
-    expect(chart.windows[1]!.trend).toBeNull();
+    expect(chart.windows[1]!.trend).not.toBeNull();
   });
 
   it('o período escolhido recorta a série', () => {

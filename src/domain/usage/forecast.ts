@@ -1,13 +1,12 @@
-import { MINUTE_MS } from '../time';
-import { linearRegression } from './regression';
+import { DAY_MS, MINUTE_MS } from '../time';
+import { RATE_WINDOW_14D, RATE_WINDOW_24H, dailyConsumptionRate } from './consumption-rate';
+import type { ProjectionMethod } from './projection-method';
 import type { UsageHistory, UsagePoint } from './usage-history';
 import type { UsageSnapshot } from './usage-snapshot';
 import { USAGE_WINDOWS, usageWindow, type UsageWindowKind } from './usage-window';
 
-export const MIN_FORECAST_POINTS = 3;
 export const EXHAUSTION_LEVEL = 100;
-const RESET_AT_TOLERANCE_MS = 5 * MINUTE_MS;
-const RESET_DROP_TOLERANCE = 1;
+export const MIN_ELAPSED_MS = 30 * MINUTE_MS;
 
 export interface TrendLine {
   fromAt: number;
@@ -22,6 +21,7 @@ export type Forecast =
   | {
       status: 'ready';
       resetsAt: number;
+      ratePerDay: number;
       valueAtReset: number;
       trend: TrendLine;
       exhaustsAt: number | null;
@@ -30,53 +30,42 @@ export type Forecast =
 
 export type UsageForecasts = Record<UsageWindowKind, Forecast>;
 
-function startsNewCycle(previous: UsagePoint, next: UsagePoint): boolean {
-  if (next.utilization < previous.utilization - RESET_DROP_TOLERANCE) return true;
-  if (previous.imported || next.imported) return false;
-  if (previous.resetsAt === null || next.resetsAt === null) return previous.resetsAt !== next.resetsAt;
-  return Math.abs(next.resetsAt - previous.resetsAt) > RESET_AT_TOLERANCE_MS;
+function ready(current: number, ratePerMs: number, now: number, resetsAt: number): Forecast {
+  const valueAtReset = current + ratePerMs * (resetsAt - now);
+  const exhausts = current < EXHAUSTION_LEVEL && ratePerMs > 0 && valueAtReset >= EXHAUSTION_LEVEL;
+  const exhaustsAt = exhausts ? now + (EXHAUSTION_LEVEL - current) / ratePerMs : null;
+  return {
+    status: 'ready',
+    resetsAt,
+    ratePerDay: ratePerMs * DAY_MS,
+    valueAtReset,
+    trend: { fromAt: now, fromValue: current, toAt: resetsAt, toValue: valueAtReset },
+    exhaustsAt,
+    exhaustsLeadMs: exhaustsAt === null ? null : resetsAt - exhaustsAt,
+  };
 }
 
-export function currentCycle(points: readonly UsagePoint[]): UsagePoint[] {
-  let start = 0;
-  for (let index = 1; index < points.length; index++) {
-    if (startsNewCycle(points[index - 1]!, points[index]!)) start = index;
-  }
-  return points.slice(start);
+function sinceReset(kind: UsageWindowKind, current: number, now: number, resetsAt: number): Forecast {
+  const elapsed = now - (resetsAt - usageWindow(kind).durationMs);
+  if (elapsed < MIN_ELAPSED_MS) return { status: 'collecting' };
+  return ready(current, current / elapsed, now, resetsAt);
 }
 
 export function forecastWindow(
   kind: UsageWindowKind,
+  method: ProjectionMethod,
   points: readonly UsagePoint[],
   now: number,
+  current: number | null,
   resetsAt: number | null,
 ): Forecast {
-  const observed = currentCycle(points.filter((point) => point.at <= now));
-  const last = observed[observed.length - 1];
-  if (last === undefined) return { status: 'collecting' };
-  if (resetsAt === null || resetsAt <= last.at) return { status: 'unavailable' };
-
-  const from = now - usageWindow(kind).regressionWindowMs;
-  const recent = observed.filter((point) => point.at >= from);
-  if (recent.length < MIN_FORECAST_POINTS) return { status: 'collecting' };
-
-  const origin = recent[0]!.at;
-  const line = linearRegression(recent.map((point) => ({ x: (point.at - origin) / MINUTE_MS, y: point.utilization })));
-  if (line === null) return { status: 'collecting' };
-
-  const slopePerMs = Math.max(0, line.slope) / MINUTE_MS;
-  const valueAtReset = last.utilization + slopePerMs * (resetsAt - last.at);
-  const exhausts = last.utilization < EXHAUSTION_LEVEL && slopePerMs > 0 && valueAtReset >= EXHAUSTION_LEVEL;
-  const exhaustsAt = exhausts ? last.at + (EXHAUSTION_LEVEL - last.utilization) / slopePerMs : null;
-
-  return {
-    status: 'ready',
-    resetsAt,
-    valueAtReset,
-    trend: { fromAt: last.at, fromValue: last.utilization, toAt: resetsAt, toValue: valueAtReset },
-    exhaustsAt,
-    exhaustsLeadMs: exhaustsAt === null ? null : resetsAt - exhaustsAt,
-  };
+  if (current === null) return { status: 'collecting' };
+  if (resetsAt === null || resetsAt <= now) return { status: 'unavailable' };
+  if (kind === 'sevenDay' && method !== 'since-reset') {
+    const rate = dailyConsumptionRate(points, now, method === '24h' ? RATE_WINDOW_24H : RATE_WINDOW_14D);
+    if (rate !== null) return ready(current, rate / DAY_MS, now, resetsAt);
+  }
+  return sinceReset(kind, current, now, resetsAt);
 }
 
 export function trendValueAt(trend: TrendLine, at: number): number {
@@ -85,10 +74,16 @@ export function trendValueAt(trend: TrendLine, at: number): number {
   return trend.fromValue + ((trend.toValue - trend.fromValue) * (at - trend.fromAt)) / span;
 }
 
-export function buildForecasts(history: UsageHistory, snapshot: UsageSnapshot, now: number): UsageForecasts {
+export function buildForecasts(
+  history: UsageHistory,
+  snapshot: UsageSnapshot,
+  now: number,
+  method: ProjectionMethod,
+): UsageForecasts {
   const forecasts = {} as UsageForecasts;
   for (const { kind } of USAGE_WINDOWS) {
-    forecasts[kind] = forecastWindow(kind, history[kind], now, snapshot[kind]?.resetsAt ?? null);
+    const reading = snapshot[kind];
+    forecasts[kind] = forecastWindow(kind, method, history[kind], now, reading?.utilization ?? null, reading?.resetsAt ?? null);
   }
   return forecasts;
 }

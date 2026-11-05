@@ -1,6 +1,5 @@
 import {
   DEFAULT_USAGE_RANGE,
-  dailyAverageForecast,
   isCycleAvailable,
   pointsInRange,
   trendValueAt,
@@ -11,7 +10,6 @@ import {
   type UsageWindowKind,
 } from '../../../domain/usage';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { RAW_RETENTION_MS } from '../../../domain/usage/retention';
 
 export const FUTURE_SHARE = 0.15;
 export const CYCLE_MS = 7 * DAY_MS;
@@ -22,8 +20,7 @@ export const AXIS_STEP = 25;
 export type ChartPoint = [at: number, value: number];
 export type SeriesPoint = [at: number, value: number | null];
 
-export const RAW_GAP_MS = 30 * MINUTE_MS;
-export const AGGREGATED_GAP_MS = HOUR_MS;
+export const ESTIMATED_GAP_MS = 2 * HOUR_MS;
 export const FIVE_HOUR_PROJECTION_MAX_MS = DAY_MS;
 
 export interface WindowInput {
@@ -38,6 +35,8 @@ export interface WindowSeries {
   kind: UsageWindowKind;
   label: string;
   points: SeriesPoint[];
+  estimated: SeriesPoint[];
+  estimatedSpans: Array<[from: number, to: number]>;
   trend: ChartPoint[] | null;
   projectAt: ((at: number) => number) | null;
   resetsAt: number | null;
@@ -77,18 +76,70 @@ export function projector(forecast: Forecast): ((at: number) => number) | null {
   return (at) => trendValueAt(trend, at);
 }
 
-export function withGaps(points: readonly ChartPoint[], now: number): SeriesPoint[] {
-  const result: SeriesPoint[] = [];
-  const rawFrom = now - RAW_RETENTION_MS;
-  points.forEach((point, index) => {
-    const previous = points[index - 1];
-    if (previous !== undefined) {
-      const limit = previous[0] < rawFrom ? AGGREGATED_GAP_MS : RAW_GAP_MS;
-      if (point[0] - previous[0] > limit) result.push([previous[0] + 1, null]);
+const RESET_DROP_TOLERANCE = 1;
+
+export interface FilledSeries {
+  measured: SeriesPoint[];
+  estimated: SeriesPoint[];
+  spans: Array<[from: number, to: number]>;
+}
+
+function resetBetween(previous: UsagePoint, next: UsagePoint): boolean {
+  if (next.utilization < previous.utilization - RESET_DROP_TOLERANCE) return true;
+  return previous.resetsAt !== null && previous.resetsAt > previous.at && previous.resetsAt <= next.at;
+}
+
+function resetInstant(previous: UsagePoint, next: UsagePoint): number {
+  const known = previous.resetsAt;
+  if (known !== null && known > previous.at && known <= next.at) return known;
+  return Math.round((previous.at + next.at) / 2);
+}
+
+function pushEdge(target: SeriesPoint[], edge: readonly ChartPoint[]): void {
+  const last = target[target.length - 1];
+  const first = edge[0]!;
+  if (last !== undefined && (last[0] !== first[0] || last[1] !== first[1])) target.push([last[0] + 1, null]);
+  for (const point of edge) {
+    const tail = target[target.length - 1];
+    if (tail === undefined || tail[0] !== point[0] || tail[1] !== point[1]) target.push(point);
+  }
+}
+
+export function fillGaps(points: readonly UsagePoint[]): FilledSeries {
+  const measured: SeriesPoint[] = [];
+  const estimated: SeriesPoint[] = [];
+  const spans: Array<[number, number]> = [];
+  const first = points[0];
+  if (first === undefined) return { measured, estimated, spans };
+  measured.push([first.at, first.utilization]);
+  for (let index = 1; index < points.length; index++) {
+    const previous = points[index - 1]!;
+    const next = points[index]!;
+    const edge: ChartPoint[] = [[previous.at, previous.utilization]];
+    if (resetBetween(previous, next)) {
+      const at = resetInstant(previous, next);
+      edge.push([at, previous.utilization], [at, 0]);
     }
-    result.push(point);
-  });
-  return result;
+    edge.push([next.at, next.utilization]);
+    if (next.at - previous.at > ESTIMATED_GAP_MS) {
+      pushEdge(estimated, edge);
+      spans.push([previous.at, next.at]);
+      if (index === points.length - 1) pushEdge(measured, [edge[edge.length - 1]!]);
+    } else {
+      pushEdge(measured, edge);
+    }
+  }
+  return { measured, estimated, spans };
+}
+
+export function estimatedValueAt(estimated: readonly SeriesPoint[], at: number): number | null {
+  for (let index = 1; index < estimated.length; index++) {
+    const from = estimated[index - 1]!;
+    const to = estimated[index]!;
+    if (from[1] === null || to[1] === null || to[0] <= from[0] || at < from[0] || at > to[0]) continue;
+    return from[1] + ((to[1] - from[1]) * (at - from[0])) / (to[0] - from[0]);
+  }
+  return null;
 }
 
 function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: number): number[] {
@@ -100,10 +151,9 @@ function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: n
   return [...seen.values()].sort((a, b) => a - b);
 }
 
-function forecastFor(input: WindowInput, cycle: boolean, now: number, durationMs: number): Forecast {
+function forecastFor(input: WindowInput, cycle: boolean, durationMs: number): Forecast {
   if (!cycle) return input.kind === 'fiveHour' && durationMs > FIVE_HOUR_PROJECTION_MAX_MS ? { status: 'unavailable' } : input.forecast;
-  if (input.kind === 'fiveHour') return { status: 'unavailable' };
-  return dailyAverageForecast(input.points, now, input.resetsAt) ?? input.forecast;
+  return input.kind === 'fiveHour' ? { status: 'unavailable' } : input.forecast;
 }
 
 export function buildChartModel(
@@ -119,17 +169,17 @@ export function buildChartModel(
   const fiveHour = inputs.find((input) => input.kind === 'fiveHour');
   const ahead = fiveHour?.resetsAt != null && fiveHour.resetsAt > now && fiveHour.resetsAt <= xMax ? [fiveHour.resetsAt] : [];
   const windows = inputs.map((input): WindowSeries => {
-    const forecast = forecastFor(input, cycle, now, effective.durationMs);
+    const forecast = forecastFor(input, cycle, effective.durationMs);
+    const visible = cycle
+      ? input.points.filter((point) => point.at >= xMin && point.at <= now)
+      : pointsInRange(input.points, effective, now);
+    const filled = fillGaps(visible);
     return {
       kind: input.kind,
       label: input.label,
-      points: withGaps(
-        (cycle
-          ? input.points.filter((point) => point.at >= xMin && point.at <= now)
-          : pointsInRange(input.points, effective, now)
-        ).map((point): ChartPoint => [point.at, point.utilization]),
-        now,
-      ),
+      points: filled.measured,
+      estimated: filled.estimated,
+      estimatedSpans: filled.spans,
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast) : null,
       resetsAt: input.resetsAt,

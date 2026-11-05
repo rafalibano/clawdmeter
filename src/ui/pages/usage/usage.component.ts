@@ -50,7 +50,7 @@ export class UsageComponent {
     const data = update?.status === 'ok' ? update.data : this.lastData();
     if (data === undefined) return null;
     const l = this.i18n.localizer();
-    const usage = toUsageView(data, this.rangeId(), l);
+    const usage = toUsageView(data, this.rangeId(), l, this.settings.settings().projectionMethod);
     return {
       bars: usage.bars,
       cycleAvailable: usage.cycleAvailable,

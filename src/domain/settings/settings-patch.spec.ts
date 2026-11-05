@@ -45,6 +45,16 @@ describe('idioma e faixas no patch', () => {
   });
 });
 
+describe('método de projeção no patch', () => {
+  it('troca o método e ignora valor desconhecido', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
+    expect(applyPatch(base, { projectionMethod: 'regressao' as never }).projectionMethod).toBe('14d');
+    expect(applyPatch(base, {}).projectionMethod).toBe('14d');
+    expect(mergePatches({ projectionMethod: 'since-reset' }, {}).projectionMethod).toBe('since-reset');
+  });
+});
+
 describe('mergePatches', () => {
   it('o segundo patch vence nos mesmos campos', () => {
     const merged = mergePatches(

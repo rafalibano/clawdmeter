@@ -1,6 +1,7 @@
 import type { AppSettings, ThemeMode } from './app-settings';
 import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
+import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
 import { isHexColor } from './hex-color';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
@@ -33,12 +34,18 @@ const dropUsageThresholds: Migration = (raw) => {
   return rest;
 };
 
+const addProjectionMethod: Migration = (raw) => ({
+  ...raw,
+  projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
   addLanguage,
   switchOffMaintenancePages,
   dropUsageThresholds,
+  addProjectionMethod,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,6 +85,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
       theme: THEME_MODES.includes(theme as ThemeMode) ? (theme as ThemeMode) : defaults.appearance.theme,
     },
     language: isAppLanguage(raw['language']) ? raw['language'] : DEFAULT_LANGUAGE,
+    projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
   };
 }
 

@@ -5,9 +5,10 @@ import {
   isCycleAvailable,
   usageRange,
   type Forecast,
+  type ProjectionMethod,
   type UsageWindowKind,
 } from '../../../domain/usage';
-import type { UsageData } from '../../../application/use-cases';
+import { ProjectUsage, type UsageData } from '../../../application/use-cases';
 import type { Localizer } from '../../i18n';
 import type { ConnectionRowView } from '../../settings/connections/connection-view';
 import { buildChartModel, type UsageChartModel } from './usage-chart-model';
@@ -58,7 +59,8 @@ export function resetText(resetsAt: number | null, now: number, l: Localizer): s
   return remaining <= 0 ? l.t('usage.reset.now') : l.t('usage.reset.in', { span: l.span(remaining) });
 }
 
-export function toUsageView(data: UsageData, rangeId: string, l: Localizer): UsageView {
+export function toUsageView(data: UsageData, rangeId: string, l: Localizer, method: ProjectionMethod): UsageView {
+  const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
   const bars = USAGE_WINDOWS.map(({ kind, label }): UsageBarView => {
     const reading = data.snapshot[kind];
     if (reading === null) return { kind, label, percent: '—', fill: 0, reset: '', projection: null };
@@ -68,7 +70,7 @@ export function toUsageView(data: UsageData, rangeId: string, l: Localizer): Usa
       percent: `${Math.round(reading.utilization)}%`,
       fill: clampPercent(reading.utilization),
       reset: resetText(reading.resetsAt, data.at, l),
-      projection: projectionOf(data.forecasts[kind], reading.utilization, l),
+      projection: projectionOf(forecasts[kind], reading.utilization, l),
     };
   });
   const chart = buildChartModel(
@@ -76,7 +78,7 @@ export function toUsageView(data: UsageData, rangeId: string, l: Localizer): Usa
       kind,
       label,
       points: data.history[kind],
-      forecast: data.forecasts[kind],
+      forecast: forecasts[kind],
       resetsAt: data.snapshot[kind]?.resetsAt ?? null,
     })),
     usageRange(rangeId),

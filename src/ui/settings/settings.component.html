@@ -18,6 +18,28 @@
 <dp-connections />
 
 <section class="section">
+  <h2 class="heading">{{ i18n.t('settings.projection') }}</h2>
+  <div class="field">
+    <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.projection')">
+      @for (method of projectionMethods; track method) {
+        <button
+          type="button"
+          role="radio"
+          class="segment"
+          [attr.data-projection]="method"
+          [class.selected]="settings().projectionMethod === method"
+          [attr.aria-checked]="settings().projectionMethod === method"
+          (click)="setProjection(method)"
+        >
+          {{ projectionLabel(method) }}
+        </button>
+      }
+    </div>
+    <span class="hint">{{ i18n.t('settings.projection.hint') }}</span>
+  </div>
+</section>
+
+<section class="section">
   <h2 class="heading">{{ i18n.t('settings.appearance') }}</h2>
 
   <div class="field">

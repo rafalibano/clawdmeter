@@ -39,6 +39,7 @@ describe('migrateSettings', () => {
       enabledPages: { example: true },
       appearance: { accentColor: '#22C55E', popoverBackground: '#101010', theme: 'light' },
       language: 'es-MX',
+      projectionMethod: 'since-reset',
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
@@ -100,7 +101,7 @@ describe('migrateSettings', () => {
   it('a versão 4 com limiares descarta o campo', () => {
     const migrated = migrateSettings({ schemaVersion: 4, usageThresholds: { warning: 60, critical: 85 } });
     expect(migrated).not.toHaveProperty('usageThresholds');
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('só roda as migrações pendentes', () => {
@@ -137,5 +138,27 @@ describe('migração 3 -> 4 (páginas em manutenção)', () => {
     expect(createDefaultSettings().enabledPages).toEqual({ teams: false, skills: false });
     expect(isPageEnabled(createDefaultSettings(), 'teams')).toBe(false);
     expect(isPageEnabled(createDefaultSettings(), 'usage')).toBe(true);
+  });
+});
+
+describe('migração 5 -> 6 (método de projeção)', () => {
+  it('arquivo da versão 5 ganha projectionMethod 14d', () => {
+    const migrated = migrateSettings({ schemaVersion: 5, language: 'en', appearance: { theme: 'dark' } });
+    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.projectionMethod).toBe('14d');
+    expect(migrated.language).toBe('en');
+  });
+
+  it('preserva método válido e troca inválido pelo padrão', () => {
+    expect(migrateSettings({ schemaVersion: 5, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: '24h' }).projectionMethod).toBe('24h');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'regressao' }).projectionMethod).toBe('14d');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'sinceReset' }).projectionMethod).toBe('14d');
+    expect(migrateSettings({ schemaVersion: 6 }).projectionMethod).toBe('14d');
+  });
+
+  it('o padrão dos defaults é 14d', () => {
+    expect(createDefaultSettings().projectionMethod).toBe('14d');
   });
 });

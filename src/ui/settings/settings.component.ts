@@ -7,6 +7,7 @@ import {
   type AppLanguage,
   type ThemeMode,
 } from '../../domain/settings';
+import { PROJECTION_METHODS, type ProjectionMethod } from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
@@ -32,6 +33,7 @@ export class SettingsComponent {
   protected readonly backgroundPresets = BACKGROUND_PRESETS;
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
+  protected readonly projectionMethods = PROJECTION_METHODS;
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
@@ -66,6 +68,14 @@ export class SettingsComponent {
 
   protected themeLabel(mode: ThemeMode): string {
     return this.i18n.t(`theme.${mode}`);
+  }
+
+  protected projectionLabel(method: ProjectionMethod): string {
+    return this.i18n.t(`projection.${method}`);
+  }
+
+  protected setProjection(projectionMethod: ProjectionMethod): void {
+    this.facade.update({ projectionMethod });
   }
 
   protected setLanguage(language: AppLanguage): void {
