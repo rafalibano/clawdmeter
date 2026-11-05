@@ -9,6 +9,7 @@ import { TauriOAuthLoopback } from './tauri-oauth-loopback';
 import { TauriProcessRunner } from './tauri-process-runner';
 import { TauriSecretStore } from './tauri-secret-store';
 import { TauriSystemSettings, TauriTerminalLauncher, TauriUrlOpener } from './tauri-system-actions';
+import { TauriUsageIndicator } from './tauri-usage-indicator';
 
 describe('toDomainError', () => {
   it('mapeia keychain_denied e claude_code_missing para problemas de conexão', () => {
@@ -143,5 +144,38 @@ describe('TauriNotificationPermission', () => {
     const { commands } = createFakeCommands(() => 'denied');
     const permission = new TauriNotificationPermission(commands, plugin('granted'));
     expect(await permission.request()).toBe('denied');
+  });
+});
+
+describe('TauriUsageIndicator', () => {
+  const NOW = Date.UTC(2026, 10, 5, 12, 0);
+
+  it('manda os percentuais e o tooltip para tray_set_usage', async () => {
+    const { commands, calls } = createFakeCommands(() => undefined);
+    await new TauriUsageIndicator(commands).update(
+      {
+        fiveHour: { utilization: 24, resetsAt: NOW + 3_600_000 },
+        sevenDay: { utilization: 51, resetsAt: null },
+      },
+      NOW,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.command).toBe('tray_set_usage');
+    expect(calls[0]?.args).toMatchObject({ fiveHour: 24, sevenDay: 51 });
+    expect(String(calls[0]?.args?.['tooltip'])).toMatch(/^5h: 24% · reseta \d{2}:\d{2} \| 7d: 51%$/);
+  });
+
+  it('janela ausente ou snapshot nulo viram null (barra sem dado)', async () => {
+    const { commands, calls } = createFakeCommands(() => undefined);
+    const indicator = new TauriUsageIndicator(commands);
+    await indicator.update({ fiveHour: null, sevenDay: { utilization: 5, resetsAt: null } }, NOW);
+    await indicator.update(null, NOW);
+    expect(calls[0]?.args).toMatchObject({ fiveHour: null, sevenDay: 5 });
+    expect(calls[1]?.args).toEqual({ fiveHour: null, sevenDay: null, tooltip: 'Dev Pulse · usage indisponível' });
+  });
+
+  it('propaga o erro do command', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('io', 'sem bandeja'));
+    await expect(new TauriUsageIndicator(commands).update(null, NOW)).rejects.toMatchObject({ kind: 'io' });
   });
 });

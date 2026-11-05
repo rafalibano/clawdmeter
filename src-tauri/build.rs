@@ -14,6 +14,7 @@ const APP_COMMANDS: &[&str] = &[
     "open_url",
     "open_system_settings",
     "notification_permission_state",
+    "tray_set_usage",
 ];
 
 fn main() {

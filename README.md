@@ -60,6 +60,7 @@ src/
 src-tauri/src/
 ├─ commands/          camada fina de plataforma: secrets, claude_credentials, process, oauth_loopback, terminal, open_external
 └─ tray.rs, platform.rs   bandeja e popover
+└─ usage_icon.rs          renderizador puro (RGBA) do ícone de usage da bandeja
 ```
 
 ### Regras de camada
@@ -185,6 +186,16 @@ Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` lê o acces
 - **Erro transitório:** se uma atualização falha (rede, 5xx), a página mantém o último dado e mostra o banner de erro por cima, com "Mostrando os últimos dados carregados".
 - **Gráficos:** ECharts via `ngx-echarts` (carregado sob demanda, fora do bundle inicial), uma série para a janela de 5 h e outra para a semanal, com marca em 100% e em "agora". Seletor `1h · 12h · 1d · 7d · 30d` comum aos dois.
 - **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada tracejada a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%). A previsão aparece em linha separada: `Previsão no reset (17:00): ~78%` ou `100% · estoura às 15:40, 1h20 antes`; com menos de 3 pontos no ciclo, `Previsão: coletando dados…`. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
+
+### Ícone de usage na bandeja
+
+A cada leitura do `LoadUsage` (e a cada falha) a porta `UsageIndicator` atualiza o ícone e o tooltip da bandeja pelo command `tray_set_usage`; no demo o adapter é no-op.
+
+- **macOS:** ícone largo (template, só o alfa conta) com asterisco de 8 raios à esquerda e duas linhas `5h`/`7d` com barra arredondada: trecho preenchido opaco, vazio a 35%. A `tray-icon` fixa a altura do ícone em 18 pt, então o render é 116×36 px (@2x), pixel a pixel nessa altura.
+- **Windows:** o ícone da bandeja é quadrado, então vai a variante 32×32 (16×16 em @1x) com duas barras grossas empilhadas, sem rótulo e sem asterisco (azul preenchido, cinza vazio, legível em barra clara e escura). O detalhe fica no tooltip: `5h: 24% · reseta 14:09 | 7d: 51% · reseta seg 05:39` (`domain/usage/usage-tooltip.ts`).
+- **Sem dado** (janela ausente, Claude desconectado, token vencido ou erro de leitura): barra vazia com contorno tracejado; o tooltip vira `Dev Pulse · usage indisponível`. Percentuais fora de 0–100 são limitados no Rust.
+- **Antes da primeira leitura** (e com a página Usage desligada) vale o ícone padrão do app (`tray-template.png` no macOS, ícone da janela no Windows); o render com barras vazias só aparece depois de uma tentativa de leitura.
+- Os fontes ficam em `src-tauri/src/usage_icon.rs` (fonte bitmap 4×6 embutida para `5`, `h`, `7`, `d`; sem fontes do sistema e sem dependência de imagem). `cargo run --example render_usage_preview` (em `src-tauri/`) regrava os PNGs de `docs/tray-preview/`.
 
 ### Sessões
 
@@ -324,3 +335,4 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 - Nada foi validado contra GitHub, Microsoft Graph e Anthropic reais: os formatos de resposta seguem a documentação e as fixtures dos testes. O link "Ver todos" dos revisados usa `OR` com parênteses na busca do GitHub.
 - O `terminal_run` com `cwd` e `/mcp` só foi validado por testes de política; o AppleScript do Terminal do macOS não foi executado.
 - O modo demo roda só no navegador; ele não exercita os commands Rust.
+- O ícone de usage da bandeja só foi validado como imagem (PNGs em `docs/tray-preview/`) e por testes do renderizador; `tray_set_usage` não rodou no app Tauri real, e o aspecto na barra de menus do macOS e na bandeja do Windows não foi conferido.

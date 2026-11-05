@@ -1,5 +1,5 @@
 import { createEmptyHistory, type UsageHistory, type UsageSnapshot } from '../../domain/usage';
-import type { ProcessProbe, SessionDirectory, UsageGateway, UsageHistoryStore } from '../ports';
+import type { ProcessProbe, SessionDirectory, UsageGateway, UsageHistoryStore, UsageIndicator } from '../ports';
 
 export const SAMPLE_SNAPSHOT: UsageSnapshot = {
   fiveHour: { utilization: 20, resetsAt: 1_800_000_000_000 + 3_600_000 },
@@ -14,6 +14,16 @@ export class FakeUsageGateway implements UsageGateway {
     this.tokens.push(accessToken);
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
+  }
+}
+
+export class FakeUsageIndicator implements UsageIndicator {
+  readonly updates: { snapshot: UsageSnapshot | null; now: number }[] = [];
+  failure: Error | null = null;
+
+  async update(snapshot: UsageSnapshot | null, now: number): Promise<void> {
+    this.updates.push({ snapshot, now });
+    if (this.failure) throw this.failure;
   }
 }
 

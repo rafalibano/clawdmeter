@@ -1,6 +1,7 @@
 mod commands;
 mod platform;
 mod tray;
+pub mod usage_icon;
 
 use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
@@ -31,6 +32,7 @@ pub fn run() {
             commands::open_external::open_url,
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
+            commands::tray_usage::tray_set_usage,
         ])
         .setup(|app| {
             platform::configure_app(app);

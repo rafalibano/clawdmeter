@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tray-set-usage"
+description = "Enables the tray_set_usage command without any pre-configured scope."
+commands.allow = ["tray_set_usage"]
+
+[[permission]]
+identifier = "deny-tray-set-usage"
+description = "Denies the tray_set_usage command without any pre-configured scope."
+commands.deny = ["tray_set_usage"]

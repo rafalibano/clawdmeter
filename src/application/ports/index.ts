@@ -14,3 +14,4 @@ export * from './skills-stores';
 export * from './streaming-process-runner';
 export * from './system-actions';
 export * from './usage-gateway';
+export * from './usage-indicator';
