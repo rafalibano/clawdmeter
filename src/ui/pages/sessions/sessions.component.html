@@ -1,0 +1,24 @@
+@if (error(); as message) {
+  <section class="card error" role="alert">{{ message }}</section>
+}
+
+@if (view(); as sessions) {
+  <p class="summary">{{ sessions.summary }}</p>
+  @for (row of sessions.rows; track row.key) {
+    <article class="card" [attr.data-status]="row.status" [attr.data-attention]="row.attention">
+      <header class="head">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="title">{{ row.title }}</span>
+        <span class="status">{{ row.statusLabel }} · {{ row.since }}</span>
+      </header>
+      <p class="cwd">{{ row.cwd }}</p>
+      @if (row.attentionLabel; as label) {
+        <p class="attention">{{ label }}</p>
+      }
+    </article>
+  }
+}
+
+@if (!error() && !view()) {
+  <section class="card">Carregando…</section>
+}

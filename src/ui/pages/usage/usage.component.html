@@ -1,0 +1,48 @@
+<div class="toolbar" role="group" aria-label="Período">
+  @for (range of ranges; track range.id) {
+    <button
+      type="button"
+      class="range"
+      [class.active]="range.id === rangeId()"
+      [attr.aria-pressed]="range.id === rangeId()"
+      (click)="select(range.id)"
+    >
+      {{ range.label }}
+    </button>
+  }
+</div>
+
+@if (error(); as failure) {
+  <section class="card error" role="alert">
+    <p class="error-message">{{ failure.message }}</p>
+    @if (failure.actions.length > 0) {
+      <div class="actions">
+        @for (action of failure.actions; track action.kind) {
+          <button type="button" class="btn" [class.primary]="action.kind !== 'recheck'" [attr.data-action]="action.kind" (click)="run(action)">
+            {{ action.label }}
+          </button>
+        }
+      </div>
+    }
+  </section>
+}
+
+@if (cards(); as windows) {
+  @for (card of windows; track card.kind) {
+    <section class="card" [attr.data-window]="card.kind">
+      <header class="head">
+        <h2 class="title">{{ card.title }}</h2>
+        <span class="current">{{ card.current }}</span>
+      </header>
+      <p class="reset">{{ card.reset }}</p>
+      @if (card.hasData) {
+        <div class="chart" echarts [options]="card.option" [autoResize]="true"></div>
+        <p class="forecast" [attr.data-tone]="card.tone">{{ card.forecast }}</p>
+      }
+    </section>
+  }
+}
+
+@if (!error() && !cards()) {
+  <section class="card">Carregando…</section>
+}
