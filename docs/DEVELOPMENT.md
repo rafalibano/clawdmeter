@@ -25,7 +25,7 @@ Guide for those who want to run, change and package ClawdMeter. To install and u
 | `cargo clippy --all-targets -- -D warnings` | Rust lint (run in `src-tauri/`) |
 | `cargo fmt --check` | Rust formatting (run in `src-tauri/`) |
 | `cargo deny check` | licenses, advisories and sources of the dependencies (`src-tauri/deny.toml`) |
-| `CI=true yarn tauri build --bundles dmg` | generates the `.dmg` in `src-tauri/target/release/bundle/dmg/` |
+| `CI=true yarn tauri build --bundles app,dmg` | generates the `.dmg` in `src-tauri/target/release/bundle/dmg/` (needs the signing key, see [Local build](#local-build-with-updater-artifacts)) |
 
 Demo mode swaps `composition-root.ts` for `composition-root.demo.ts` through Angular's `fileReplacements` (the `demo` configuration). The popover has a fixed width of 380 px in both modes.
 
@@ -67,6 +67,7 @@ src/
 │  ├─ connections/    ConnectionMonitor, ConnectionRunner and createConnections (wires use cases and adapters)
 │  ├─ pull-requests/  createPullRequests, GitHubSession and the data of the PRs/Reviews pages
 │  ├─ skills/         createSkills and SkillRunBoard (live runs and history)
+│  ├─ updates/        Updates: update check every 6 h, download with progress, install and restart
 │  ├─ pages/          PageModule (contract) and PageRegistry
 │  ├─ scheduler/      PollingScheduler: only schedules enabled pages
 │  └─ testing/        fakes of the ports, used only in tests
@@ -79,6 +80,7 @@ src/
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
 │  ├─ config/         auth-config.ts: GitHub and Microsoft client_id (placeholders)
+│  ├─ updates/        TauriUpdateChecker (commands `updater_check`, `updater_install`, `updater_restart`)
 │  └─ demo/           fake adapters of the demo mode, with scenarios by query param
 ├─ ui/
 │  ├─ shell/          popover, "updated Xs ago" footer and ⚙ button
@@ -88,7 +90,7 @@ src/
 ├─ composition-root.ts        manual DI with the real (Tauri) adapters
 └─ composition-root.demo.ts   DI of the demo mode in the browser (localStorage)
 src-tauri/src/
-├─ commands/          thin platform layer: secrets, claude_credentials, process, oauth_loopback, terminal, open_external
+├─ commands/          thin platform layer: secrets, claude_credentials, process, oauth_loopback, terminal, open_external, updater
 └─ tray.rs, platform.rs   tray and popover
 └─ usage_icon.rs          pure (RGBA) renderer of the tray usage icon
 ```
@@ -133,8 +135,51 @@ The checkbox in Settings, the polling and the connection requirement come from t
 
 ## Publishing a version
 
-To publish: bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`), and create the tag.
+Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`) and Windows (`.msi` + NSIS `.exe`), signs the updater artifacts and publishes the release (not as a draft) with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
+
+1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`) and add the entry to `CHANGELOG.md`.
+2. Create and push the tag:
+
+   ```bash
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+
+3. When both jobs finish, check that the release has `latest.json`, the `.app.tar.gz`/`.sig` pair and the Windows installers with their `.sig`.
+
+### Secrets of the repository
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | the content of the private key file (one base64 line), e.g. `~/.tauri/clawdmeter-updater.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the key password; the current key has none, so the secret can stay unset (the workflow then passes an empty value) |
+
+`GITHUB_TOKEN` comes from Actions. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private key never goes into the repository.
+
+### Signing key
+
+The key was generated without a password:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+yarn tauri signer generate --ci -p "" -w ~/.tauri/clawdmeter-updater.key
 ```
+
+It writes `clawdmeter-updater.key` (private) and `clawdmeter-updater.key.pub` (public, the value of `pubkey`). Keep a backup of the private key: without it, installed apps cannot receive new versions (they only accept packages signed by the key whose public half they carry). To rotate it, publish a version with the new `pubkey` signed with the old key first; only the versions after that one can be signed with the new key.
+
+### Local build with updater artifacts
+
+`bundle.createUpdaterArtifacts` is `true`, so `yarn tauri build` asks for the private key:
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/clawdmeter-updater.key)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+CI=true yarn tauri build --bundles app,dmg
+```
+
+Without the key, skip the updater artifacts: `CI=true yarn tauri build --bundles dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+
+### Repository of the releases
+
+The app reads the releases of `RELEASE_REPOSITORY` in `src-tauri/src/commands/updater.rs` (today `rafalibano/clawdmeter`). When the repository moves to `Mottu-ops/clawdmeter`, change that constant and publish a version; versions installed before it keep asking the old name, which GitHub redirects while the redirect exists (the client follows redirects inside `api.github.com` with the token).
+
+### Demo scenarios of the updates
+
+`?demo=update:available` shows the "New version 0.2.0 · Update" bar and simulates download, install and restart; also `update:latest`, `update:no-access`, `update:rate-limited`, `update:error` and `update:install-error`. Any `update:` value connects the demo GitHub, unless `github:` is given.
