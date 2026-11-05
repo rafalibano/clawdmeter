@@ -1,6 +1,6 @@
 # Dev Pulse
 
-App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje: página de exemplo e Agenda; Claude usage, PRs, Sessões e Skills entram nas próximas fases).
+App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje: Claude usage, Sessões, Agenda e uma página de exemplo; PRs, Reviews e Skills entram nas próximas fases).
 
 Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (standalone + signals).
 
@@ -29,6 +29,8 @@ src/
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
+│  ├─ anthropic/      AnthropicUsageGateway (GET /api/oauth/usage)
+│  ├─ claude-code/    TauriSessionDirectory (lê ~/.claude/sessions via plugin-fs)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
 │  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
@@ -73,7 +75,7 @@ export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
 }
 ```
 
-2. Registre em `composition-root.ts` (e em `composition-root.demo.ts`, com adapters fakes) adicionando uma linha em `pages`:
+2. Registre em `composition-root.ts` (e em `composition-root.demo.ts`, com adapters fakes) adicionando uma linha em `pages`. `pages` aceita a lista direta ou uma função que recebe `{ connections }` da própria aplicação (as páginas que reportam problema de conexão usam essa forma):
 
 ```ts
 pages: [createExamplePage({ clock }), createUsagePage({ clock })],
@@ -220,3 +222,19 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 - Sem assinatura de código (macOS e Windows) e sem updater. No macOS o bundle usa assinatura ad-hoc (`signingIdentity: "-"`), que não substitui o Developer ID.
 - A CSP do app (`src-tauri/tauri.conf.json`) só libera `self` e IPC; hosts de API das próximas fases precisam entrar em `connect-src`. Não foi validada rodando o app Tauri.
 - O comportamento no Windows (posição do popover, ocultar ao perder o foco) não foi validado em máquina Windows; o CI só compila e roda testes.
+
+### Claude usage
+
+Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` lê o access token do Claude Code pela `ClaudeCredentialSource` e chama `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`) por `AnthropicUsageGateway`; o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
+
+- **Histórico:** `usage-history.json` ao lado do `settings.json`. Pontos brutos por 7 dias; do 8º ao 30º dia, agregados em baldes de 15 min pelo máximo; nada passa de 30 dias (`domain/usage/retention.ts`). Arquivo ilegível recomeça vazio.
+- **Gráficos:** ECharts via `ngx-echarts` (carregado sob demanda, fora do bundle inicial), uma série para a janela de 5 h e outra para a semanal, com marca em 100% e em "agora". Seletor `1h · 12h · 1d · 7d · 30d` comum aos dois.
+- **Tendência e previsão:** regressão linear dos pontos do ciclo atual (janela de 1 h no 5 h e de 24 h no semanal), desenhada tracejada a partir do último ponto real até o `resets_at` (cortada na borda do eixo ou em 100%). A previsão aparece em linha separada: `Previsão no reset (17:00): ~78%` ou `100% · estoura às 15:40, 1h20 antes`; com menos de 3 pontos no ciclo, `Previsão: coletando dados…`. Um reset (queda de utilização ou mudança de `resets_at`) abre um ciclo novo e a regressão ignora os pontos anteriores (`domain/usage/forecast.ts`).
+
+### Sessões
+
+Página `sessions` (poll de 5 s, sem conexão). `TauriSessionDirectory` lê `<home>/.claude/sessions/*.json` (`homeDir()` do Tauri: `~` no macOS, `%USERPROFILE%` no Windows) e `LoadSessions` mantém só os pids vivos (`process_is_alive`, command Rust da F2). Cada sessão mostra nome (ou pasta), pasta curta, status (`busy`/`idle`/`shell`) e há quanto tempo está nele (`statusUpdatedAt`, senão `updatedAt`). Fica destacada a sessão `idle` há mais de 5 min ("Aguardando input") ou `busy` há mais de 30 min ("Parada no mesmo estado"); os limiares estão em `DEFAULT_ATTENTION_CONFIG` (`domain/sessions/attention.ts`) e são injetados em `LoadSessions` pelo composition root.
+
+A capability dá ao plugin-fs só `exists` e `read-dir` em `$HOME/.claude/sessions` e `read-text-file` em `$HOME/.claude/sessions/*.json`; o allowlist do plugin-http e o `connect-src` do CSP incluem `https://api.anthropic.com`.
+
+No modo demo as duas páginas usam dados falsos (histórico de 30 dias gerado por um modelo determinístico, cinco sessões em estados diferentes e uma morta). `?demo=claude:claude-expired` (e os demais cenários de conexão) mostra o estado de erro da página de usage com o botão de conserto.

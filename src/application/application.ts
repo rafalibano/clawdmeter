@@ -19,20 +19,25 @@ export interface Application {
   watchSettings: WatchSettings;
 }
 
+export interface PageContext {
+  connections: Connections;
+}
+
 export interface ApplicationDeps {
   clock: Clock;
   settingsStore: SettingsStore;
   connectionAdapters: ConnectionAdapters;
-  pages: readonly PageModule[];
+  pages: readonly PageModule[] | ((context: PageContext) => readonly PageModule[]);
 }
 
 export function createApplication(deps: ApplicationDeps): Application {
-  const registry = new PageRegistry(deps.pages);
+  const connections = createConnections(deps.connectionAdapters, deps.clock);
+  const registry = new PageRegistry(typeof deps.pages === 'function' ? deps.pages({ connections }) : deps.pages);
   return {
     clock: deps.clock,
     registry,
     scheduler: new PollingScheduler(registry, deps.clock),
-    connections: createConnections(deps.connectionAdapters, deps.clock),
+    connections,
     joinMeeting: new JoinMeeting(deps.connectionAdapters.urlOpener),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),

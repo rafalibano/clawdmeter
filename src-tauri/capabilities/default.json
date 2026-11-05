@@ -27,8 +27,21 @@
     },
     "fs:allow-unwatch",
     {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$HOME/.claude/sessions" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "$HOME/.claude/sessions" }]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$HOME/.claude/sessions/*.json" }]
+    },
+    {
       "identifier": "http:default",
       "allow": [
+        { "url": "https://api.anthropic.com/*" },
         { "url": "https://api.github.com/*" },
         { "url": "https://github.com/login/*" },
         { "url": "https://login.microsoftonline.com/*" },

@@ -1,0 +1,77 @@
+:host {
+  display: block;
+}
+
+.summary {
+  margin: 0 0 8px;
+  color: var(--dp-muted);
+  font-size: 12px;
+}
+
+.card {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--dp-border);
+  border-radius: 8px;
+  background: var(--dp-surface);
+}
+
+.card.error {
+  border-color: var(--dp-danger, #d9534f);
+  color: var(--dp-danger, #d9534f);
+}
+
+.card[data-attention] {
+  border-color: #d98e04;
+  background: color-mix(in srgb, #d98e04 12%, transparent);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dp-muted);
+}
+
+.card[data-status='busy'] .dot {
+  background: var(--dp-ok, #2e9e5b);
+}
+
+.card[data-status='idle'] .dot {
+  background: #d98e04;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  margin-left: auto;
+  flex: none;
+  color: var(--dp-muted);
+  font-size: 12px;
+}
+
+.cwd {
+  margin: 2px 0 0 16px;
+  color: var(--dp-muted);
+  font-size: 12px;
+}
+
+.attention {
+  margin: 4px 0 0 16px;
+  color: #d98e04;
+  font-size: 12px;
+  font-weight: 600;
+}
