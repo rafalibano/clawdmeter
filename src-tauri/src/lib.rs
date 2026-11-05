@@ -38,6 +38,7 @@ pub fn run() {
         .setup(|app| {
             platform::configure_app(app);
             tray::create(app.handle())?;
+            tray::prepare_popover(app.handle());
             Ok(())
         })
         .on_window_event(tray::on_window_event)

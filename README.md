@@ -191,11 +191,15 @@ Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` chama o `An
 
 A cada leitura do `LoadUsage` (e a cada falha) a porta `UsageIndicator` atualiza o ícone e o tooltip da bandeja pelo command `tray_set_usage`; no demo o adapter é no-op.
 
-- **macOS:** ícone largo (template, só o alfa conta) com asterisco de 8 raios à esquerda e duas linhas `5h`/`7d` com barra arredondada: trecho preenchido opaco, vazio a 35%. A `tray-icon` fixa a altura do ícone em 18 pt, então o render é 116×36 px (@2x), pixel a pixel nessa altura.
-- **Windows:** o ícone da bandeja é quadrado, então vai a variante 32×32 (16×16 em @1x) com duas barras grossas empilhadas, sem rótulo e sem asterisco (azul preenchido, cinza vazio, legível em barra clara e escura). O detalhe fica no tooltip: `5h: 24% · reseta 14:09 | 7d: 51% · reseta seg 05:39` (`domain/usage/usage-tooltip.ts`).
-- **Sem dado** (janela ausente, Claude desconectado, token vencido ou erro de leitura): barra vazia com contorno tracejado; o tooltip vira `Dev Pulse · usage indisponível`. Percentuais fora de 0–100 são limitados no Rust.
-- **Antes da primeira leitura** (e com a página Usage desligada) vale o ícone padrão do app (`tray-template.png` no macOS, ícone da janela no Windows); o render com barras vazias só aparece depois de uma tentativa de leitura.
-- Os fontes ficam em `src-tauri/src/usage_icon.rs` (fonte bitmap 4×6 embutida para `5`, `h`, `7`, `d`; sem fontes do sistema e sem dependência de imagem). `cargo run --example render_usage_preview` (em `src-tauri/`) regrava os PNGs de `docs/tray-preview/`.
+- **macOS:** ícone largo (template, só o alfa conta) com o mascote pixel (grade 12×8 em `usage_icon.rs`, olhos como furos) à esquerda e duas linhas `5h`/`7d` com barra arredondada: trecho preenchido opaco, vazio a 35%. O mascote enche de baixo para cima conforme o `7d` (0% todo a 35%, 100% todo opaco) e, quando o `5h` ou o `7d` chega a 100% (sem limite), os olhos viram um X. A `tray-icon` fixa a altura do ícone em 18 pt, então o render é 128×36 px (@2x), pixel a pixel nessa altura.
+- **Windows:** o ícone da bandeja é quadrado, então vai a variante 32×32 (16×16 em @1x) só com o mascote (enche com o `7d`, olhos em X quando um dos limites estoura; azul preenchido, cinza vazio, legível em barra clara e escura). Barras e números ficam no tooltip: `5h: 24% · reseta 14:09 | 7d: 51% · reseta seg 05:39` (`domain/usage/usage-tooltip.ts`).
+- **Sem dado** (janela ausente, Claude desconectado, token vencido ou erro de leitura): mascote todo a 35% com olhos normais e barras com contorno tracejado (no Windows, só o mascote translúcido); o tooltip vira `Dev Pulse · usage indisponível`. Percentuais fora de 0–100 são limitados no Rust.
+- **Antes da primeira leitura** (e com a página Usage desligada) vale o ícone padrão do app (`tray-template.png` no macOS, ícone da janela no Windows); o render com o mascote só aparece depois de uma tentativa de leitura.
+- Os fontes ficam em `src-tauri/src/usage_icon.rs` (mascote em matriz de caracteres; fonte bitmap 4×6 embutida para `5`, `h`, `7`, `d`; sem fontes do sistema e sem dependência de imagem). `cargo run --example render_usage_preview` (em `src-tauri/`) regrava os PNGs de `docs/tray-preview/`.
+
+### Popover sobre apps em tela cheia (macOS)
+
+Com outro app em tela cheia (Space próprio), uma janela comum não aparece. Em `platform.rs`, `prepare_popover` roda na criação da janela e antes de cada `show`: chama `set_visible_on_all_workspaces(true)` e completa pelo `NSWindow` com `collectionBehavior` = `CanJoinAllSpaces | FullScreenAuxiliary | Stationary | IgnoresCycle` (sem `FullScreenPrimary`/`Transient`/`MoveToActiveSpace`, que conflitam) e nível `NSPopUpMenuWindowLevel`. A política de ativação segue `Accessory`. No Windows não há mudança: o popover é uma janela sem borda com `alwaysOnTop`, e isso não foi validado em máquina Windows. Só o cálculo do behavior e do nível tem teste automatizado; o efeito sobre um app em tela cheia real precisa ser conferido à mão.
 
 ### Sessões
 

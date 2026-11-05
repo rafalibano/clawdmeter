@@ -28,6 +28,53 @@ pub fn configure_app(app: &mut tauri::App) {
 pub fn configure_app(_app: &mut tauri::App) {}
 
 #[cfg(target_os = "macos")]
+mod popover {
+    use objc2_app_kit::{
+        NSPopUpMenuWindowLevel, NSWindow, NSWindowCollectionBehavior, NSWindowLevel,
+    };
+
+    pub fn collection_behavior() -> NSWindowCollectionBehavior {
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle
+    }
+
+    pub fn window_level() -> NSWindowLevel {
+        NSPopUpMenuWindowLevel
+    }
+
+    pub fn merge_behavior(current: NSWindowCollectionBehavior) -> NSWindowCollectionBehavior {
+        (current
+            - NSWindowCollectionBehavior::FullScreenPrimary
+            - NSWindowCollectionBehavior::Transient
+            - NSWindowCollectionBehavior::MoveToActiveSpace)
+            | collection_behavior()
+    }
+
+    pub fn apply(window: &NSWindow) {
+        window.setCollectionBehavior(merge_behavior(window.collectionBehavior()));
+        window.setLevel(window_level());
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn prepare_popover(window: &tauri::WebviewWindow) {
+    let _ = window.set_visible_on_all_workspaces(true);
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        if let Ok(ptr) = target.ns_window() {
+            if !ptr.is_null() {
+                popover::apply(unsafe { &*ptr.cast::<objc2_app_kit::NSWindow>() });
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn prepare_popover(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "macos")]
 pub const TRAY_ICON_IS_TEMPLATE: bool = true;
 
 #[cfg(not(target_os = "macos"))]
@@ -51,9 +98,52 @@ mod tests {
     fn usage_icon_matches_the_tray_shape_of_the_os() {
         let icon = usage_icon(Some(24.0), Some(51.0));
         if cfg!(target_os = "macos") {
-            assert_eq!((icon.width, icon.height), (116, 36));
+            assert_eq!((icon.width, icon.height), (128, 36));
         } else {
             assert_eq!((icon.width, icon.height), (32, 32));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    mod popover_style {
+        use super::super::popover;
+        use objc2_app_kit::{
+            NSFloatingWindowLevel, NSStatusWindowLevel, NSWindowCollectionBehavior as Behavior,
+        };
+
+        #[test]
+        fn popover_joins_every_space_and_fullscreen_spaces() {
+            let behavior = popover::collection_behavior();
+            assert!(behavior.contains(Behavior::CanJoinAllSpaces));
+            assert!(behavior.contains(Behavior::FullScreenAuxiliary));
+            assert!(behavior.contains(Behavior::Stationary));
+            assert!(behavior.contains(Behavior::IgnoresCycle));
+        }
+
+        #[test]
+        fn popover_level_is_above_floating_and_status_windows() {
+            assert!(popover::window_level() > NSFloatingWindowLevel);
+            assert!(popover::window_level() >= NSStatusWindowLevel);
+        }
+
+        #[test]
+        fn merge_keeps_unrelated_flags_and_drops_conflicting_ones() {
+            let current = Behavior::FullScreenAllowsTiling
+                | Behavior::FullScreenPrimary
+                | Behavior::Transient
+                | Behavior::MoveToActiveSpace;
+            let merged = popover::merge_behavior(current);
+            assert!(merged.contains(Behavior::FullScreenAllowsTiling));
+            assert!(merged.contains(popover::collection_behavior()));
+            assert!(!merged.contains(Behavior::FullScreenPrimary));
+            assert!(!merged.contains(Behavior::Transient));
+            assert!(!merged.contains(Behavior::MoveToActiveSpace));
+        }
+
+        #[test]
+        fn merge_is_idempotent() {
+            let once = popover::merge_behavior(Behavior::empty());
+            assert_eq!(popover::merge_behavior(once), once);
         }
     }
 

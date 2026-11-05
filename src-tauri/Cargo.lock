@@ -799,6 +799,7 @@ dependencies = [
  "block2",
  "keyring",
  "libc",
+ "objc2-app-kit",
  "objc2-foundation",
  "objc2-user-notifications",
  "serde",

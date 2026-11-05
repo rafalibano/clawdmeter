@@ -47,11 +47,18 @@ fn toggle_popover(app: &AppHandle) {
             let _ = window.hide();
         }
         ClickAction::Show => {
+            platform::prepare_popover(&window);
             let _ = window.move_window_constrained(Position::TrayCenter);
             let _ = window.show();
             let _ = window.set_focus();
         }
         ClickAction::Ignore => {}
+    }
+}
+
+pub fn prepare_popover(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        platform::prepare_popover(&window);
     }
 }
 

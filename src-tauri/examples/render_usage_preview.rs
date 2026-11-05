@@ -115,57 +115,56 @@ fn main() {
     const WHITE: [u8; 3] = [255, 255, 255];
     const BLACK: [u8; 3] = [0, 0, 0];
 
-    let mac = render_usage_icon(Some(24.0), Some(51.0), 2);
-    write(&dir, "macos-2x-24-51-template.png", &mac);
-    write(
-        &dir,
-        "macos-2x-24-51-dark.png",
-        &composite(&mac, DARK_BAR, Some(WHITE), 4, 6),
-    );
-    write(
-        &dir,
-        "macos-2x-24-51-light.png",
-        &composite(&mac, LIGHT_BAR, Some(BLACK), 4, 6),
-    );
+    let mac_cases: [(&str, Option<f64>, Option<f64>); 6] = [
+        ("13-28", Some(13.0), Some(28.0)),
+        ("24-51", Some(24.0), Some(51.0)),
+        ("50-50", Some(50.0), Some(50.0)),
+        ("100-60", Some(100.0), Some(60.0)),
+        ("40-100", Some(40.0), Some(100.0)),
+        ("sem-dado", None, None),
+    ];
+    for (name, five_hour, seven_day) in mac_cases {
+        let icon = render_usage_icon(five_hour, seven_day, 2);
+        if name == "24-51" {
+            write(&dir, "macos-2x-24-51-template.png", &icon);
+        }
+        write(
+            &dir,
+            &format!("macos-2x-{name}-dark.png"),
+            &composite(&icon, DARK_BAR, Some(WHITE), 4, 6),
+        );
+        write(
+            &dir,
+            &format!("macos-2x-{name}-light.png"),
+            &composite(&icon, LIGHT_BAR, Some(BLACK), 4, 6),
+        );
+    }
 
-    let mac_none = render_usage_icon(None, None, 2);
-    write(
-        &dir,
-        "macos-2x-sem-dado-dark.png",
-        &composite(&mac_none, DARK_BAR, Some(WHITE), 4, 6),
-    );
+    let win_cases: [(&str, Option<f64>, Option<f64>); 5] = [
+        ("13-28", Some(13.0), Some(28.0)),
+        ("50-50", Some(50.0), Some(50.0)),
+        ("100-60", Some(100.0), Some(60.0)),
+        ("40-100", Some(40.0), Some(100.0)),
+        ("sem-dado", None, None),
+    ];
+    for (name, five_hour, seven_day) in win_cases {
+        let icon = render_usage_icon_square(five_hour, seven_day, 2);
+        write(
+            &dir,
+            &format!("windows-32-{name}-dark.png"),
+            &composite(&icon, DARK_BAR, None, 8, 4),
+        );
+        write(
+            &dir,
+            &format!("windows-32-{name}-light.png"),
+            &composite(&icon, LIGHT_BAR, None, 8, 4),
+        );
+    }
 
-    let mac_high = render_usage_icon(Some(100.0), Some(8.0), 2);
+    let win_small = render_usage_icon_square(Some(13.0), Some(28.0), 1);
     write(
         &dir,
-        "macos-2x-100-8-dark.png",
-        &composite(&mac_high, DARK_BAR, Some(WHITE), 4, 6),
-    );
-
-    let win = render_usage_icon_square(Some(24.0), Some(51.0), 2);
-    write(&dir, "windows-32-24-51.png", &win);
-    write(
-        &dir,
-        "windows-32-24-51-dark.png",
-        &composite(&win, DARK_BAR, None, 8, 4),
-    );
-    write(
-        &dir,
-        "windows-32-24-51-light.png",
-        &composite(&win, LIGHT_BAR, None, 8, 4),
-    );
-
-    let win_small = render_usage_icon_square(Some(24.0), Some(51.0), 1);
-    write(
-        &dir,
-        "windows-16-24-51-dark.png",
+        "windows-16-13-28-dark.png",
         &composite(&win_small, DARK_BAR, None, 16, 2),
-    );
-
-    let win_none = render_usage_icon_square(None, None, 2);
-    write(
-        &dir,
-        "windows-32-sem-dado-dark.png",
-        &composite(&win_none, DARK_BAR, None, 8, 4),
     );
 }
