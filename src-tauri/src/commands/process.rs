@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::home_dir;
+use super::home::{home_dir, protected_dirs};
 use super::process_policy::{prepare_invocation, validate_cwd, validate_program};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
@@ -205,13 +205,18 @@ pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
         })
 }
 
-fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandResult<Command> {
+fn build_command(
+    program: &str,
+    args: &[String],
+    cwd: Option<&str>,
+    protected: &[PathBuf],
+) -> CommandResult<Command> {
     let argv = prepare_invocation(program, args)?;
     let home = home_dir();
     let effective = cwd
         .map(str::to_string)
         .or_else(|| home.as_ref().map(|dir| dir.to_string_lossy().into_owned()));
-    let dir = validate_cwd(effective.as_deref(), home.as_deref())?;
+    let dir = validate_cwd(effective.as_deref(), home.as_deref(), protected)?;
     let mut command = Command::new(resolve_program(program)?);
     command
         .args(&argv)
@@ -303,7 +308,13 @@ fn run_to_completion(
     args: &[String],
     timeout_ms: Option<u64>,
 ) -> CommandResult<RunOutput> {
-    let mut child = build_command(program, args, None)?
+    if validate_program(program)? != "gh" {
+        return Err(CommandError::new(
+            ErrorKind::ProgramNotAllowed,
+            "process_run só executa o gh",
+        ));
+    }
+    let mut child = build_command(program, args, None, &[])?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
@@ -462,7 +473,8 @@ pub fn process_spawn(
     cwd: Option<String>,
 ) -> CommandResult<u32> {
     registry.ensure_capacity()?;
-    let mut child = build_command(&program, &args, cwd.as_deref())?
+    let protected = protected_dirs(&app)?;
+    let mut child = build_command(&program, &args, cwd.as_deref(), &protected)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let pid = child.id();
@@ -594,6 +606,29 @@ mod tests {
             .collect();
         assert!(names.contains(&"claude.exe".to_string()));
         assert!(names.contains(&"claude.cmd".to_string()));
+    }
+
+    #[test]
+    fn process_run_refuses_claude_and_anything_but_gh() {
+        for program in ["claude", "rm", "bash"] {
+            let error = run_to_completion(program, &[], None).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::ProgramNotAllowed, "{program}");
+        }
+        let claude_print = [
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "1",
+        ]
+        .map(String::from);
+        assert_eq!(
+            run_to_completion("claude", &claude_print, None)
+                .unwrap_err()
+                .kind,
+            ErrorKind::ProgramNotAllowed
+        );
     }
 
     #[test]

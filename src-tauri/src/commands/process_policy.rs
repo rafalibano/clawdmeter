@@ -78,8 +78,8 @@ pub fn validate_invocation(program: &str, args: &[String]) -> CommandResult<()> 
 pub fn prepare_invocation(program: &str, args: &[String]) -> CommandResult<Vec<String>> {
     validate_invocation(program, args)?;
     let mut argv = args.to_vec();
-    let is_print = validate_program(program)? == "claude"
-        && args.first().map(String::as_str) == Some("-p");
+    let is_print =
+        validate_program(program)? == "claude" && args.first().map(String::as_str) == Some("-p");
     if is_print {
         argv.extend(CLAUDE_HARDENING_ARGS.iter().map(|arg| arg.to_string()));
     }
@@ -227,7 +227,18 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
-pub fn validate_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Option<PathBuf>> {
+fn is_protected_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
+    std::iter::once(home.join(".claude"))
+        .chain(protected.iter().cloned())
+        .filter_map(|dir| dir.canonicalize().ok())
+        .any(|dir| resolved.starts_with(dir))
+}
+
+pub fn validate_cwd(
+    cwd: Option<&str>,
+    home: Option<&Path>,
+    protected: &[PathBuf],
+) -> CommandResult<Option<PathBuf>> {
     let Some(raw) = cwd else {
         return Ok(None);
     };
@@ -241,11 +252,15 @@ pub fn validate_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Opt
     let resolved = path
         .canonicalize()
         .map_err(|_| invalid("diretório de trabalho inexistente"))?;
-    if resolved.starts_with(&home) {
-        Ok(Some(strip_verbatim_prefix(resolved)))
-    } else {
-        Err(invalid("diretório de trabalho fora da pasta do usuário"))
+    if !resolved.starts_with(&home) {
+        return Err(invalid("diretório de trabalho fora da pasta do usuário"));
     }
+    if is_protected_dir(&resolved, &home, protected) {
+        return Err(invalid(
+            "diretório de trabalho dentro da configuração do app ou de ~/.claude",
+        ));
+    }
+    Ok(Some(strip_verbatim_prefix(resolved)))
 }
 
 #[cfg(test)]
@@ -517,7 +532,10 @@ mod tests {
             vec!["--setting-sources=project"],
         ] {
             let call: Vec<&str> = base.iter().chain(extra.iter()).copied().collect();
-            assert!(prepare_invocation("claude", &args(&call)).is_err(), "{extra:?}");
+            assert!(
+                prepare_invocation("claude", &args(&call)).is_err(),
+                "{extra:?}"
+            );
         }
     }
 
@@ -805,7 +823,7 @@ mod tests {
 
     #[test]
     fn cwd_none_is_always_fine() {
-        assert_eq!(validate_cwd(None, None).unwrap(), None);
+        assert_eq!(validate_cwd(None, None, &[]).unwrap(), None);
     }
 
     #[test]
@@ -813,8 +831,10 @@ mod tests {
         let tree = TempTree::new("cwd-ok");
         let home = tree.home();
         let inside = home.join("work");
-        assert!(validate_cwd(home.to_str(), Some(&home)).unwrap().is_some());
-        assert!(validate_cwd(inside.to_str(), Some(&home))
+        assert!(validate_cwd(home.to_str(), Some(&home), &[])
+            .unwrap()
+            .is_some());
+        assert!(validate_cwd(inside.to_str(), Some(&home), &[])
             .unwrap()
             .is_some());
     }
@@ -824,13 +844,77 @@ mod tests {
         let tree = TempTree::new("cwd-bad");
         let home = tree.home();
         let outside = tree.root.join("outside");
-        assert!(validate_cwd(outside.to_str(), Some(&home)).is_err());
-        assert!(validate_cwd(Some("work"), Some(&home)).is_err());
-        assert!(validate_cwd(Some(""), Some(&home)).is_err());
+        assert!(validate_cwd(outside.to_str(), Some(&home), &[]).is_err());
+        assert!(validate_cwd(Some("work"), Some(&home), &[]).is_err());
+        assert!(validate_cwd(Some(""), Some(&home), &[]).is_err());
         let escaping = home.join("work").join("..").join("..").join("outside");
-        assert!(validate_cwd(escaping.to_str(), Some(&home)).is_err());
-        assert!(validate_cwd(home.join("nao-existe").to_str(), Some(&home)).is_err());
-        assert!(validate_cwd(home.to_str(), None).is_err());
+        assert!(validate_cwd(escaping.to_str(), Some(&home), &[]).is_err());
+        assert!(validate_cwd(home.join("nao-existe").to_str(), Some(&home), &[]).is_err());
+        assert!(validate_cwd(home.to_str(), None, &[]).is_err());
+    }
+
+    #[test]
+    fn cwd_rejects_the_app_config_dir_and_everything_inside_it() {
+        let tree = TempTree::new("cwd-config");
+        let home = tree.home();
+        let config = home.join("Library").join("com.fake.devpulse");
+        let nested = config.join("projeto").join(".claude");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::create_dir_all(home.join("Library").join("outro")).unwrap();
+        let protected = [config.clone()];
+        for blocked in [&config, &config.join("projeto"), &nested] {
+            let error = validate_cwd(blocked.to_str(), Some(&home), &protected).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::InvalidArgument, "{blocked:?}");
+        }
+        let sibling = home.join("Library").join("outro");
+        assert!(validate_cwd(sibling.to_str(), Some(&home), &protected)
+            .unwrap()
+            .is_some());
+        assert!(validate_cwd(home.to_str(), Some(&home), &protected)
+            .unwrap()
+            .is_some());
+        let parent = home.join("Library");
+        assert!(validate_cwd(parent.to_str(), Some(&home), &protected)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn cwd_rejects_dot_claude_in_the_home_and_its_subdirectories() {
+        let tree = TempTree::new("cwd-dotclaude");
+        let home = tree.home();
+        let hooks = home.join(".claude").join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for blocked in [home.join(".claude"), hooks] {
+            assert!(validate_cwd(blocked.to_str(), Some(&home), &[]).is_err());
+        }
+        let lookalike = home.join(".claude-projects");
+        std::fs::create_dir_all(&lookalike).unwrap();
+        assert!(validate_cwd(lookalike.to_str(), Some(&home), &[])
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn a_missing_protected_dir_does_not_block_anything() {
+        let tree = TempTree::new("cwd-missing-config");
+        let home = tree.home();
+        let protected = [home.join("nao-existe")];
+        assert!(validate_cwd(home.to_str(), Some(&home), &protected)
+            .unwrap()
+            .is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cwd_rejects_a_symlink_that_points_into_the_app_config() {
+        let tree = TempTree::new("cwd-config-link");
+        let home = tree.home();
+        let config = home.join("config-do-app");
+        std::fs::create_dir_all(&config).unwrap();
+        let link = home.join("atalho");
+        std::os::unix::fs::symlink(&config, &link).unwrap();
+        assert!(validate_cwd(link.to_str(), Some(&home), &[config]).is_err());
     }
 
     #[cfg(unix)]
@@ -840,6 +924,6 @@ mod tests {
         let home = tree.home();
         let link = home.join("atalho");
         std::os::unix::fs::symlink(tree.root.join("outside"), &link).unwrap();
-        assert!(validate_cwd(link.to_str(), Some(&home)).is_err());
+        assert!(validate_cwd(link.to_str(), Some(&home), &[]).is_err());
     }
 }

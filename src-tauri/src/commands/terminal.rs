@@ -2,8 +2,10 @@ use std::process::Command;
 
 use std::path::{Path, PathBuf};
 
+use tauri::AppHandle;
+
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::home_dir;
+use super::home::{home_dir, protected_dirs};
 use super::process::resolve_program;
 use super::process_policy::{
     validate_args, validate_cwd, validate_program, validate_terminal_invocation,
@@ -57,8 +59,9 @@ pub fn validate_terminal_path(path: &Path) -> CommandResult<()> {
 pub fn validate_terminal_cwd(
     cwd: Option<&str>,
     home: Option<&Path>,
+    protected: &[PathBuf],
 ) -> CommandResult<Option<PathBuf>> {
-    let resolved = validate_cwd(cwd, home)?;
+    let resolved = validate_cwd(cwd, home, protected)?;
     if let Some(dir) = &resolved {
         validate_terminal_path(dir)?;
     }
@@ -126,14 +129,28 @@ fn launch(_program: &Path, _args: &[String], _cwd: Option<&Path>) -> CommandResu
 }
 
 #[tauri::command(async)]
-pub fn terminal_run(program: String, args: Vec<String>, cwd: Option<String>) -> CommandResult<()> {
-    let program = validate_program(&program)?;
-    validate_terminal_args(&args)?;
-    validate_terminal_invocation(program, &args)?;
-    let dir = validate_terminal_cwd(cwd.as_deref(), home_dir().as_deref())?;
+pub fn terminal_run(
+    app: AppHandle,
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+) -> CommandResult<()> {
+    run_terminal(&program, &args, cwd.as_deref(), &protected_dirs(&app)?)
+}
+
+fn run_terminal(
+    program: &str,
+    args: &[String],
+    cwd: Option<&str>,
+    protected: &[PathBuf],
+) -> CommandResult<()> {
+    let program = validate_program(program)?;
+    validate_terminal_args(args)?;
+    validate_terminal_invocation(program, args)?;
+    let dir = validate_terminal_cwd(cwd, home_dir().as_deref(), protected)?;
     let executable = resolve_program(program)?;
     validate_terminal_path(&executable)?;
-    launch(&executable, &args, dir.as_deref())
+    launch(&executable, args, dir.as_deref())
 }
 
 #[cfg(test)]
@@ -223,14 +240,31 @@ mod tests {
         std::fs::create_dir_all(&quoted).unwrap();
         std::fs::create_dir_all(home.join("com espaço")).unwrap();
         std::fs::create_dir_all(root.join("fora")).unwrap();
-        assert!(validate_terminal_cwd(quoted.to_str(), Some(&home)).is_err());
+        assert!(validate_terminal_cwd(quoted.to_str(), Some(&home), &[]).is_err());
         assert!(
-            validate_terminal_cwd(home.join("com espaço").to_str(), Some(&home))
+            validate_terminal_cwd(home.join("com espaço").to_str(), Some(&home), &[])
                 .unwrap()
                 .is_some()
         );
-        assert!(validate_terminal_cwd(root.join("fora").to_str(), Some(&home)).is_err());
-        assert!(validate_terminal_cwd(None, Some(&home)).unwrap().is_none());
+        assert!(validate_terminal_cwd(root.join("fora").to_str(), Some(&home), &[]).is_err());
+        assert!(validate_terminal_cwd(None, Some(&home), &[])
+            .unwrap()
+            .is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn terminal_refuses_a_cwd_inside_the_app_config_before_launching() {
+        let root = std::env::temp_dir().join(format!("dev-pulse-termcfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = root.join("home");
+        let config = home.join("config-do-app");
+        std::fs::create_dir_all(&config).unwrap();
+        assert!(
+            validate_terminal_cwd(config.to_str(), Some(&home), std::slice::from_ref(&config))
+                .is_err()
+        );
+        assert!(validate_terminal_cwd(config.to_str(), Some(&home), &[]).is_ok());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -252,21 +286,22 @@ mod tests {
 
     #[test]
     fn rejects_arguments_outside_the_per_program_policy_before_launching() {
-        let denied = terminal_run(
-            "claude".into(),
-            args(&["--dangerously-skip-permissions"]),
+        let denied = run_terminal(
+            "claude",
+            &args(&["--dangerously-skip-permissions"]),
             None,
+            &[],
         )
         .unwrap_err();
         assert_eq!(denied.kind, ErrorKind::InvalidArgument);
-        let other = terminal_run("gh".into(), args(&["auth", "token"]), None).unwrap_err();
+        let other = run_terminal("gh", &args(&["auth", "token"]), None, &[]).unwrap_err();
         assert_eq!(other.kind, ErrorKind::InvalidArgument);
     }
 
     #[test]
     fn rejects_programs_outside_the_allowlist() {
         assert_eq!(
-            terminal_run("bash".into(), args(&["-c"]), None)
+            run_terminal("bash", &args(&["-c"]), None, &[])
                 .unwrap_err()
                 .kind,
             ErrorKind::ProgramNotAllowed

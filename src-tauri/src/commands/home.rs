@@ -1,8 +1,16 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use tauri::{AppHandle, Manager};
+
+use super::error::CommandResult;
+
 pub fn home_dir() -> Option<PathBuf> {
     home_from(std::env::var_os(home_variable()))
+}
+
+pub fn protected_dirs(app: &AppHandle) -> CommandResult<Vec<PathBuf>> {
+    Ok(vec![app.path().app_config_dir()?])
 }
 
 fn home_variable() -> &'static str {
