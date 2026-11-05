@@ -1,3 +1,4 @@
+import { ConnectionProblemError, type ConnectionProblem } from '../../domain/connections';
 import type { AppSettings, PageId } from '../../domain/settings';
 import type { PageModule } from '../pages/page-module';
 import type { PageRegistry } from '../pages/page-registry';
@@ -5,7 +6,7 @@ import type { Clock, Unsubscribe } from '../ports';
 
 export type PageUpdate<T = unknown> =
   | { pageId: PageId; status: 'ok'; data: T; at: number }
-  | { pageId: PageId; status: 'error'; error: string; at: number };
+  | { pageId: PageId; status: 'error'; error: string; problem?: ConnectionProblem; at: number };
 
 type PageUpdateListener = (update: PageUpdate) => void;
 
@@ -44,6 +45,12 @@ export class PollingScheduler {
     }
   }
 
+  refresh(pageId: PageId): Promise<void> {
+    const page = this.registry.get(pageId);
+    const run = this.runs.get(pageId);
+    return page && run ? this.poll(page, run) : Promise.resolve();
+  }
+
   stopAll(): void {
     for (const run of this.runs.values()) run.cancel();
     this.runs.clear();
@@ -67,7 +74,8 @@ export class PollingScheduler {
       this.publish(page, run, { pageId: page.id, status: 'ok', data, at: this.clock.now() });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.publish(page, run, { pageId: page.id, status: 'error', error: message, at: this.clock.now() });
+      const problem = error instanceof ConnectionProblemError ? { problem: error.problem } : {};
+      this.publish(page, run, { pageId: page.id, status: 'error', error: message, ...problem, at: this.clock.now() });
     } finally {
       run.busy = false;
     }
