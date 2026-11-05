@@ -10,8 +10,8 @@ export interface UsageWindowDefinition {
 }
 
 export const USAGE_WINDOWS: readonly UsageWindowDefinition[] = [
-  { kind: 'fiveHour', label: 'Janela de 5 horas', durationMs: 5 * HOUR_MS, regressionWindowMs: HOUR_MS },
-  { kind: 'sevenDay', label: 'Janela semanal', durationMs: 7 * DAY_MS, regressionWindowMs: DAY_MS },
+  { kind: 'fiveHour', label: '5h', durationMs: 5 * HOUR_MS, regressionWindowMs: HOUR_MS },
+  { kind: 'sevenDay', label: '7d', durationMs: 7 * DAY_MS, regressionWindowMs: DAY_MS },
 ];
 
 export function usageWindow(kind: UsageWindowKind): UsageWindowDefinition {

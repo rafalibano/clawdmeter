@@ -1,12 +1,13 @@
 import { DEFAULT_ACCENT_COLOR, type AppearanceSettings, type ThemeMode } from '../../domain/settings';
 import { readableTextOn } from './color';
 import { MOTTU } from './mottu-tokens';
+import { SOFT_SURFACES } from './soft-surfaces';
 
 export type ResolvedTheme = 'light' | 'dark';
 
 export const THEME_BACKGROUNDS: Record<ResolvedTheme, string> = {
-  light: MOTTU.neutral.white,
-  dark: MOTTU.neutral.black,
+  light: SOFT_SURFACES.light.popover,
+  dark: SOFT_SURFACES.dark.popover,
 };
 
 export interface ThemeRoot {
@@ -18,12 +19,16 @@ export interface ThemeRoot {
 }
 
 const BACKGROUND_OVERRIDES = {
-  '--dp-muted': 58,
-  '--dp-border': 14,
+  '--dp-muted': 66,
+  '--dp-border': 8,
+  '--dp-control-border': 18,
+  '--dp-edge': 10,
+  '--dp-hover': 8,
+  '--dp-track': 10,
   '--dp-surface': 6,
 } as const;
 
-const ACCENT_OVERRIDES = ['--dp-accent-text', '--dp-accent-active', '--dp-accent-fg-active'] as const;
+const ACCENT_OVERRIDES = ['--dp-series-five', '--dp-accent-text', '--dp-accent-active', '--dp-accent-fg-active'] as const;
 
 export function resolveTheme(mode: ThemeMode, systemDark: boolean): ResolvedTheme {
   if (mode === 'system') return systemDark ? 'dark' : 'light';
@@ -38,6 +43,7 @@ export function applyThemeStyle(root: ThemeRoot, appearance: AppearanceSettings,
   if (accentColor === DEFAULT_ACCENT_COLOR) {
     for (const name of ACCENT_OVERRIDES) root.style.removeProperty(name);
   } else {
+    root.style.setProperty('--dp-series-five', accentColor);
     root.style.setProperty('--dp-accent-text', accentColor);
     root.style.setProperty('--dp-accent-active', `color-mix(in srgb, ${accentColor} 65%, ${MOTTU.neutral.black})`);
     root.style.setProperty('--dp-accent-fg-active', MOTTU.neutral.white);

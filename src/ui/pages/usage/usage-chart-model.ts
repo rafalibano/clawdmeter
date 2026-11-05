@@ -5,19 +5,35 @@ import {
   type Forecast,
   type UsagePoint,
   type UsageRange,
+  type UsageWindowKind,
 } from '../../../domain/usage';
 
 export const FUTURE_SHARE = 0.15;
 
 export type ChartPoint = [at: number, value: number];
 
+export interface WindowInput {
+  kind: UsageWindowKind;
+  label: string;
+  points: readonly UsagePoint[];
+  forecast: Forecast;
+  resetsAt: number | null;
+}
+
+export interface WindowSeries {
+  kind: UsageWindowKind;
+  label: string;
+  points: ChartPoint[];
+  trend: ChartPoint[] | null;
+  resetsAt: number | null;
+}
+
 export interface UsageChartModel {
   now: number;
   xMin: number;
   xMax: number;
   rangeMs: number;
-  series: ChartPoint[];
-  trend: ChartPoint[] | null;
+  windows: WindowSeries[];
 }
 
 function trendPoints(forecast: Forecast, xMax: number): ChartPoint[] | null {
@@ -32,19 +48,19 @@ function trendPoints(forecast: Forecast, xMax: number): ChartPoint[] | null {
   ];
 }
 
-export function buildChartModel(
-  points: readonly UsagePoint[],
-  forecast: Forecast,
-  range: UsageRange,
-  now: number,
-): UsageChartModel {
+export function buildChartModel(inputs: readonly WindowInput[], range: UsageRange, now: number): UsageChartModel {
   const xMax = now + range.durationMs * FUTURE_SHARE;
   return {
     now,
     xMin: now - range.durationMs,
     xMax,
     rangeMs: range.durationMs,
-    series: pointsInRange(points, range, now).map((point) => [point.at, point.utilization]),
-    trend: trendPoints(forecast, xMax),
+    windows: inputs.map((input) => ({
+      kind: input.kind,
+      label: input.label,
+      points: pointsInRange(input.points, range, now).map((point): ChartPoint => [point.at, point.utilization]),
+      trend: trendPoints(input.forecast, xMax),
+      resetsAt: input.resetsAt,
+    })),
   };
 }

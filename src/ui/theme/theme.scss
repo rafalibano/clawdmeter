@@ -1,31 +1,38 @@
 @use './mottu-tokens';
 
 :root {
-  color-scheme: light;
   --dp-font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --dp-accent: var(--me-primary-base);
   --dp-accent-fg: var(--me-neutral-extra-dark);
   --dp-accent-active: var(--me-primary-dark);
   --dp-accent-fg-active: var(--me-neutral-white);
   --dp-accent-text: var(--me-primary-50);
-  --dp-bg: var(--me-neutral-100);
+  --dp-bg: var(--me-neutral-99);
   --dp-fg: var(--me-neutral-10);
   --dp-muted: var(--me-neutral-40);
-  --dp-border: var(--me-neutral-90);
-  --dp-surface: var(--me-neutral-99);
+  --dp-border: rgba(0, 0, 0, 0.06);
+  --dp-control-border: rgba(0, 0, 0, 0.14);
+  --dp-edge: rgba(0, 0, 0, 0.08);
+  --dp-hover: rgba(0, 0, 0, 0.05);
+  --dp-track: rgba(0, 0, 0, 0.08);
+  --dp-surface: var(--me-neutral-100);
+  --dp-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   --dp-ok: var(--me-primary-base);
   --dp-ok-text: var(--me-primary-50);
   --dp-warning: var(--me-warning-base);
   --dp-warning-text: var(--me-warning-50);
   --dp-danger: var(--me-alert-base);
   --dp-danger-text: var(--me-alert-40);
+  --dp-series-five: var(--me-primary-base);
+  --dp-series-seven: var(--me-info-base);
   --dp-info: var(--me-info-base);
   --dp-info-text: var(--me-info-50);
   --dp-sla-attention: #ffc700;
   --dp-sla-fg: var(--me-neutral-extra-dark);
-  --dp-radius-btn: var(--me-radius-2);
-  --dp-radius-sm: var(--me-radius-4);
-  --dp-radius-md: var(--me-radius-8);
+  --dp-radius-btn: var(--me-radius-8);
+  --dp-radius-sm: var(--me-radius-8);
+  --dp-radius-md: 12px;
+  --dp-radius-window: 12px;
   --dp-radius-pill: var(--me-radius-1000);
   --dp-shadow: var(--me-shadow-2);
   --dp-popover-width: 380px;
@@ -33,13 +40,19 @@
 }
 
 :root[data-theme='dark'] {
-  color-scheme: dark;
   --dp-accent-text: var(--me-primary-alt);
-  --dp-bg: var(--me-background-change);
-  --dp-fg: var(--me-text-change);
-  --dp-muted: var(--me-neutral-60);
-  --dp-border: var(--me-neutral-20);
-  --dp-surface: var(--me-component-change);
+  --dp-series-five: var(--me-primary-alt);
+  --dp-series-seven: var(--me-info-70);
+  --dp-bg: #1a1a1a;
+  --dp-fg: var(--me-neutral-95);
+  --dp-muted: var(--me-neutral-70);
+  --dp-border: rgba(255, 255, 255, 0.06);
+  --dp-control-border: rgba(255, 255, 255, 0.14);
+  --dp-edge: rgba(255, 255, 255, 0.08);
+  --dp-hover: rgba(255, 255, 255, 0.06);
+  --dp-track: rgba(255, 255, 255, 0.08);
+  --dp-surface: #202022;
+  --dp-card-shadow: none;
   --dp-ok-text: var(--me-primary-alt);
   --dp-warning-text: var(--me-warning-base);
   --dp-danger-text: var(--me-alert-base);

@@ -34,7 +34,7 @@ const CLOCK_TICK_MS = 1_000;
       grid-template-columns: 92px 1fr auto;
       align-items: center;
       gap: 8px;
-      padding: 8px 10px;
+      padding: 10px 12px;
       border: 1px solid var(--dp-border);
       border-radius: var(--dp-radius-md);
       background: var(--dp-surface);
@@ -75,7 +75,7 @@ const CLOCK_TICK_MS = 1_000;
     }
     .btn {
       padding: 4px 10px;
-      border: 1px solid var(--dp-border);
+      border: 1px solid var(--dp-control-border);
       border-radius: var(--dp-radius-btn);
       background: var(--dp-accent);
       color: var(--dp-accent-fg);

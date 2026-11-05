@@ -1,21 +1,7 @@
-<div class="toolbar" role="group" aria-label="Período">
-  @for (range of ranges; track range.id) {
-    <button
-      type="button"
-      class="range"
-      [class.active]="range.id === rangeId()"
-      [attr.aria-pressed]="range.id === rangeId()"
-      (click)="select(range.id)"
-    >
-      {{ range.label }}
-    </button>
-  }
-</div>
-
 @if (error(); as failure) {
   <section class="card error" role="alert">
     <p class="error-message">{{ failure.message }}</p>
-    @if (cards()) {
+    @if (view()) {
       <p class="stale">Mostrando os últimos dados carregados.</p>
     }
     @if (failure.actions.length > 0) {
@@ -30,22 +16,48 @@
   </section>
 }
 
-@if (cards(); as windows) {
-  @for (card of windows; track card.kind) {
-    <section class="card" [attr.data-window]="card.kind">
-      <header class="head">
-        <h2 class="title">{{ card.title }}</h2>
-        <span class="current">{{ card.current }}</span>
-      </header>
-      <p class="reset">{{ card.reset }}</p>
-      @if (card.hasData) {
-        <div class="chart" echarts [options]="card.option" [autoResize]="true"></div>
-        <p class="forecast" [attr.data-tone]="card.tone">{{ card.forecast }}</p>
-      }
-    </section>
-  }
-}
+@if (view(); as usage) {
+  <section class="card bars">
+    @for (bar of usage.bars; track bar.kind) {
+      <div class="bar" [attr.data-window]="bar.kind">
+        <div class="bar-head">
+          <span class="bar-label">{{ bar.label }}</span>
+          <span class="bar-percent">{{ bar.percent }}</span>
+        </div>
+        <div class="track">
+          <div class="fill" [style.width.%]="bar.fill"></div>
+          @if (bar.projection; as projection) {
+            <div class="projection" [class.danger]="projection.exhausts" [style.left.%]="projection.from" [style.width.%]="projection.to - projection.from"></div>
+            <div class="tick" [class.danger]="projection.exhausts" [style.left.%]="projection.to"></div>
+          }
+        </div>
+        <p class="reset">{{ bar.reset }}</p>
+      </div>
+    }
+  </section>
 
-@if (!cards() && !error()) {
+  <div class="toolbar" role="group" aria-label="Período">
+    @for (range of ranges; track range.id) {
+      <button
+        type="button"
+        class="range"
+        [class.active]="range.id === rangeId()"
+        [attr.aria-pressed]="range.id === rangeId()"
+        (click)="select(range.id)"
+      >
+        {{ range.label }}
+      </button>
+    }
+  </div>
+
+  <section class="card chart-card">
+    <div class="chart" echarts [options]="usage.option" [autoResize]="true"></div>
+    <div class="legend" aria-hidden="true">
+      @for (bar of usage.bars; track bar.kind) {
+        <span class="legend-item" [attr.data-window]="bar.kind">{{ bar.label }}</span>
+      }
+    </div>
+  </section>
+} @else if (!error()) {
   <section class="card">Carregando…</section>
 }

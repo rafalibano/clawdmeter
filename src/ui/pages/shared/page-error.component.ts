@@ -21,7 +21,7 @@ import { PageProblemFacade } from './page-problem.facade';
     }
     .btn {
       padding: 4px 10px;
-      border: 1px solid var(--dp-border);
+      border: 1px solid var(--dp-control-border);
       border-radius: var(--dp-radius-btn);
       background: var(--dp-surface);
       color: inherit;

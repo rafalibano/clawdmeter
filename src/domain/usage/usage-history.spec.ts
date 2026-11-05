@@ -61,8 +61,8 @@ describe('serialização', () => {
 });
 
 describe('seletor de período', () => {
-  it('oferece 1h, 12h, 1d, 7d e 30d', () => {
-    expect(USAGE_RANGES.map((range) => range.id)).toEqual(['1h', '12h', '1d', '7d', '30d']);
+  it('oferece 1h, 6h, 1d, 7d e 30d', () => {
+    expect(USAGE_RANGES.map((range) => range.id)).toEqual(['1h', '6h', '1d', '7d', '30d']);
   });
 
   it('id desconhecido cai no primeiro período', () => {
