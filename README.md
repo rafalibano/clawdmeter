@@ -347,6 +347,10 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 2. O SmartScreen avisa "O Windows protegeu seu computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 3. O ícone aparece na área de notificação (pode estar em "Mostrar ícones ocultos"). O app não aparece na barra de tarefas. Clique com o botão direito no ícone para sair.
 
+## Backlog
+
+- **Atualização automática.** Criar o repositório no GitHub (Mottu-ops), publicar cada versão como Release pelo `release.yml` (.dmg e .msi) e fazer o app consultar a última Release com o login do GitHub que ele já tem. Ao detectar versão mais nova, mostrar um bloco "Nova versão X · Atualizar" que baixa, confere a assinatura (`tauri-plugin-updater` com chave própria) e instala.
+
 ## Pendências de segurança (review de Rust)
 
 - **Dívida: tokens do GitHub e do Graph ainda cruzam o IPC.** O token do Claude já não sai do Rust (`claude_usage_fetch`), mas `secret_get` ainda devolve `github.token` e `microsoft.refresh-token` ao webview, que faz as chamadas ao GitHub e ao Microsoft Graph pelo `tauri-plugin-http`. Mover essas chamadas para o Rust (como foi feito no usage) é o passo seguinte; até lá `secret_*` só aceita essas duas chaves.
