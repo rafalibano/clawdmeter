@@ -7,6 +7,7 @@ import { PollingScheduler } from './scheduler/polling-scheduler';
 import type { Skills } from './skills';
 import { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from './use-cases';
 import { JoinMeeting } from './use-cases/calendar';
+import { OpenGitHubUrl } from './use-cases/pull-requests';
 
 export interface Application {
   clock: Clock;
@@ -14,6 +15,7 @@ export interface Application {
   scheduler: PollingScheduler;
   connections: Connections;
   joinMeeting: JoinMeeting;
+  openGitHubUrl: OpenGitHubUrl;
   skills: Skills;
   getSettings: GetSettings;
   getSettingsStatus: GetSettingsStatus;
@@ -47,6 +49,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     scheduler: new PollingScheduler(registry, deps.clock),
     connections,
     joinMeeting: new JoinMeeting(deps.connectionAdapters.urlOpener),
+    openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),

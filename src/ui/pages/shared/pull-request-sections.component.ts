@@ -159,7 +159,7 @@ import { badgesFor, type PullRequestBadge } from './pull-request-view';
   `,
 })
 export class PullRequestSectionsComponent {
-  private readonly connections = inject(APPLICATION).connections;
+  private readonly openGitHubUrl = inject(APPLICATION).openGitHubUrl;
   private readonly toggled = signal<ReadonlySet<string>>(new Set());
 
   readonly sections = input.required<readonly PullRequestSection[]>();
@@ -197,7 +197,7 @@ export class PullRequestSectionsComponent {
   }
 
   protected openUrl(url: string): void {
-    void this.connections.openUrl.execute(url);
+    void this.openGitHubUrl.execute(url).catch(() => undefined);
   }
 
   private key(section: PullRequestSection, group: PullRequestGroup): string {

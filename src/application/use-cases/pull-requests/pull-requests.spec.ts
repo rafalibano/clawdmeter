@@ -4,10 +4,11 @@ import type { PullRequest } from '../../../domain/pull-requests';
 import { GitHubTokenResolver } from '../../connections/github-token-resolver';
 import { createPullRequests, type PullRequests } from '../../pull-requests';
 import { FakeClock } from '../../testing/fake-clock';
-import { FakeConnectionPrefsStore, FakeGitHubCli, FakeSecretStore } from '../../testing/fake-connection-adapters';
+import { FakeConnectionPrefsStore, FakeGitHubCli, FakeSecretStore, FakeUrlOpener } from '../../testing/fake-connection-adapters';
 import { FakePullRequestGateway } from '../../testing/fake-pull-request-gateway';
 import { SECRET_KEYS } from '../../ports';
 import { PULL_REQUEST_LIMIT } from './load-my-pull-requests';
+import { OpenGitHubUrl } from './open-github-url';
 
 function pr(id: string, repo: string, overrides: Partial<PullRequest> = {}): PullRequest {
   return {
@@ -120,5 +121,29 @@ describe('Reviews', () => {
   it('sem resultados devolve seções vazias', async () => {
     const data = await features.loadReviews.execute();
     expect(data.sections.map((section) => section.groups)).toEqual([[], []]);
+  });
+});
+
+describe('OpenGitHubUrl', () => {
+  it('abre links https de github.com', async () => {
+    const opener = new FakeUrlOpener();
+    await new OpenGitHubUrl(opener).execute('https://github.com/acme/api/pull/1');
+    await new OpenGitHubUrl(opener).execute('https://github.com/pulls?q=a%3Ab');
+    expect(opener.opened).toEqual(['https://github.com/acme/api/pull/1', 'https://github.com/pulls?q=a%3Ab']);
+  });
+
+  it.each([
+    'http://github.com/acme/api/pull/1',
+    'https://evil.example/acme/api/pull/1',
+    'https://github.com.evil.example/x',
+    'https://user@github.com/x',
+    'https://github.com:8443/x',
+    'javascript:alert(1)',
+    'file:///etc/passwd',
+    'nao-e-url',
+  ])('recusa %s sem abrir nada', async (url) => {
+    const opener = new FakeUrlOpener();
+    await expect(new OpenGitHubUrl(opener).execute(url)).rejects.toThrow('inválido');
+    expect(opener.opened).toEqual([]);
   });
 });
