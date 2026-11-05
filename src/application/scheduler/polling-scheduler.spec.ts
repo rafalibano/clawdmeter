@@ -153,6 +153,25 @@ describe('PollingScheduler', () => {
     expect(updates.map((update) => (update.status === 'ok' ? update.data : update.error))).toEqual(['antiga', 'nova']);
   });
 
+  it('nenhum refresh se perde entre o fim do drain e a liberação do inflight', async () => {
+    for (let offset = 0; offset <= 16; offset += 1) {
+      const started: number[] = [];
+      let calls = 0;
+      const load = vi.fn(async () => {
+        started.push(calls);
+        return 'ok';
+      });
+      const scheduler = new PollingScheduler(new PageRegistry([fakePage({ id: 'gap', pollIntervalMs: null, load })]), clock);
+      scheduler.sync(createDefaultSettings());
+      for (let tick = 0; tick < offset; tick += 1) await Promise.resolve();
+      calls += 1;
+      void scheduler.refresh('gap');
+      await flushPromises();
+      expect(started.at(-1), `refresh após ${offset} ticks`).toBe(1);
+      scheduler.stopAll();
+    }
+  });
+
   it('vários refreshes durante a carga viram uma única recarga', async () => {
     const releases: Array<(value: string) => void> = [];
     const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));

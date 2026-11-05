@@ -71,4 +71,17 @@ describe('isStale', () => {
     expect(isStale(snapshot([]), day.endsAt)).toBe(false);
     expect(isStale(snapshot([]), day.endsAt + 1_000)).toBe(true);
   });
+
+  it('às 23:59:59.5 ainda é o mesmo dia e na virada da meia-noite vence', () => {
+    const lastInstant = Date.parse('2026-11-06T02:59:59.500Z');
+    const midnight = Date.parse('2026-11-06T03:00:00.000Z');
+    expect(day.startsAt).toBe(Date.parse('2026-11-05T03:00:00.000Z'));
+    expect(isStale(snapshot([]), lastInstant)).toBe(false);
+    expect(isStale(snapshot([]), midnight)).toBe(true);
+    expect(isStale(snapshot([]), midnight - 1)).toBe(false);
+  });
+
+  it('depois de uma noite inteira o snapshot do dia anterior vence', () => {
+    expect(isStale(snapshot([]), Date.parse('2026-11-07T15:00:00Z'))).toBe(true);
+  });
 });

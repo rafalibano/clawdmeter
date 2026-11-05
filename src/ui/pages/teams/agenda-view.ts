@@ -1,5 +1,5 @@
 import type { AgendaSnapshot } from '../../../application/use-cases/calendar';
-import { buildAgenda, formatClock, formatCountdown, type AgendaItem, type Meeting, type NextMeeting } from '../../../domain/calendar';
+import { buildAgenda, dayBounds, formatClock, formatCountdown, type AgendaItem, type Meeting, type NextMeeting } from '../../../domain/calendar';
 
 export type RowTone = 'now' | 'upcoming' | 'past' | 'cancelled';
 
@@ -65,5 +65,5 @@ export function toAgendaView(snapshot: AgendaSnapshot, now: number): AgendaView 
 }
 
 export function isStale(snapshot: AgendaSnapshot, now: number): boolean {
-  return now > snapshot.day.endsAt;
+  return dayBounds(now, snapshot.timeZone).startsAt !== snapshot.day.startsAt;
 }

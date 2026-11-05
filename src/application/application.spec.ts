@@ -34,4 +34,29 @@ describe('createApplication', () => {
     expect(app.registry.all().map((page) => page.id)).toEqual(['b']);
     expect(received).toBe(app.connections);
   });
+
+  it('aceita skills prontas ou uma fábrica que recebe as conexões, e repassa as skills às páginas', () => {
+    const clock = new FakeClock();
+    const ready = createFakeSkills(clock);
+    const direct = createApplication({ ...deps(), skills: ready, pages: [] });
+    expect(direct.skills).toBe(ready);
+
+    let receivedConnections: unknown;
+    let receivedSkills: unknown;
+    const built = createFakeSkills(clock);
+    const app = createApplication({
+      ...deps(),
+      skills: (context) => {
+        receivedConnections = context.connections;
+        return built;
+      },
+      pages: (context) => {
+        receivedSkills = context.skills;
+        return [];
+      },
+    });
+    expect(receivedConnections).toBe(app.connections);
+    expect(receivedSkills).toBe(built);
+    expect(app.skills).toBe(built);
+  });
 });

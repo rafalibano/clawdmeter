@@ -72,18 +72,20 @@ export class PollingScheduler {
       if (queueIfBusy) run.pending = true;
       return run.inflight;
     }
-    const inflight = this.drain(page, run).finally(() => {
-      run.inflight = null;
-    });
+    const inflight = this.drain(page, run);
     run.inflight = inflight;
     return inflight;
   }
 
   private async drain(page: PageModule, run: Run): Promise<void> {
-    do {
-      run.pending = false;
-      await this.load(page, run);
-    } while (run.pending && this.runs.get(page.id) === run);
+    try {
+      do {
+        run.pending = false;
+        await this.load(page, run);
+      } while (run.pending && this.runs.get(page.id) === run);
+    } finally {
+      run.inflight = null;
+    }
   }
 
   private async load(page: PageModule, run: Run): Promise<void> {
