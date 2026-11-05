@@ -1,5 +1,7 @@
 mod commands;
 mod platform;
+#[cfg(any(target_os = "macos", test))]
+mod popover_geometry;
 mod tray;
 pub mod usage_icon;
 
@@ -12,6 +14,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(tray::on_shortcut)
+                .build(),
+        )
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .manage(ProcessRegistry::default())
@@ -39,6 +46,7 @@ pub fn run() {
             platform::configure_app(app);
             tray::create(app.handle())?;
             tray::prepare_popover(app.handle());
+            tray::register_shortcut(app.handle());
             Ok(())
         })
         .on_window_event(tray::on_window_event)

@@ -4,8 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Window, WindowEvent};
-use tauri_plugin_positioner::{Position, WindowExt};
+use tauri::{AppHandle, Manager, Rect, Window, WindowEvent};
+use tauri_plugin_global_shortcut::{
+    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutEvent, ShortcutState,
+};
 
 use crate::platform::{self, ClickAction};
 use crate::usage_icon;
@@ -36,7 +38,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     }
 }
 
-fn toggle_popover(app: &AppHandle) {
+fn toggle_popover(app: &AppHandle, icon: Option<Rect>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };
@@ -48,10 +50,24 @@ fn toggle_popover(app: &AppHandle) {
         }
         ClickAction::Show => {
             platform::prepare_popover(&window);
-            let _ = window.move_window_constrained(Position::TrayCenter);
+            platform::position_popover(&window, icon);
             platform::show_popover(&window);
         }
         ClickAction::Ignore => {}
+    }
+}
+
+fn popover_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD)
+}
+
+pub fn register_shortcut(app: &AppHandle) {
+    let _ = app.global_shortcut().register(popover_shortcut());
+}
+
+pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state() == ShortcutState::Pressed && *shortcut == popover_shortcut() {
+        toggle_popover(app, None);
     }
 }
 
@@ -89,10 +105,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                rect,
                 ..
             } = event
             {
-                toggle_popover(tray.app_handle());
+                toggle_popover(tray.app_handle(), Some(rect));
             }
         })
         .build(app)?;
