@@ -129,6 +129,25 @@
   user-select: text;
 }
 
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dp-accent-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pat .link {
+  align-self: center;
+}
+
 .pat-input {
   flex: 1;
   min-width: 0;

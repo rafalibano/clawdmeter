@@ -1,4 +1,4 @@
-import type { GitHubAccount } from '../../domain/connections';
+import type { GitHubAccount, GitHubCliMissing } from '../../domain/connections';
 
 export interface DeviceCode {
   deviceCode: string;
@@ -8,8 +8,10 @@ export interface DeviceCode {
   expiresInSeconds: number;
 }
 
+export type GitHubCliToken = { token: string } | { missing: GitHubCliMissing };
+
 export interface GitHubCliTokenSource {
-  token(): Promise<string | null>;
+  token(): Promise<GitHubCliToken>;
 }
 
 export interface GitHubDeviceFlow {

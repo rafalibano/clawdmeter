@@ -7,7 +7,9 @@ export class GitHubTokenResolver {
     private readonly secrets: SecretStore,
   ) {}
 
-  resolve(method: GitHubAuthMethod): Promise<string | null> {
-    return method === 'gh-cli' ? this.cli.token() : this.secrets.get(SECRET_KEYS.githubToken);
+  async resolve(method: GitHubAuthMethod): Promise<string | null> {
+    if (method !== 'gh-cli') return this.secrets.get(SECRET_KEYS.githubToken);
+    const result = await this.cli.token();
+    return 'token' in result ? result.token : null;
   }
 }

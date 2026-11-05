@@ -7,6 +7,7 @@ import type {
   ConnectionPrefsStore,
   DeviceCode,
   GitHubAccountGateway,
+  GitHubCliToken,
   GitHubCliTokenSource,
   GitHubDeviceFlow,
   MicrosoftAuthorizer,
@@ -22,6 +23,7 @@ import type {
 import { dayBounds, type DayBounds, type Meeting } from '../../domain/calendar';
 import {
   CLAUDE_CODE_INSTALL_URL,
+  GITHUB_CLI_INSTALL_URL,
   ConnectionProblemError,
   GITHUB_ORG_SSO_URL,
   GITHUB_ORG_URL,
@@ -87,9 +89,10 @@ class DemoClaudeCredentials implements ClaudeCredentialSource {
 class DemoGitHubCli implements GitHubCliTokenSource {
   constructor(private readonly world: DemoWorld) {}
 
-  async token(): Promise<string | null> {
+  async token(): Promise<GitHubCliToken> {
     await pause(DEMO_LATENCY_MS);
-    return this.world.github.ghLoggedIn ? 'demo-gh-token' : null;
+    const { cli } = this.world.github;
+    return cli === 'logged-in' ? { token: 'demo-gh-token' } : { missing: cli };
   }
 }
 
@@ -222,6 +225,7 @@ class DemoUrlOpener implements UrlOpener {
       this.world.claude.missing = false;
       this.world.skills.claudeMissing = false;
     }
+    if (url === GITHUB_CLI_INSTALL_URL && this.world.github.cli === 'not-installed') this.world.github.cli = 'not-logged-in';
     if (url === GITHUB_ORG_SSO_URL || url === GITHUB_ORG_URL) this.world.github.orgAccess = 'ok';
   }
 }
@@ -233,7 +237,10 @@ class DemoTerminal implements TerminalLauncher {
     const line = command.args.join(' ');
     if (command.program === 'claude' && line === '/login') this.world.claude.expired = false;
     if (command.program === 'claude' && line === '/mcp') this.world.skills.mcpNeedsAuth = false;
-    if (command.program === 'gh' && line.startsWith('auth login')) this.world.github.unauthorized = false;
+    if (command.program === 'gh' && line.startsWith('auth login')) {
+      this.world.github.unauthorized = false;
+      this.world.github.cli = 'logged-in';
+    }
     if (command.program === 'gh' && line.startsWith('auth refresh')) this.world.github.missingScope = false;
   }
 }

@@ -2,6 +2,7 @@ import {
   createDefaultConnectionPrefs,
   type ConnectionPrefs,
   type GitHubAccount,
+  type GitHubCliMissing,
 } from '../../domain/connections';
 import type { ConnectionAdapters } from '../connections/connection-adapters';
 import type {
@@ -10,6 +11,7 @@ import type {
   ConnectionPrefsStore,
   DeviceCode,
   GitHubAccountGateway,
+  GitHubCliToken,
   GitHubCliTokenSource,
   GitHubDeviceFlow,
   MicrosoftAuthorizer,
@@ -70,10 +72,11 @@ export class FakeClaudeCredentialSource implements ClaudeCredentialSource {
 }
 
 export class FakeGitHubCli implements GitHubCliTokenSource {
-  outcome: string | null | Error = 'gh-token';
+  outcome: string | { missing: GitHubCliMissing } | Error = 'gh-token';
 
-  async token(): Promise<string | null> {
-    return resolve(this.outcome);
+  async token(): Promise<GitHubCliToken> {
+    const outcome = resolve(this.outcome);
+    return typeof outcome === 'string' ? { token: outcome } : outcome;
   }
 }
 

@@ -101,12 +101,56 @@ describe('GitHub', () => {
     expect(world.githubAccounts.inspected).toEqual(['gh-token']);
   });
 
-  it('sem login no gh, oferece device flow ou PAT', async () => {
-    world.githubCli.outcome = null;
+  it('gh instalado sem login: dica de conectar e botão "Conectar GitHub CLI"', async () => {
+    world.githubCli.outcome = { missing: 'not-logged-in' };
     const status = await connections.connect.execute('github');
-    expect(status).toMatchObject({ state: 'disconnected' });
-    expect(status.state === 'disconnected' && status.hint).toContain('código do GitHub');
+    expect(status).toEqual({
+      state: 'disconnected',
+      hint: 'Conecte o GitHub CLI ou entre pelo navegador com um código.',
+      cli: 'not-logged-in',
+    });
+    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['Conectar GitHub CLI']);
     expect(world.prefs.current.github.method).toBeNull();
+  });
+
+  it('gh não instalado: dica de instalar e botão "Instalar GitHub CLI"', async () => {
+    world.githubCli.outcome = { missing: 'not-installed' };
+    const status = await connections.connect.execute('github');
+    expect(status).toEqual({
+      state: 'disconnected',
+      hint: 'GitHub CLI não encontrado. Instale e conecte o GitHub CLI, ou entre pelo navegador com um código.',
+      cli: 'not-installed',
+    });
+    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['Instalar GitHub CLI']);
+  });
+
+  it('a verificação sem método mostra o motivo do gh já na abertura', async () => {
+    world.githubCli.outcome = { missing: 'not-installed' };
+    expect(await connections.check.execute('github')).toMatchObject({ state: 'disconnected', cli: 'not-installed' });
+    world.githubCli.outcome = { missing: 'not-logged-in' };
+    expect(await connections.check.execute('github')).toMatchObject({ state: 'disconnected', cli: 'not-logged-in' });
+    world.githubCli.outcome = new Error('timeout');
+    expect(await connections.check.execute('github')).toEqual({ state: 'disconnected' });
+  });
+
+  it('"Conectar GitHub CLI" abre o terminal com gh auth login e "Verificar de novo" conecta', async () => {
+    world.githubCli.outcome = { missing: 'not-logged-in' };
+    const opened = await runFix('github', 'connect-github-cli');
+    expect(world.terminal.commands).toEqual([{ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] }]);
+    expect(opened).toMatchObject({ state: 'disconnected', cli: 'login-opened' });
+    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['Conectar GitHub CLI', 'Verificar de novo']);
+    world.githubCli.outcome = 'gh-token';
+    expect(await connections.connect.execute('github')).toEqual({ state: 'connected', account: 'dev' });
+  });
+
+  it('"Instalar GitHub CLI" abre cli.github.com e depois pede para verificar de novo', async () => {
+    world.githubCli.outcome = { missing: 'not-installed' };
+    const opened = await runFix('github', 'install-github-cli');
+    expect(world.urls.opened).toEqual(['https://cli.github.com']);
+    expect(opened).toMatchObject({ state: 'disconnected', cli: 'install-opened' });
+    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['Instalar GitHub CLI', 'Verificar de novo']);
+    world.githubCli.outcome = { missing: 'not-logged-in' };
+    expect(await connections.connect.execute('github')).toMatchObject({ cli: 'not-logged-in' });
   });
 
   it('Device Flow abre a página de verificação, guarda o token no cofre e conecta', async () => {

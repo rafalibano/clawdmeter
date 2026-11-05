@@ -82,7 +82,7 @@ describe('PRs', () => {
   });
 
   it('token ausente no CLI vira github-unauthorized', async () => {
-    cli.outcome = null;
+    cli.outcome = { missing: 'not-logged-in' };
     await expect(features.loadMine.execute()).rejects.toMatchObject({ problem: 'github-unauthorized' });
   });
 

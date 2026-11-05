@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONNECTION_PROBLEMS, errorStatus } from '../../../domain/connections';
+import { CONNECTION_PROBLEMS, GITHUB_CLI_HINTS, errorStatus } from '../../../domain/connections';
 import { toRowView } from './connection-view';
 
 describe('toRowView', () => {
@@ -10,9 +10,38 @@ describe('toRowView', () => {
   });
 
   it('desconectado oferece Conectar e mostra a dica', () => {
-    const view = toRowView('github', { state: 'disconnected', hint: 'Use o código' });
-    expect(view).toMatchObject({ tone: 'idle', message: 'Use o código' });
+    const view = toRowView('microsoft', { state: 'disconnected', hint: 'Use o código' });
+    expect(view).toMatchObject({ tone: 'idle', message: 'Use o código', signInOptions: false });
     expect(view.actions.map((a) => a.label)).toEqual(['Conectar']);
+  });
+
+  it('GitHub sem gh instalado: Instalar GitHub CLI e as alternativas pelo navegador e token', () => {
+    const view = toRowView('github', {
+      state: 'disconnected',
+      hint: GITHUB_CLI_HINTS['not-installed'],
+      cli: 'not-installed',
+    });
+    expect(view.message).toBe(
+      'GitHub CLI não encontrado. Instale e conecte o GitHub CLI, ou entre pelo navegador com um código.',
+    );
+    expect(view.actions.map((a) => a.label)).toEqual(['Instalar GitHub CLI']);
+    expect(view.signInOptions).toBe(true);
+  });
+
+  it('GitHub com gh sem login: Conectar GitHub CLI e as alternativas', () => {
+    const view = toRowView('github', {
+      state: 'disconnected',
+      hint: GITHUB_CLI_HINTS['not-logged-in'],
+      cli: 'not-logged-in',
+    });
+    expect(view.message).toBe('Conecte o GitHub CLI ou entre pelo navegador com um código.');
+    expect(view.actions.map((a) => a.label)).toEqual(['Conectar GitHub CLI']);
+    expect(view.signInOptions).toBe(true);
+  });
+
+  it('GitHub conectado ou com erro não mostra as alternativas de entrada', () => {
+    expect(toRowView('github', { state: 'connected', account: 'dev' }).signInOptions).toBe(false);
+    expect(toRowView('github', errorStatus('github-unauthorized')).signInOptions).toBe(false);
   });
 
   it('verificando fica ocupado e sem botões', () => {

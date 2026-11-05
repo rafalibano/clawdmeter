@@ -11,15 +11,29 @@ const CONFIG: AuthConfig['github'] = { clientId: 'Iv1.test', scopes: ['repo', 'r
 describe('GhCliTokenSource', () => {
   it('lê o token de `gh auth token`', async () => {
     const { commands, calls } = createFakeCommands(() => ({ code: 0, stdout: 'gho_abc\n', stderr: '' }));
-    expect(await new GhCliTokenSource(new TauriProcessRunner(commands)).token()).toBe('gho_abc');
+    expect(await new GhCliTokenSource(new TauriProcessRunner(commands)).token()).toEqual({ token: 'gho_abc' });
     expect(calls[0]?.args).toMatchObject({ program: 'gh', args: ['auth', 'token', '-h', 'github.com'] });
   });
 
-  it('sem login ou sem gh devolve null', async () => {
+  it('gh instalado com erro de autenticação devolve not-logged-in', async () => {
     const loggedOut = createFakeCommands(() => ({ code: 1, stdout: '', stderr: 'not logged in' }));
-    expect(await new GhCliTokenSource(new TauriProcessRunner(loggedOut.commands)).token()).toBeNull();
+    expect(await new GhCliTokenSource(new TauriProcessRunner(loggedOut.commands)).token()).toEqual({
+      missing: 'not-logged-in',
+    });
+  });
+
+  it('saída vazia com código 0 também é not-logged-in', async () => {
+    const empty = createFakeCommands(() => ({ code: 0, stdout: '\n', stderr: '' }));
+    expect(await new GhCliTokenSource(new TauriProcessRunner(empty.commands)).token()).toEqual({
+      missing: 'not-logged-in',
+    });
+  });
+
+  it('program_not_found devolve not-installed', async () => {
     const missing = createFakeCommands(() => rejectWith('program_not_found', 'gh não encontrado'));
-    expect(await new GhCliTokenSource(new TauriProcessRunner(missing.commands)).token()).toBeNull();
+    expect(await new GhCliTokenSource(new TauriProcessRunner(missing.commands)).token()).toEqual({
+      missing: 'not-installed',
+    });
   });
 
   it('outros erros do processo sobem', async () => {

@@ -87,6 +87,22 @@ describe('cenário demo', () => {
     expect((await settle(login.check.execute('github'))).state).toBe('connected');
   });
 
+  it('?demo=github:gh-not-installed mostra o gh ausente e Instalar + Conectar leva ao login', async () => {
+    const connections = await checkAll('?demo=github:gh-not-installed');
+    expect(connections.monitor.get('github')).toMatchObject({ state: 'disconnected', cli: 'not-installed' });
+    await settle(connections.fix.execute('github', 'install-github-cli'));
+    expect(await settle(connections.connect.execute('github'))).toMatchObject({ cli: 'not-logged-in' });
+    await settle(connections.fix.execute('github', 'connect-github-cli'));
+    expect((await settle(connections.connect.execute('github'))).state).toBe('connected');
+  });
+
+  it('?demo=github:gh-not-logged-in mostra o gh sem login e Conectar GitHub CLI conecta', async () => {
+    const connections = await checkAll('?demo=github:gh-not-logged-in');
+    expect(connections.monitor.get('github')).toMatchObject({ state: 'disconnected', cli: 'not-logged-in' });
+    await settle(connections.fix.execute('github', 'connect-github-cli'));
+    expect((await settle(connections.connect.execute('github'))).state).toBe('connected');
+  });
+
   it('Microsoft vencida: refazer login conecta', async () => {
     const connections = await checkAll('?demo=microsoft:microsoft-expired');
     expect((await settle(connections.fix.execute('microsoft', 'relogin-microsoft'))).state).toBe('connected');

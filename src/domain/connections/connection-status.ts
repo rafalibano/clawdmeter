@@ -1,9 +1,10 @@
 import type { ConnectionProblem } from './connection-problem';
+import type { GitHubCliStep } from './github';
 
 export type ConnectionStatus =
   | { state: 'unknown' }
   | { state: 'checking' }
-  | { state: 'disconnected'; hint?: string }
+  | { state: 'disconnected'; hint?: string; cli?: GitHubCliStep }
   | { state: 'connected'; account?: string; detail?: string }
   | { state: 'error'; problem: ConnectionProblem; message?: string };
 

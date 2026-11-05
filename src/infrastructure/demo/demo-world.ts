@@ -3,13 +3,14 @@ import {
   createDefaultConnectionPrefs,
   type ConnectionId,
   type ConnectionPrefs,
+  type GitHubCliMissing,
   type GitHubOrgAccess,
 } from '../../domain/connections';
 import type { NotificationPermissionState } from '../../application/ports';
 
 export interface DemoWorld {
   claude: { missing: boolean; expired: boolean; keychainDenied: boolean };
-  github: { ghLoggedIn: boolean; unauthorized: boolean; missingScope: boolean; orgAccess: GitHubOrgAccess };
+  github: { cli: 'logged-in' | GitHubCliMissing; unauthorized: boolean; missingScope: boolean; orgAccess: GitHubOrgAccess };
   microsoft: { expired: boolean };
   skills: { claudeMissing: boolean; mcpNeedsAuth: boolean };
   notifications: NotificationPermissionState;
@@ -44,7 +45,7 @@ export function createDemoWorld(search: string): DemoWorld {
   const scenario = parseDemoScenario(search);
   const world: DemoWorld = {
     claude: { missing: false, expired: false, keychainDenied: false },
-    github: { ghLoggedIn: false, unauthorized: false, missingScope: false, orgAccess: 'ok' },
+    github: { cli: 'not-logged-in', unauthorized: false, missingScope: false, orgAccess: 'ok' },
     microsoft: { expired: false },
     skills: { claudeMissing: false, mcpNeedsAuth: false },
     notifications: 'granted',
@@ -59,8 +60,9 @@ export function createDemoWorld(search: string): DemoWorld {
   if (claude === 'disconnected') world.prefs.claude.enabled = false;
 
   const github = scenario.get('github');
-  if (github !== undefined && github !== 'disconnected') {
-    world.github.ghLoggedIn = true;
+  if (github === 'gh-not-installed') world.github.cli = 'not-installed';
+  else if (github !== undefined && github !== 'disconnected' && github !== 'gh-not-logged-in') {
+    world.github.cli = 'logged-in';
     world.prefs.github.method = 'gh-cli';
     world.github.unauthorized = github === 'github-unauthorized';
     world.github.missingScope = github === 'github-missing-scope';

@@ -57,6 +57,10 @@ export class ConnectionsFacade {
     }
   }
 
+  openUrl(url: string): Promise<void> {
+    return this.connections.openUrl.execute(url).catch(() => undefined);
+  }
+
   startGitHubDeviceFlow(): Promise<DeviceCode | null> {
     return this.connections.github.startDeviceFlow.execute();
   }

@@ -17,13 +17,13 @@
         <p class="message" [class.error]="row.tone === 'error'">{{ row.message }}</p>
       }
 
-      @if (row.actions.length > 0) {
+      @if (row.actions.length > 0 || row.signInOptions) {
         <div class="actions">
-          @for (action of row.actions; track action.kind) {
+          @for (action of row.actions; track action.kind + action.label) {
             <button
               type="button"
               class="btn"
-              [class.primary]="action.kind === 'fix' || action.kind === 'connect'"
+              [class.primary]="$first && (action.kind === 'fix' || action.kind === 'connect')"
               [class.danger]="action.kind === 'disconnect'"
               [attr.data-action]="action.kind"
               [disabled]="row.busy"
@@ -32,23 +32,25 @@
               {{ action.label }}
             </button>
           }
-        </div>
-      }
-
-      @if (row.id === 'github' && row.tone === 'idle' && !row.busy) {
-        <div class="actions">
-          <button type="button" class="btn" data-action="device-flow" [disabled]="githubStarting()" (click)="startDeviceFlow()">
-            Entrar com código
-          </button>
-          <button type="button" class="btn" data-action="pat" (click)="openPat()">Colar token</button>
+          @if (row.signInOptions && !row.busy) {
+            <button type="button" class="btn" data-action="device-flow" [disabled]="githubStarting()" (click)="startDeviceFlow()">
+              Entrar pelo navegador
+            </button>
+            <button type="button" class="link" data-action="pat" (click)="openPat()">Colar token</button>
+          }
         </div>
       }
 
       @if (row.id === 'github') {
         @if (deviceCode(); as code) {
           <div class="device">
-            <span class="muted">Digite este código em {{ code.verificationUri }}</span>
-            <code class="user-code">{{ code.userCode }}</code>
+            <span class="muted">Copie o código abaixo, cole na página do GitHub que abrimos e clique em Autorizar.</span>
+            <div class="code-row">
+              <code class="user-code">{{ code.userCode }}</code>
+              <button type="button" class="btn" data-action="copy-code" (click)="copyCode(code.userCode)">
+                {{ copied() ? 'Copiado' : 'Copiar' }}
+              </button>
+            </div>
             <span class="muted">Aguardando autorização…</span>
             <button type="button" class="btn" data-action="cancel-device-flow" (click)="cancelDeviceFlow()">
               Cancelar
@@ -59,6 +61,7 @@
           <form class="pat" (submit)="$event.preventDefault(); submitPat(patInput.value)">
             <input #patInput class="pat-input" type="password" autocomplete="off" placeholder="ghp_…" aria-label="Token de acesso pessoal" />
             <button type="submit" class="btn primary">Salvar</button>
+            <button type="button" class="link" data-action="create-token" (click)="createToken()">Criar token no GitHub</button>
           </form>
         }
       }

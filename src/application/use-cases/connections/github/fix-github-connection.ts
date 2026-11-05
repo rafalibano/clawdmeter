@@ -1,5 +1,6 @@
 import {
   ConnectionProblemError,
+  GITHUB_CLI_INSTALL_URL,
   GITHUB_ORG,
   GITHUB_ORG_SSO_URL,
   GITHUB_ORG_URL,
@@ -13,6 +14,7 @@ import type { StatusUseCase } from '../../../connections/connection-runner';
 import type { ConnectionPrefsStore, GitHubAccountGateway, TerminalLauncher, UrlOpener } from '../../../ports';
 
 const AFTER_TERMINAL = 'Conclua no Terminal e clique em "Verificar de novo".';
+const AFTER_INSTALL = 'Instale o GitHub CLI e clique em "Verificar de novo".';
 const AFTER_RESET = 'Entre de novo com o código do GitHub ou cole um novo token.';
 
 export class FixGitHubConnection implements StatusUseCase<FixAction> {
@@ -33,6 +35,12 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
         return this.check.execute();
       case 'relogin-github':
         return this.reauthenticate(['auth', 'login', '-h', 'github.com', '-w'], 'github-unauthorized');
+      case 'connect-github-cli':
+        await this.terminal.run({ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] });
+        return { state: 'disconnected', hint: AFTER_TERMINAL, cli: 'login-opened' };
+      case 'install-github-cli':
+        await this.urls.open(GITHUB_CLI_INSTALL_URL);
+        return { state: 'disconnected', hint: AFTER_INSTALL, cli: 'install-opened' };
       case 'regrant-scopes':
         return this.reauthenticate(
           ['auth', 'refresh', '-h', 'github.com', '-s', GITHUB_REQUIRED_SCOPES.join(',')],

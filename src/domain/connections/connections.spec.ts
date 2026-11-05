@@ -58,7 +58,8 @@ describe('actionsFor', () => {
   });
 
   it('desconectada oferece Conectar; checando não oferece nada', () => {
-    expect(actionsFor('github', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'Conectar' }]);
+    expect(actionsFor('microsoft', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'Conectar' }]);
+    expect(actionsFor('github', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'Conectar GitHub CLI' }]);
     expect(actionsFor('github', { state: 'checking' })).toEqual([]);
   });
 

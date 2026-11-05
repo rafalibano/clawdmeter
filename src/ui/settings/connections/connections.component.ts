@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked } from '@angular/core';
 import type { DeviceCode } from '../../../application/ports';
-import type { ConnectionAction, ConnectionId } from '../../../domain/connections';
+import { GITHUB_NEW_TOKEN_URL, type ConnectionAction, type ConnectionId } from '../../../domain/connections';
 import { ConnectionsFacade } from '../../shell/connections.facade';
 import type { ConnectionRowView } from './connection-view';
 
@@ -19,6 +19,7 @@ export class ConnectionsComponent {
   protected readonly deviceCode = signal<DeviceCode | null>(null);
   protected readonly patOpen = signal(false);
   protected readonly githubStarting = signal(false);
+  protected readonly copied = signal(false);
   private deviceFlow: AbortController | null = null;
 
   constructor() {
@@ -44,6 +45,7 @@ export class ConnectionsComponent {
     const flow = new AbortController();
     this.deviceFlow = flow;
     this.githubStarting.set(true);
+    this.copied.set(false);
     this.patOpen.set(false);
     try {
       const code = await this.facade.startGitHubDeviceFlow();
@@ -64,6 +66,19 @@ export class ConnectionsComponent {
     this.deviceFlow = null;
     this.deviceCode.set(null);
     this.githubStarting.set(false);
+  }
+
+  protected async copyCode(code: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(code);
+      this.copied.set(true);
+    } catch {
+      this.copied.set(false);
+    }
+  }
+
+  protected createToken(): void {
+    void this.facade.openUrl(GITHUB_NEW_TOKEN_URL);
   }
 
   protected openPat(): void {

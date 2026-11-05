@@ -6,6 +6,8 @@ export type FixAction =
   | 'relogin-claude'
   | 'install-claude-code'
   | 'relogin-github'
+  | 'connect-github-cli'
+  | 'install-github-cli'
   | 'regrant-scopes'
   | 'authorize-org'
   | 'relogin-microsoft'
@@ -34,6 +36,8 @@ export const FIX_LABELS: Record<FixAction, string> = {
   'relogin-claude': 'Refazer login do Claude',
   'install-claude-code': 'Instalar Claude Code',
   'relogin-github': 'Refazer login do GitHub',
+  'connect-github-cli': 'Conectar GitHub CLI',
+  'install-github-cli': 'Instalar GitHub CLI',
   'regrant-scopes': 'Refazer permissões',
   'authorize-org': 'Autorizar na org',
   'relogin-microsoft': 'Refazer login da Microsoft',

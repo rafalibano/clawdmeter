@@ -54,7 +54,7 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
   const tokens = new GitHubTokenResolver(adapters.githubCli, adapters.secrets);
 
   const checkClaude = new CheckClaudeConnection(adapters.prefs, adapters.claudeCredentials, clock);
-  const checkGitHub = new CheckGitHubConnection(adapters.prefs, tokens, adapters.githubAccounts);
+  const checkGitHub = new CheckGitHubConnection(adapters.prefs, tokens, adapters.githubAccounts, adapters.githubCli);
   const checkMicrosoft = new CheckMicrosoftConnection(adapters.prefs, adapters.microsoft);
   const checkNotifications = new CheckNotifications(adapters.notifications);
 

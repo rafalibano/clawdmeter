@@ -5,6 +5,14 @@ export type GitHubAuthMethod = 'gh-cli' | 'device-flow' | 'pat';
 export const GITHUB_ORG = 'Mottu-ops';
 export const GITHUB_REQUIRED_SCOPES: readonly string[] = ['repo', 'read:org'];
 
+export type GitHubCliMissing = 'not-installed' | 'not-logged-in';
+export type GitHubCliStep = GitHubCliMissing | 'install-opened' | 'login-opened';
+
+export const GITHUB_CLI_HINTS: Record<GitHubCliMissing, string> = {
+  'not-logged-in': 'Conecte o GitHub CLI ou entre pelo navegador com um código.',
+  'not-installed': 'GitHub CLI não encontrado. Instale e conecte o GitHub CLI, ou entre pelo navegador com um código.',
+};
+
 export type GitHubOrgAccess = 'ok' | 'sso-required' | 'not-member';
 
 export interface GitHubAccount {

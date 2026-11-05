@@ -16,6 +16,7 @@ export interface ConnectionRowView {
   summary: string;
   message: string | null;
   actions: ConnectionAction[];
+  signInOptions: boolean;
   busy: boolean;
 }
 
@@ -48,6 +49,7 @@ export function toRowView(id: ConnectionId, status: ConnectionStatus): Connectio
     label: connectionDefinition(id).label,
     ...describe(status),
     actions: actionsFor(id, status),
+    signInOptions: id === 'github' && (status.state === 'disconnected' || status.state === 'unknown'),
     busy: status.state === 'checking',
   };
 }
