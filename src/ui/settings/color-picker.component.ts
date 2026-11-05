@@ -12,6 +12,7 @@ export class ColorPickerComponent {
   readonly label = input.required<string>();
   readonly value = input.required<string>();
   readonly presets = input.required<readonly AccentPreset[]>();
+  readonly marked = input(true);
   readonly picked = output<string>();
 
   private readonly draft = signal<string | null>(null);

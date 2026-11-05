@@ -14,6 +14,8 @@ const ERROR_MESSAGES: Record<SettingsSessionError, string> = {
   load: 'Não foi possível ler as configurações. Usando os padrões.',
   save: 'Não foi possível salvar as configurações.',
   watch: 'Edições manuais em settings.json não serão recarregadas.',
+  invalid: 'settings.json inválido — ajustes não estão sendo salvos.',
+  future: 'settings.json de versão mais nova — ajustes não estão sendo salvos.',
 };
 
 @Component({

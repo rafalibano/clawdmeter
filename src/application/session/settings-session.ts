@@ -5,10 +5,10 @@ import {
   type AppSettings,
   type SettingsPatch,
 } from '../../domain/settings';
-import type { Unsubscribe } from '../ports';
-import type { GetSettings, UpdateSettings, WatchSettings } from '../use-cases';
+import { SettingsWriteBlockedError, type Unsubscribe } from '../ports';
+import type { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from '../use-cases';
 
-export type SettingsSessionError = 'load' | 'save' | 'watch';
+export type SettingsSessionError = 'load' | 'save' | 'watch' | 'invalid' | 'future';
 
 export interface SettingsSessionState {
   settings: AppSettings;
@@ -18,6 +18,7 @@ export interface SettingsSessionState {
 
 export interface SettingsSessionDeps {
   getSettings: Pick<GetSettings, 'execute'>;
+  getSettingsStatus: Pick<GetSettingsStatus, 'execute'>;
   updateSettings: Pick<UpdateSettings, 'execute'>;
   watchSettings: Pick<WatchSettings, 'execute'>;
 }
@@ -40,7 +41,8 @@ export class SettingsSession {
 
   async start(): Promise<void> {
     try {
-      this.emit({ settings: await this.deps.getSettings.execute(), ready: true, error: null });
+      const settings = await this.deps.getSettings.execute();
+      this.emit({ settings, ready: true, error: this.blockedError() });
     } catch {
       this.emit({ settings: createDefaultSettings(), ready: true, error: 'load' });
     }
@@ -71,26 +73,33 @@ export class SettingsSession {
 
   private receive(settings: AppSettings): void {
     if (this.flushing) return;
-    this.emit({ ...this.state, settings });
+    const blocked = this.blockedError();
+    const error = this.state.error === 'invalid' || this.state.error === 'future' ? blocked : this.state.error;
+    this.emit({ ...this.state, settings, error });
+  }
+
+  private blockedError(): SettingsSessionError | null {
+    const status = this.deps.getSettingsStatus.execute();
+    return status === 'ok' ? null : status;
   }
 
   private async flush(): Promise<void> {
     let saved: AppSettings | null = null;
-    let failed = false;
+    let failure: SettingsSessionError | null = null;
     try {
       while (this.pending.length > 0) {
         const batch = this.pending.splice(0).reduce(mergePatches);
         try {
           saved = await this.deps.updateSettings.execute(batch);
-        } catch {
-          failed = true;
+        } catch (error) {
+          failure = error instanceof SettingsWriteBlockedError ? error.reason : 'save';
         }
       }
     } finally {
       this.flushing = null;
     }
-    if (failed) this.emit({ ...this.state, error: 'save' });
-    else if (saved) this.emit({ ...this.state, settings: saved, error: null });
+    if (failure) this.emit({ ...this.state, error: failure });
+    else if (saved) this.emit({ ...this.state, settings: saved, error: this.state.error === 'save' ? null : this.state.error });
   }
 
   private emit(state: SettingsSessionState): void {

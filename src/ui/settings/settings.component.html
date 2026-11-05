@@ -31,6 +31,7 @@
       label="Fundo do popover"
       [presets]="backgroundPresets"
       [value]="backgroundValue()"
+      [marked]="settings().appearance.popoverBackground !== null"
       (picked)="setBackground($event)"
     />
     <button

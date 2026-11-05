@@ -120,6 +120,22 @@ describe('lint de arquitetura', () => {
       expect(rules).toContain('no-restricted-syntax');
     });
 
+    it.each([
+      ['const { innerWidth } = window', `const { innerWidth } = window;\nexport const w = innerWidth;\n`],
+      ['const { document } = globalThis', `const { document } = globalThis;\nexport const d = document;\n`],
+    ])('permite %s na ui', async (_name, code) => {
+      const rules = await rulesViolatedBy('src/ui/__fixture__.ts', code);
+      expect(rules).toEqual([]);
+    });
+
+    it('barra desestruturação de XMLHttpRequest e WebSocket de self', async () => {
+      const rules = await rulesViolatedBy(
+        'src/ui/__fixture__.ts',
+        `const { XMLHttpRequest, WebSocket: Socket } = self;\nexport const a = [XMLHttpRequest, Socket];\n`,
+      );
+      expect(rules).toContain('no-restricted-syntax');
+    });
+
     it('permite fetch na infrastructure, inclusive via globalThis', async () => {
       const rules = await rulesViolatedBy(
         'src/infrastructure/__fixture__.ts',
@@ -149,6 +165,14 @@ describe('lint de arquitetura', () => {
     ])('barra %s na ui', async (_name, code) => {
       const rules = await rulesViolatedBy('src/ui/__fixture__.ts', code);
       expect(rules).toContain('no-restricted-syntax');
+    });
+
+    it('permite desestruturar propriedade não relacionada a SO de navigator', async () => {
+      const rules = await rulesViolatedBy(
+        'src/ui/__fixture__.ts',
+        `const { language } = navigator;\nexport const l = language;\n`,
+      );
+      expect(rules).toEqual([]);
     });
 
     it('barra process.platform fora do composition-root', async () => {

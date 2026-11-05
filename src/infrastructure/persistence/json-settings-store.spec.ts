@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SettingsWriteBlockedError } from '../../application/ports';
 import { UpdateSettings } from '../../application/use-cases';
 import { createDefaultSettings, SCHEMA_VERSION } from '../../domain/settings';
 import type { JsonFile } from './json-file';
@@ -96,8 +97,13 @@ describe('JsonSettingsStore', () => {
     const broken = '{ "appearance": { "theme": "dark" ';
     const file = new MemoryFile(broken);
     const store = new JsonSettingsStore(file);
-    await new UpdateSettings(store).execute({ appearance: { theme: 'light' } });
-    await new UpdateSettings(store).execute({ enabledPages: { example: false } });
+    await expect(new UpdateSettings(store).execute({ appearance: { theme: 'light' } })).rejects.toBeInstanceOf(
+      SettingsWriteBlockedError,
+    );
+    await expect(new UpdateSettings(store).execute({ enabledPages: { example: false } })).rejects.toMatchObject({
+      reason: 'invalid',
+    });
+    expect(store.status()).toBe('invalid');
     expect(file.text).toBe(broken);
     expect(file.writes).toBe(0);
   });
@@ -108,9 +114,11 @@ describe('JsonSettingsStore', () => {
     const store = new JsonSettingsStore(file);
     await store.load();
     file.text = '{ quebrado';
-    const result = await new UpdateSettings(store).execute({ enabledPages: { example: false } });
-    expect(result.appearance.theme).toBe('dark');
-    expect(result.enabledPages).toEqual({ example: false });
+    await expect(new UpdateSettings(store).execute({ enabledPages: { example: false } })).rejects.toBeInstanceOf(
+      SettingsWriteBlockedError,
+    );
+    expect((await store.load()).appearance.theme).toBe('dark');
+    expect((await store.load()).enabledPages).toEqual({ example: false });
     expect(file.text).toBe('{ quebrado');
   });
 
@@ -136,6 +144,57 @@ describe('JsonSettingsStore', () => {
     expect(settings.appearance.theme).toBe('dark');
     expect(file.writes).toBe(0);
     expect(file.text).toBe(future);
+  });
+
+  it('expõe status invalid no load e volta a ok depois de corrigido e gravado', async () => {
+    const file = new MemoryFile('{ quebrado');
+    const store = new JsonSettingsStore(file);
+    await store.load();
+    expect(store.status()).toBe('invalid');
+    file.text = JSON.stringify(createDefaultSettings());
+    await store.save(createDefaultSettings());
+    expect(store.status()).toBe('ok');
+  });
+
+  it('recusa gravar sobre arquivo de versão futura e sinaliza future', async () => {
+    const future = `${JSON.stringify({ schemaVersion: SCHEMA_VERSION + 1, appearance: { theme: 'dark' }, novo: true })}\n`;
+    const file = new MemoryFile(future);
+    const store = new JsonSettingsStore(file);
+    await store.load();
+    expect(store.status()).toBe('future');
+    await expect(store.save({ ...createDefaultSettings(), enabledPages: { example: false } })).rejects.toMatchObject({
+      reason: 'future',
+    });
+    expect(file.writes).toBe(0);
+    expect(file.text).toBe(future);
+  });
+
+  it('status acompanha edição manual observada pelo watch', async () => {
+    const file = new MemoryFile(`${JSON.stringify(createDefaultSettings())}\n`);
+    const store = new JsonSettingsStore(file);
+    await store.load();
+    await store.watch(vi.fn());
+    file.editManually('{ "x": ');
+    await tick();
+    expect(store.status()).toBe('invalid');
+    file.editManually(JSON.stringify({ schemaVersion: SCHEMA_VERSION + 1 }));
+    await tick();
+    expect(store.status()).toBe('future');
+    file.editManually(JSON.stringify(createDefaultSettings()));
+    await tick();
+    expect(store.status()).toBe('ok');
+  });
+
+  it('poda ecos vencidos também ao gravar', async () => {
+    let now = 0;
+    const file = new MemoryFile();
+    const store = new JsonSettingsStore(file, { echoWindowMs: 100, now: () => now });
+    const first = { ...createDefaultSettings(), enabledPages: { a: false } };
+    await store.save(first);
+    now = 1_000;
+    await store.save({ ...createDefaultSettings(), enabledPages: { b: false } });
+    const writes = (store as unknown as { recentWrites: Map<string, number> }).recentWrites;
+    expect(writes.size).toBe(1);
   });
 
   it('persiste e relê o que foi salvo', async () => {

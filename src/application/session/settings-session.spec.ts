@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultSettings, type AppSettings } from '../../domain/settings';
 import { FakeSettingsStore } from '../testing/fake-settings-store';
-import { GetSettings, UpdateSettings, WatchSettings } from '../use-cases';
+import { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from '../use-cases';
 import { SettingsSession, type SettingsSessionDeps, type SettingsSessionState } from './settings-session';
 
 function depsFor(store: FakeSettingsStore): SettingsSessionDeps {
   return {
     getSettings: new GetSettings(store),
+    getSettingsStatus: new GetSettingsStatus(store),
     updateSettings: new UpdateSettings(store),
     watchSettings: new WatchSettings(store),
   };
@@ -131,6 +132,55 @@ describe('SettingsSession', () => {
     await session.start();
     expect(session.current.ready).toBe(true);
     expect(session.current.error).toBe('watch');
+  });
+
+  it('flush bem-sucedido limpa só o erro de gravação e mantém watch', async () => {
+    const store = new FakeSettingsStore();
+    store.watch = () => Promise.reject(new Error('sem watcher'));
+    const { session } = setup(store);
+    await session.start();
+    expect(session.current.error).toBe('watch');
+    session.update({ appearance: { theme: 'dark' } });
+    await session.idle();
+    expect(session.current.error).toBe('watch');
+  });
+
+  it('mantém o erro de load depois de uma gravação bem-sucedida', async () => {
+    const store = new FakeSettingsStore();
+    const originalLoad = store.load.bind(store);
+    store.load = () => Promise.reject(new Error('ilegível'));
+    const { session } = setup(store);
+    await session.start();
+    store.load = originalLoad;
+    session.update({ appearance: { theme: 'dark' } });
+    await session.idle();
+    expect(session.current.error).toBe('load');
+  });
+
+  it('expõe settings.json inválido no start e ao tentar gravar', async () => {
+    const store = new FakeSettingsStore();
+    store.fileStatus = 'invalid';
+    const { session } = setup(store);
+    await session.start();
+    expect(session.current.error).toBe('invalid');
+    session.update({ appearance: { theme: 'dark' } });
+    await session.idle();
+    expect(session.current.error).toBe('invalid');
+    expect(store.saved).toHaveLength(0);
+  });
+
+  it('expõe versão futura ao falhar a gravação e limpa quando o arquivo volta a ser válido', async () => {
+    const store = new FakeSettingsStore();
+    const { session } = setup(store);
+    await session.start();
+    expect(session.current.error).toBeNull();
+    store.fileStatus = 'future';
+    session.update({ appearance: { theme: 'dark' } });
+    await session.idle();
+    expect(session.current.error).toBe('future');
+    store.fileStatus = 'ok';
+    store.emitExternalChange(createDefaultSettings());
+    expect(session.current.error).toBeNull();
   });
 
   it('dispose cancela a observação', async () => {

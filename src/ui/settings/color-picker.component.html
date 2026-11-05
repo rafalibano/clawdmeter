@@ -3,10 +3,10 @@
     <button
       type="button"
       class="swatch"
-      [class.selected]="value() === preset.color"
+      [class.selected]="marked() && value() === preset.color"
       [style.background]="preset.color"
       [attr.aria-label]="preset.name"
-      [attr.aria-pressed]="value() === preset.color"
+      [attr.aria-pressed]="marked() && value() === preset.color"
       [title]="preset.name"
       (click)="pick(preset.color)"
     ></button>

@@ -1,5 +1,16 @@
-import type { SettingsStore, Unsubscribe } from '../../application/ports';
-import { createDefaultSettings, migrateSettings, SCHEMA_VERSION, type AppSettings } from '../../domain/settings';
+import {
+  SettingsWriteBlockedError,
+  type SettingsFileStatus,
+  type SettingsStore,
+  type Unsubscribe,
+} from '../../application/ports';
+import {
+  createDefaultSettings,
+  isFutureSchema,
+  migrateSettings,
+  SCHEMA_VERSION,
+  type AppSettings,
+} from '../../domain/settings';
 import type { JsonFile } from './json-file';
 
 const ECHO_WINDOW_MS = 1_000;
@@ -15,6 +26,7 @@ export class JsonSettingsStore implements SettingsStore {
   private readonly recentWrites = new Map<string, number>();
   private inFlight = 0;
   private lastValid: AppSettings | null = null;
+  private fileStatus: SettingsFileStatus = 'ok';
 
   constructor(
     private readonly file: JsonFile,
@@ -24,11 +36,19 @@ export class JsonSettingsStore implements SettingsStore {
     this.now = options.now ?? Date.now;
   }
 
+  status(): SettingsFileStatus {
+    return this.fileStatus;
+  }
+
   async load(): Promise<AppSettings> {
     const text = await this.file.read();
     if (text === null) return this.write(createDefaultSettings());
     const raw = this.parse(text);
-    if (raw === undefined) return this.lastValid ?? this.remember(createDefaultSettings());
+    if (raw === undefined) {
+      this.fileStatus = 'invalid';
+      return this.lastValid ?? this.remember(createDefaultSettings());
+    }
+    this.fileStatus = this.statusOf(raw);
     const settings = this.remember(migrateSettings(raw));
     if (this.isOutdated(raw)) await this.write(settings);
     return settings;
@@ -37,8 +57,11 @@ export class JsonSettingsStore implements SettingsStore {
   async save(settings: AppSettings): Promise<void> {
     this.remember(settings);
     const text = await this.file.read();
-    // arquivo com JSON inválido é edição do usuário em andamento: nunca sobrescrever
-    if (text !== null && this.parse(text) === undefined) return;
+    if (text !== null) {
+      const raw = this.parse(text);
+      this.fileStatus = raw === undefined ? 'invalid' : this.statusOf(raw);
+      if (this.fileStatus !== 'ok') throw new SettingsWriteBlockedError(this.fileStatus);
+    }
     await this.write(settings);
   }
 
@@ -48,13 +71,18 @@ export class JsonSettingsStore implements SettingsStore {
       const text = await this.file.read();
       if (text === null || this.isEcho(text)) return;
       const raw = this.parse(text);
-      if (raw === undefined) return;
+      if (raw === undefined) {
+        this.fileStatus = 'invalid';
+        return;
+      }
+      this.fileStatus = this.statusOf(raw);
       listener(this.remember(migrateSettings(raw)));
     });
   }
 
   private async write(settings: AppSettings): Promise<AppSettings> {
     const text = `${JSON.stringify(settings, null, 2)}\n`;
+    this.pruneExpired();
     this.recentWrites.set(text, this.now() + this.echoWindowMs);
     this.inFlight++;
     try {
@@ -63,6 +91,7 @@ export class JsonSettingsStore implements SettingsStore {
       this.inFlight--;
       this.recentWrites.set(text, this.now() + this.echoWindowMs);
     }
+    this.fileStatus = 'ok';
     return this.remember(settings);
   }
 
@@ -71,12 +100,20 @@ export class JsonSettingsStore implements SettingsStore {
     return settings;
   }
 
-  private isEcho(text: string): boolean {
+  private pruneExpired(): void {
     const now = this.now();
     for (const [written, expiresAt] of this.recentWrites) {
       if (expiresAt <= now) this.recentWrites.delete(written);
     }
+  }
+
+  private isEcho(text: string): boolean {
+    this.pruneExpired();
     return this.recentWrites.has(text);
+  }
+
+  private statusOf(raw: Record<string, unknown>): SettingsFileStatus {
+    return isFutureSchema(raw) ? 'future' : 'ok';
   }
 
   private parse(text: string): Record<string, unknown> | undefined {

@@ -28,14 +28,27 @@ const OS_SYNTAX = [
   { selector: `MemberExpression[object.name='navigator'][property.value=${OS_PROPERTIES}]`, message: OS_MESSAGE },
   { selector: `MemberExpression[object.name='process'][property.value='platform']`, message: OS_MESSAGE },
   { selector: `MemberExpression[object.object.name=${GLOBAL_ROOTS}][object.property.name='process'][property.name='platform']`, message: OS_MESSAGE },
-  { selector: `VariableDeclarator[init.name='navigator'][id.type='ObjectPattern']`, message: OS_MESSAGE },
-  { selector: `VariableDeclarator[init.name='process'][id.type='ObjectPattern']`, message: OS_MESSAGE },
+  {
+    selector: `VariableDeclarator[init.name='navigator'] > ObjectPattern > Property[key.name=${OS_PROPERTIES}]`,
+    message: OS_MESSAGE,
+  },
+  {
+    selector: `VariableDeclarator[init.name='process'] > ObjectPattern > Property[key.name='platform']`,
+    message: OS_MESSAGE,
+  },
 ];
 
 const NETWORK_SYNTAX = [
   { selector: `MemberExpression[object.name=${GLOBAL_ROOTS}][property.name=${NETWORK_NAMES}]`, message: NETWORK_MESSAGE },
   { selector: `MemberExpression[object.name=${GLOBAL_ROOTS}][property.value=${NETWORK_NAMES}]`, message: NETWORK_MESSAGE },
-  { selector: `VariableDeclarator[init.name=${GLOBAL_ROOTS}][id.type='ObjectPattern']`, message: NETWORK_MESSAGE },
+  {
+    selector: `VariableDeclarator[init.name=${GLOBAL_ROOTS}] > ObjectPattern > Property[key.name=${NETWORK_NAMES}]`,
+    message: NETWORK_MESSAGE,
+  },
+  {
+    selector: `VariableDeclarator[init.name=${GLOBAL_ROOTS}] > ObjectPattern > Property[key.value=${NETWORK_NAMES}]`,
+    message: NETWORK_MESSAGE,
+  },
 ];
 
 const NETWORK_GLOBALS = ['fetch', 'XMLHttpRequest', 'WebSocket'].map((name) => ({ name, message: NETWORK_MESSAGE }));
