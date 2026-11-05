@@ -148,10 +148,10 @@ describe('migration 3 -> 4 (pages under maintenance)', () => {
 });
 
 describe('migration 5 -> 6 (projection method)', () => {
-  it('file from version 5 gets projectionMethod 14d', () => {
+  it('file from version 5 gets the current default projection (7d)', () => {
     const migrated = migrateSettings({ schemaVersion: 5, language: 'en', appearance: { theme: 'dark' } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(migrated.projectionMethod).toBe('14d');
+    expect(migrated.projectionMethod).toBe('7d');
     expect(migrated.language).toBe('en');
   });
 
@@ -159,20 +159,20 @@ describe('migration 5 -> 6 (projection method)', () => {
     expect(migrateSettings({ schemaVersion: 5, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
     expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
     expect(migrateSettings({ schemaVersion: 6, projectionMethod: '24h' }).projectionMethod).toBe('24h');
-    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'regressao' }).projectionMethod).toBe('14d');
-    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'sinceReset' }).projectionMethod).toBe('14d');
-    expect(migrateSettings({ schemaVersion: 6 }).projectionMethod).toBe('14d');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'regressao' }).projectionMethod).toBe('7d');
+    expect(migrateSettings({ schemaVersion: 6, projectionMethod: 'sinceReset' }).projectionMethod).toBe('7d');
+    expect(migrateSettings({ schemaVersion: 6 }).projectionMethod).toBe('7d');
   });
 
-  it('the defaults use 14d', () => {
-    expect(createDefaultSettings().projectionMethod).toBe('14d');
+  it('the defaults use 7d', () => {
+    expect(createDefaultSettings().projectionMethod).toBe('7d');
   });
 });
 
 describe('migration 6 -> 7 (series colors)', () => {
   it('file from version 6 gets the default 5h and 7d colors', () => {
     const migrated = migrateSettings({ schemaVersion: 6, projectionMethod: '24h', appearance: { accentColor: '#0063f7' } });
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.seriesColors).toEqual({ fiveHour: null, sevenDay: null });
     expect(migrated.projectionMethod).toBe('24h');
     expect(migrated.appearance.accentColor).toBe('#0063f7');
@@ -188,5 +188,24 @@ describe('migration 6 -> 7 (series colors)', () => {
 
   it('the defaults follow the theme colors', () => {
     expect(createDefaultSettings().seriesColors).toEqual({ fiveHour: null, sevenDay: null });
+  });
+});
+
+describe('migration 7 -> 8 (last 7 days becomes the default)', () => {
+  it('every saved 14d becomes 7d, since the old default and an explicit choice look the same', () => {
+    const migrated = migrateSettings({ schemaVersion: 7, projectionMethod: '14d', language: 'pt-BR' });
+    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.projectionMethod).toBe('7d');
+    expect(migrated.language).toBe('pt-BR');
+  });
+
+  it('other choices are kept', () => {
+    for (const method of ['24h', 'since-reset'] as const) {
+      expect(migrateSettings({ schemaVersion: 7, projectionMethod: method }).projectionMethod).toBe(method);
+    }
+  });
+
+  it('a 14d chosen after the migration is kept', () => {
+    expect(migrateSettings({ schemaVersion: 8, projectionMethod: '14d' }).projectionMethod).toBe('14d');
   });
 });

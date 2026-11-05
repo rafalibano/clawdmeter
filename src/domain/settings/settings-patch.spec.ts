@@ -49,8 +49,9 @@ describe('projection method in the patch', () => {
   it('changes the method and ignores an unknown value', () => {
     const base = createDefaultSettings();
     expect(applyPatch(base, { projectionMethod: 'since-reset' }).projectionMethod).toBe('since-reset');
-    expect(applyPatch(base, { projectionMethod: 'regressao' as never }).projectionMethod).toBe('14d');
-    expect(applyPatch(base, {}).projectionMethod).toBe('14d');
+    expect(applyPatch(base, { projectionMethod: 'regressao' as never }).projectionMethod).toBe('7d');
+    expect(applyPatch(base, {}).projectionMethod).toBe('7d');
+    expect(applyPatch(base, { projectionMethod: '14d' }).projectionMethod).toBe('14d');
     expect(mergePatches({ projectionMethod: 'since-reset' }, {}).projectionMethod).toBe('since-reset');
   });
 });

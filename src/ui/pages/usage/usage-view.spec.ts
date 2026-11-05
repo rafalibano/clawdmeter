@@ -156,7 +156,7 @@ describe('consistency: a single projection for bar, line and tooltip', () => {
     ],
   });
 
-  for (const method of ['24h', '14d', 'since-reset'] as const) {
+  for (const method of ['24h', '7d', '14d', 'since-reset'] as const) {
     it(`${method}: the last point of the line at reset (Cycle, no cap) is the bar's valueAtReset`, () => {
       const data = dataWith(history());
       const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
@@ -184,15 +184,17 @@ describe('consistency: a single projection for bar, line and tooltip', () => {
     });
   }
 
-  it('the three methods give different 7d projections, but 5h is the same', () => {
+  it('the four methods give different 7d projections, but 5h is the same', () => {
     const data = dataWith(history());
     const run = (method: ProjectionMethod) => new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
-    const values = (['24h', '14d', 'since-reset'] as const).map((method) => {
+    const values = (['24h', '7d', '14d', 'since-reset'] as const).map((method) => {
       const weekly = run(method).sevenDay;
       return weekly.status === 'ready' ? weekly.valueAtReset : null;
     });
-    expect(new Set(values).size).toBe(3);
-    expect(run('24h').fiveHour).toEqual(run('14d').fiveHour);
+    expect(new Set(values).size).toBe(4);
+    expect(values).not.toContain(null);
+    expect(run('24h').fiveHour).toEqual(run('7d').fiveHour);
+    expect(run('7d').fiveHour).toEqual(run('14d').fiveHour);
     expect(run('14d').fiveHour).toEqual(run('since-reset').fiveHour);
   });
 });

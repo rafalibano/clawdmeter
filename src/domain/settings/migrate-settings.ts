@@ -39,6 +39,11 @@ const addProjectionMethod: Migration = (raw) => ({
   projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
 });
 
+const LEGACY_DEFAULT_PROJECTION = '14d';
+
+const adoptSevenDayProjection: Migration = (raw) =>
+  raw['projectionMethod'] === LEGACY_DEFAULT_PROJECTION ? { ...raw, projectionMethod: DEFAULT_PROJECTION_METHOD } : raw;
+
 const addSeriesColors: Migration = (raw) => ({
   ...raw,
   seriesColors: readSeriesColors(raw['seriesColors']),
@@ -52,6 +57,7 @@ export const MIGRATIONS: readonly Migration[] = [
   dropUsageThresholds,
   addProjectionMethod,
   addSeriesColors,
+  adoptSevenDayProjection,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

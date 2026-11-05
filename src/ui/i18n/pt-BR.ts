@@ -43,6 +43,7 @@ export const ptBR: Record<MessageKey, string> = {
   'settings.projection': 'Projeção',
   'settings.projection.hint': 'O 5h sempre usa o consumo desde o reset.',
   'projection.24h': 'Últimas 24h',
+  'projection.7d': 'Últimos 7 dias',
   'projection.14d': 'Últimos 14 dias',
   'projection.since-reset': 'Desde o reset',
   'settings.hexAria': '{label} em hexadecimal',

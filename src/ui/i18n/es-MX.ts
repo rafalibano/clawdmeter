@@ -43,6 +43,7 @@ export const esMX: Record<MessageKey, string> = {
   'settings.projection': 'Proyección',
   'settings.projection.hint': 'La ventana de 5h siempre usa el consumo desde el reinicio.',
   'projection.24h': 'Últimas 24 h',
+  'projection.7d': 'Últimos 7 días',
   'projection.14d': 'Últimos 14 días',
   'projection.since-reset': 'Desde el reinicio',
   'settings.hexAria': '{label} en hexadecimal',
