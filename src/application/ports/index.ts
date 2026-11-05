@@ -8,3 +8,5 @@ export * from './secret-store';
 export * from './settings-store';
 export * from './system-actions';
 export * from './pull-request-gateway';
+export * from './skills-stores';
+export * from './streaming-process-runner';

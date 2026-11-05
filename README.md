@@ -1,6 +1,6 @@
 # Dev Pulse
 
-App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje só uma página de exemplo; Claude usage, PRs, Sessões, Teams e Skills entram nas próximas fases).
+App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje uma página de exemplo, PRs, Reviews e Skills; Claude usage, Sessões e Teams entram nas próximas fases).
 
 Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (standalone + signals).
 
@@ -18,18 +18,20 @@ infrastructure ────────┘   (implementa as portas da applicatio
 
 ```
 src/
-├─ domain/            TS puro: modelos e regras (settings, connections, ...)
+├─ domain/            TS puro: modelos e regras (settings, connections, pull-requests, skills, ...)
 ├─ application/
 │  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, SecretStore, ...)
 │  ├─ use-cases/      um arquivo por caso de uso, um método execute() (connections/ tem os de conexão)
 │  ├─ connections/    ConnectionMonitor, ConnectionRunner e createConnections (liga casos de uso e adapters)
+│  ├─ pull-requests/  createPullRequests, GitHubSession e o dado das páginas PRs/Reviews
+│  ├─ skills/         createSkills e SkillRunBoard (runs ao vivo e histórico)
 │  ├─ pages/          PageModule (contrato) e PageRegistry
 │  ├─ scheduler/      PollingScheduler: só agenda páginas ligadas
 │  └─ testing/        fakes das portas, usados só nos testes
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
-│  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway
+│  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback)
 │  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
 │  └─ demo/           adapters fakes do modo demo, com cenários por query param
@@ -137,6 +139,47 @@ Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.js
 
 O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita CORS do WebView), com allowlist de URLs na capability.
 
+### PRs e Reviews
+
+Duas páginas (`prs` e `reviews`, pollando a cada 2 min), cada uma com uma única requisição `POST https://api.github.com/graphql` (várias buscas aliasadas, `first: 50` cada) usando o token da conexão GitHub (`GitHubTokenResolver`). O acesso passa pelo `tauri-plugin-http`; a capability já libera `https://api.github.com/*` e `tools/capabilities.spec.ts` garante que `/graphql` está coberto (o `connect-src` da CSP não entra, o plugin não usa o WebView).
+
+| Página | Buscas |
+|---|---|
+| PRs | `author:@me is:open is:pr` |
+| Reviews: para revisar | `review-requested:@me is:open is:pr` |
+| Reviews: revisados | `reviewed-by:@me -author:@me` abertos + fechados/mergeados nos últimos 30 dias |
+
+- Agrupados por repo; `k8s` e `k8s-prod` formam o grupo **Deploy**, recolhido por padrão.
+- Selos por PR: rascunho, CI (`statusCheckRollup`), decisão de review, conflito e idade. Clicar abre no navegador (`OpenUrl`).
+- Limite de 50 por busca; quando há mais, a seção mostra "Mostrando X de Y" e um link para a busca no GitHub.
+- Erros viram `ConnectionProblem` (401 → `github-unauthorized`; 403 com `x-github-sso` ou erro SAML → `github-org-access`; `INSUFFICIENT_SCOPES` → `github-missing-scope`; GitHub não conectado → `github-unauthorized`) e a página mostra o botão de conserto da conexão (`FIX_FOR`) mais "Tentar de novo". O scheduler repassa o `problem` no `PageUpdate` de erro e tem `refresh(pageId)` para recarregar logo após o conserto.
+
+### Skills (runs)
+
+A página `skills` não faz polling: só roda no clique em **Rodar**. As skills vêm de `skills.json` ao lado do `settings.json` (somente leitura; ausente ou inválido usa o padrão `/acabativa`):
+
+```json
+{
+  "schemaVersion": 1,
+  "skills": [
+    {
+      "id": "acabativa",
+      "name": "Acabativa",
+      "prompt": "/acabativa",
+      "maxBudgetUsd": 2,
+      "allowedTools": ["Read", "Grep", "Glob", "Bash(gh:*)", "Bash(git:*)"],
+      "cwd": null
+    }
+  ]
+}
+```
+
+- Comando: `claude -p "<prompt>" --output-format stream-json --verbose --max-budget-usd <valor> --allowedTools <tools…>` via `process_spawn` (sem shell). `--verbose` é exigido pelo `stream-json` em modo `-p`. Prompt começando com `-` é rejeitado.
+- O stream é lido linha a linha (`process-output`/`process-exit`) e interpretado no `domain/skills` (`parseStreamLine` + `applyStreamEvent`): mensagens do assistant, `result` com custo/duração e `session_id`.
+- **Cancelar** mata o grupo do processo (`process_kill`). O histórico (últimas 20 runs, sem o log ao vivo) fica em `runs.json` no `appConfigDir`.
+- **Continuar no terminal** abre `claude --resume <session_id>` (o id precisa ser UUID).
+- Problemas com botão de conserto: MCP sem autenticação (`mcp_servers[].status == "needs-auth"` no `init`) → **Reconectar MCP** (Terminal com `claude /mcp`); Claude Code ausente → **Instalar Claude Code**.
+
 ### Modo demo: cenários de conexão
 
 `yarn dev:web` abre o app com adapters fakes. O query param `demo` escolhe o estado inicial de cada conexão (`id:valor`, separados por vírgula); clicar nos botões de conserto muda o estado como no app real.
@@ -147,6 +190,8 @@ http://127.0.0.1:4200/?demo=errors
 ```
 
 Valores: `ok` (padrão do Claude e das notificações), `disconnected`, qualquer `ConnectionProblem` da tabela, e `github:ok` / `microsoft:ok`. `errors` liga um erro em cada conexão. No demo, o token `ghp_…` é aceito como PAT válido.
+
+PRs e Reviews no demo precisam do GitHub conectado: use `?demo=github:ok` (os repos são genéricos, `acme/*`). Os problemas do GitHub (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) também aparecem nas duas páginas, e o botão de conserto resolve. A página Skills roda uma run simulada com stream; `?demo=skills:mcp-needs-auth` e `?demo=skills:claude-code-missing` mostram os problemas de run com **Reconectar MCP** e **Instalar Claude Code**.
 
 ## Comandos
 
@@ -203,3 +248,5 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 - Sem assinatura de código (macOS e Windows) e sem updater. No macOS o bundle usa assinatura ad-hoc (`signingIdentity: "-"`), que não substitui o Developer ID.
 - A CSP do app (`src-tauri/tauri.conf.json`) só libera `self` e IPC; hosts de API das próximas fases precisam entrar em `connect-src`. Não foi validada rodando o app Tauri.
 - O comportamento no Windows (posição do popover, ocultar ao perder o foco) não foi validado em máquina Windows; o CI só compila e roda testes.
+- As runs de skills nunca foram executadas com o `claude` real nesta fase: o formato do `stream-json` (incluindo `mcp_servers[].status` no `init`) segue a documentação e as fixtures de `domain/skills/stream-fixtures.ts`. Um `claude` instalado via npm depende de `node` no `PATH`, que um app aberto pelo Finder pode não ter; o instalador nativo (`~/.local/bin/claude`) não tem esse problema.
+- Notificação ao fim da run ainda não existe.

@@ -6,6 +6,7 @@ import { pageRef } from '../../application/pages';
 import { FakeClock, flushPromises } from '../../application/testing/fake-clock';
 import { createFakeConnectionWorld } from '../../application/testing/fake-connection-adapters';
 import { fakePage } from '../../application/testing/fake-page';
+import { createFakeSkills } from '../../application/testing/fake-skills';
 import { FakeSettingsStore } from '../../application/testing/fake-settings-store';
 import { createDefaultSettings } from '../../domain/settings';
 import { APPLICATION } from './application.token';
@@ -21,6 +22,7 @@ function setup() {
     clock,
     settingsStore: new FakeSettingsStore(),
     connectionAdapters: createFakeConnectionWorld().adapters,
+    skills: createFakeSkills(clock),
     pages: [fakePage({ id: 'once', pollIntervalMs: null, load: async (): Promise<Count> => ({ n: 7 }) })],
   });
   const injector = Injector.create({ providers: [{ provide: APPLICATION, useValue: application }] });

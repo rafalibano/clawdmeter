@@ -86,6 +86,7 @@ mod tests {
     #[test]
     fn accepts_login_and_resume_arguments() {
         assert!(validate_terminal_args(&args(&["/login"])).is_ok());
+        assert!(validate_terminal_args(&args(&["/mcp"])).is_ok());
         assert!(validate_terminal_args(&args(&["--resume", "3f2a9c1e-0000-4000-8000-123456789abc"])).is_ok());
         assert!(validate_terminal_args(&args(&["auth", "refresh", "-s", "repo,read:org"])).is_ok());
     }

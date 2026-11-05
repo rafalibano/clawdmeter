@@ -4,6 +4,7 @@ import type { PageModule } from './pages/page-module';
 import { PageRegistry } from './pages/page-registry';
 import type { Clock, SettingsStore } from './ports';
 import { PollingScheduler } from './scheduler/polling-scheduler';
+import type { Skills } from './skills';
 import { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from './use-cases';
 
 export interface Application {
@@ -11,6 +12,7 @@ export interface Application {
   registry: PageRegistry;
   scheduler: PollingScheduler;
   connections: Connections;
+  skills: Skills;
   getSettings: GetSettings;
   getSettingsStatus: GetSettingsStatus;
   updateSettings: UpdateSettings;
@@ -22,6 +24,7 @@ export interface ApplicationDeps {
   settingsStore: SettingsStore;
   connectionAdapters: ConnectionAdapters;
   pages: readonly PageModule[];
+  skills: Skills;
 }
 
 export function createApplication(deps: ApplicationDeps): Application {
@@ -31,6 +34,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     registry,
     scheduler: new PollingScheduler(registry, deps.clock),
     connections: createConnections(deps.connectionAdapters, deps.clock),
+    skills: deps.skills,
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),
     updateSettings: new UpdateSettings(deps.settingsStore),

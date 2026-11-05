@@ -2,6 +2,7 @@ import { createApplication, type Application } from './application/application';
 import type { ConnectionAdapters } from './application/connections/connection-adapters';
 import { GitHubTokenResolver } from './application/connections/github-token-resolver';
 import { createPullRequests } from './application/pull-requests';
+import { createSkills } from './application/skills';
 import type { ConnectionId } from './domain/connections';
 import {
   GhCliTokenSource,
@@ -13,6 +14,8 @@ import { PkceMicrosoftAuthorizer } from './infrastructure/microsoft';
 import {
   JsonConnectionPrefsStore,
   JsonSettingsStore,
+  JsonSkillRunStore,
+  JsonSkillsConfigStore,
 } from './infrastructure/persistence';
 import {
   SystemClock,
@@ -23,6 +26,7 @@ import {
   TauriOAuthLoopback,
   TauriProcessRunner,
   TauriSecretStore,
+  TauriStreamingProcessRunner,
   TauriSystemSettings,
   TauriTerminalLauncher,
   TauriUrlOpener,
@@ -31,6 +35,7 @@ import {
 import { createExamplePage } from './ui/pages/example/example.page';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
 import { createReviewsPage } from './ui/pages/reviews/reviews.page';
+import { createSkillsPage } from './ui/pages/skills/skills.page';
 
 const CONNECTIONS_FOR_EXAMPLE: ConnectionId[] = ['claude', 'github', 'microsoft', 'notifications'];
 
@@ -68,14 +73,27 @@ export function createComposition(): Application {
     },
     clock,
   );
+  const skills = createSkills(
+    {
+      config: new JsonSkillsConfigStore(new TauriJsonFile('skills.json')),
+      runs: new JsonSkillRunStore(new TauriJsonFile('runs.json')),
+      runner: new TauriStreamingProcessRunner(commands),
+      terminal: connectionAdapters.terminal,
+      urls,
+    },
+    clock,
+  );
+
   return createApplication({
     clock,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
+    skills,
     pages: [
       createExamplePage({ clock, requiredConnections: CONNECTIONS_FOR_EXAMPLE }),
       createPullRequestsPage({ pullRequests }),
       createReviewsPage({ pullRequests }),
+      createSkillsPage({ skills }),
     ],
   });
 }
