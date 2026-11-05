@@ -5,5 +5,7 @@ export * from './github-auth';
 export * from './microsoft-authorizer';
 export * from './notification-permission';
 export * from './secret-store';
+export * from './session-source';
 export * from './settings-store';
 export * from './system-actions';
+export * from './usage-gateway';

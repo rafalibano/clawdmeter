@@ -1,0 +1,64 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_ATTENTION_CONFIG } from '../../../domain/sessions';
+import { MINUTE_MS } from '../../../domain/time';
+import { FakeClock } from '../../testing/fake-clock';
+import { FakeProcessProbe, FakeSessionDirectory } from '../../testing/fake-usage-adapters';
+import { LoadSessions } from './load-sessions';
+
+const START = 1_800_000_000_000;
+
+function file(pid: number, status: string, ageMs: number): string {
+  return JSON.stringify({ pid, status, cwd: `/work/app-${pid}`, statusUpdatedAt: START - ageMs, updatedAt: START - ageMs });
+}
+
+let clock: FakeClock;
+let directory: FakeSessionDirectory;
+let probe: FakeProcessProbe;
+let loadSessions: LoadSessions;
+
+beforeEach(async () => {
+  clock = new FakeClock();
+  await clock.advance(START);
+  directory = new FakeSessionDirectory();
+  probe = new FakeProcessProbe();
+  loadSessions = new LoadSessions(directory, probe, clock, DEFAULT_ATTENTION_CONFIG);
+});
+
+describe('LoadSessions', () => {
+  it('só devolve sessões com pid vivo', async () => {
+    directory.files = [file(1, 'busy', 1_000), file(2, 'idle', 1_000), file(3, 'shell', 1_000)];
+    probe.alive = new Set([1, 3]);
+    const data = await loadSessions.execute();
+    expect(data.sessions.map((session) => session.pid).sort()).toEqual([1, 3]);
+    expect(probe.probed.sort()).toEqual([1, 2, 3]);
+  });
+
+  it('sessão encerrada some na leitura seguinte', async () => {
+    directory.files = [file(1, 'busy', 1_000), file(2, 'idle', 1_000)];
+    probe.alive = new Set([1, 2]);
+    expect((await loadSessions.execute()).sessions).toHaveLength(2);
+    probe.alive = new Set([1]);
+    expect((await loadSessions.execute()).sessions.map((session) => session.pid)).toEqual([1]);
+  });
+
+  it('ignora arquivos ilegíveis ou sem pid e remove pids repetidos', async () => {
+    directory.files = ['{ quebrado', '{"status":"idle"}', file(7, 'idle', 0), file(7, 'busy', 0)];
+    probe.alive = new Set([7]);
+    const data = await loadSessions.execute();
+    expect(data.sessions).toHaveLength(1);
+    expect(probe.probed).toEqual([7]);
+  });
+
+  it('ordena as que pedem atenção primeiro e devolve a configuração de limiar', async () => {
+    directory.files = [file(1, 'busy', MINUTE_MS), file(2, 'idle', 20 * MINUTE_MS)];
+    probe.alive = new Set([1, 2]);
+    const data = await loadSessions.execute();
+    expect(data.sessions.map((session) => session.pid)).toEqual([2, 1]);
+    expect(data.attention).toEqual(DEFAULT_ATTENTION_CONFIG);
+    expect(data.at).toBe(START);
+  });
+
+  it('pasta vazia: nenhuma sessão', async () => {
+    expect((await loadSessions.execute()).sessions).toEqual([]);
+  });
+});
