@@ -54,7 +54,7 @@ describe('PRs', () => {
     });
     const data = await features.loadMine.execute();
     expect(gateway.calls).toEqual([
-      { token: 'gh-token', queries: { mine: 'author:@me is:open is:pr archived:false' }, limit: PULL_REQUEST_LIMIT },
+      { token: 'gh-token', queries: { mine: 'author:@me is:open is:pr archived:false sort:updated-desc' }, limit: PULL_REQUEST_LIMIT },
     ]);
     const [section] = data.sections;
     expect(section).toMatchObject({ id: 'mine', shown: 3, total: 3 });
@@ -105,13 +105,14 @@ describe('Reviews', () => {
     });
     const data = await features.loadReviews.execute();
     expect(gateway.calls[0]?.queries).toEqual({
-      toReview: 'review-requested:@me is:open is:pr archived:false',
-      reviewedOpen: 'reviewed-by:@me -author:@me is:open is:pr archived:false',
-      reviewedRecent: 'reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06',
+      toReview: 'review-requested:@me is:open is:pr archived:false sort:updated-desc',
+      reviewedOpen: 'reviewed-by:@me -author:@me is:open is:pr archived:false sort:updated-desc',
+      reviewedRecent: 'reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06 sort:updated-desc',
     });
     const [toReview, reviewed] = data.sections;
     expect(toReview).toMatchObject({ id: 'to-review', shown: 1, total: 1 });
     expect(reviewed).toMatchObject({ id: 'reviewed', shown: 3, total: 4 });
+    expect(reviewed?.searchUrl).toContain(encodeURIComponent('(is:open OR closed:>=2026-10-06)'));
     expect(reviewed?.groups.map((group) => group.title)).toEqual(['acme/api', 'Deploy']);
     expect(reviewed?.groups[1]?.collapsedByDefault).toBe(true);
   });

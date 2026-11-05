@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatAge } from './age';
 import { DEPLOY_GROUP_KEY, groupByRepo, isDeployRepo, mergeUnique } from './grouping';
 import { isTruncated, type PullRequest } from './pull-request';
-import { reviewedRecentQuery, searchPageUrl } from './search';
+import { MINE_QUERY, REVIEWED_OPEN_QUERY, TO_REVIEW_QUERY, reviewedAllQuery, reviewedRecentQuery, searchPageUrl } from './search';
 
 function pr(overrides: Partial<PullRequest>): PullRequest {
   return {
@@ -67,7 +67,23 @@ describe('mergeUnique', () => {
 describe('busca', () => {
   it('monta a janela de 30 dias da busca de revisados', () => {
     const now = Date.UTC(2026, 10, 5, 12);
-    expect(reviewedRecentQuery(now)).toBe('reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06');
+    expect(reviewedRecentQuery(now)).toBe(
+      'reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06 sort:updated-desc',
+    );
+  });
+
+  it('o link "Ver todos" dos revisados cobre abertos e fechados dos últimos 30 dias', () => {
+    const now = Date.UTC(2026, 10, 5, 12);
+    expect(reviewedAllQuery(now)).toBe(
+      'reviewed-by:@me -author:@me is:pr archived:false (is:open OR closed:>=2026-10-06) sort:updated-desc',
+    );
+  });
+
+  it('as quatro buscas ordenam por atualização mais recente', () => {
+    const now = Date.UTC(2026, 10, 5, 12);
+    for (const query of [MINE_QUERY, TO_REVIEW_QUERY, REVIEWED_OPEN_QUERY, reviewedRecentQuery(now)]) {
+      expect(query.endsWith(' sort:updated-desc')).toBe(true);
+    }
   });
 
   it('monta o link da busca no GitHub', () => {

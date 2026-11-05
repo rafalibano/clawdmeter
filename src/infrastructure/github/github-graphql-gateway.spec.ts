@@ -111,11 +111,39 @@ describe('GitHubGraphqlGateway', () => {
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
 
-  it('outros erros GraphQL e resposta sem dados sobem como erro comum', async () => {
-    const other = gateway({ json: { errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }] } });
-    await expect(other.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('API rate limit exceeded');
+  it('RATE_LIMITED vira uma mensagem clara', async () => {
+    const limited = gateway({ json: { errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }] } });
+    await expect(limited.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('Limite de requisições do GitHub atingido');
+  });
+
+  it('erro sem dados e resposta vazia sobem como erro comum', async () => {
+    const other = gateway({ json: { errors: [{ type: 'INTERNAL', message: 'Algo quebrou' }] } });
+    await expect(other.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('Algo quebrou');
     const empty = gateway({ json: {} });
     await expect(empty.gateway.search('t', { mine: 'q' }, 10)).rejects.toThrow('sem dados');
+  });
+
+  it('data parcial com erro comum usa os nós válidos', async () => {
+    const partial = gateway({
+      json: {
+        data: { mine: { issueCount: 2, nodes: [NODE, null, { id: 'quebrado' }] }, other: null },
+        errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a node' }],
+      },
+    });
+    const result = await partial.gateway.search('t', { mine: 'q', other: 'r' }, 10);
+    expect(result.mine.items.map((item) => item.id)).toEqual(['PR_1']);
+    expect(result.other).toEqual({ items: [], total: 0 });
+  });
+
+  it('data parcial com escopo ou SAML continua lançando o problema de conexão', async () => {
+    const scope = gateway({
+      json: { data: { mine: { issueCount: 1, nodes: [NODE] } }, errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] },
+    });
+    await expect(scope.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-missing-scope' });
+    const saml = gateway({
+      json: { data: { mine: null }, errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement' }] },
+    });
+    await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
 
   it('recusa alias inválido antes de montar a query', () => {

@@ -3,6 +3,7 @@ import {
   TO_REVIEW_QUERY,
   groupByRepo,
   mergeUnique,
+  reviewedAllQuery,
   reviewedRecentQuery,
   searchPageUrl,
 } from '../../../domain/pull-requests';
@@ -43,7 +44,7 @@ export class LoadReviews {
           groups: groupByRepo(reviewed),
           shown: reviewed.length,
           total: reviewedOpen.total + reviewedRecent.total,
-          searchUrl: searchPageUrl(REVIEWED_OPEN_QUERY),
+          searchUrl: searchPageUrl(reviewedAllQuery(this.clock.now())),
         },
       ],
     };

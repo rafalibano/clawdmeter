@@ -90,12 +90,14 @@ export function toPullRequest(node: GraphqlNode | null): PullRequest | null {
   };
 }
 
-function problemFor(errors: NonNullable<GraphqlResponse['errors']>): ConnectionProblemError | Error {
-  const first = errors[0]?.message ?? 'Erro desconhecido do GitHub';
+const RATE_LIMIT_MESSAGE = 'Limite de requisições do GitHub atingido. Tente de novo em alguns minutos.';
+
+function blockingProblem(errors: NonNullable<GraphqlResponse['errors']>): ConnectionProblemError | Error | null {
   const text = errors.map((error) => `${error.type ?? ''} ${error.message ?? ''}`).join(' ');
   if (/INSUFFICIENT_SCOPES|scope/i.test(text)) return new ConnectionProblemError('github-missing-scope');
   if (/SAML|SSO/i.test(text)) return new ConnectionProblemError('github-org-access');
-  return new Error(first);
+  if (errors.some((error) => error.type === 'RATE_LIMITED')) return new Error(RATE_LIMIT_MESSAGE);
+  return null;
 }
 
 export class GitHubGraphqlGateway implements PullRequestGateway {
@@ -117,9 +119,11 @@ export class GitHubGraphqlGateway implements PullRequestGateway {
       body: JSON.stringify({ query: buildSearchQuery(aliases), variables: { ...queries, first: limit } }),
     });
     const body = await this.readBody(response);
-    if (body.errors && body.errors.length > 0) throw problemFor(body.errors);
+    const errors = body.errors ?? [];
+    const blocking = blockingProblem(errors);
+    if (blocking) throw blocking;
     const data = body.data;
-    if (!data) throw new Error('Resposta do GitHub sem dados.');
+    if (!data) throw new Error(errors[0]?.message ?? 'Resposta do GitHub sem dados.');
     const result = {} as Record<K, PullRequestList>;
     for (const alias of aliases) {
       const search = data[alias];
@@ -133,7 +137,7 @@ export class GitHubGraphqlGateway implements PullRequestGateway {
     if (response.status === 401) throw new ConnectionProblemError('github-unauthorized');
     if (response.status === 403) {
       if (response.headers.get('x-github-sso') !== null) throw new ConnectionProblemError('github-org-access');
-      if (response.headers.get('x-ratelimit-remaining') === '0') throw new Error('Limite de requisições do GitHub atingido.');
+      if (response.headers.get('x-ratelimit-remaining') === '0') throw new Error(RATE_LIMIT_MESSAGE);
       const detail = await response.json().catch(() => ({}) as GraphqlResponse);
       if (/SAML|SSO/i.test((detail as GraphqlResponse).message ?? '')) throw new ConnectionProblemError('github-org-access');
       throw new Error('GitHub respondeu 403.');
