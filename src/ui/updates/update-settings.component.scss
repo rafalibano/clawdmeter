@@ -1,0 +1,52 @@
+:host {
+  display: block;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+}
+
+.facts dt {
+  color: var(--cm-muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.status {
+  margin: 0 0 8px;
+}
+
+.status[data-state='error'] {
+  color: var(--cm-danger-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.btn {
+  padding: 4px 10px;
+  border: 1px solid var(--cm-control-border);
+  border-radius: var(--cm-radius-btn);
+  background: transparent;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn.primary {
+  border-color: var(--cm-accent);
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
+}

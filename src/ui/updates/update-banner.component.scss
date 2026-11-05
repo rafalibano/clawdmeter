@@ -1,0 +1,36 @@
+:host {
+  display: block;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid var(--cm-border);
+  background: color-mix(in srgb, var(--cm-accent) 10%, transparent);
+  font-size: 12px;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+.action,
+.later {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--cm-accent);
+  border-radius: var(--cm-radius-btn);
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.later {
+  border-color: var(--cm-control-border);
+  background: transparent;
+  color: var(--cm-muted);
+}

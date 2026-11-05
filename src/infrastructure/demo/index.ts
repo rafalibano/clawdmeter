@@ -6,3 +6,4 @@ export * from './demo-world';
 export * from './demo-pull-requests';
 export * from './demo-skills';
 export * from './demo-language';
+export * from './demo-updates';

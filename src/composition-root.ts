@@ -41,6 +41,7 @@ import {
   TauriUsageIndicator,
   tauriFetch,
 } from './infrastructure/platform';
+import { TauriUpdateChecker } from './infrastructure/updates';
 import { LiveTranslator } from './ui/i18n/live-translator';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
 import { createReviewsPage } from './ui/pages/reviews/reviews.page';
@@ -95,6 +96,7 @@ export function createComposition(): Application {
     language,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
+    updateChecker: new TauriUpdateChecker(commands),
     skills: ({ connections }) =>
       createSkills(
         {

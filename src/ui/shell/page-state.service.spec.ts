@@ -11,6 +11,7 @@ import { FakeSettingsStore } from '../../application/testing/fake-settings-store
 import { createDefaultSettings } from '../../domain/settings';
 import { APPLICATION } from './application.token';
 import { PageStateService } from './page-state.service';
+import { FakeUpdateChecker } from '../../application/testing/fake-update-checker';
 
 interface Count {
   n: number;
@@ -22,6 +23,7 @@ function setup() {
     clock,
     settingsStore: new FakeSettingsStore(),
     connectionAdapters: createFakeConnectionWorld().adapters,
+    updateChecker: new FakeUpdateChecker(),
     skills: createFakeSkills(clock),
     pages: [fakePage({ id: 'once', pollIntervalMs: null, load: async (): Promise<Count> => ({ n: 7 }) })],
   });
@@ -55,6 +57,7 @@ describe('PageStateService', () => {
       clock,
       settingsStore: new FakeSettingsStore(),
       connectionAdapters: createFakeConnectionWorld().adapters,
+    updateChecker: new FakeUpdateChecker(),
       skills: createFakeSkills(clock),
       pages: [
         fakePage({

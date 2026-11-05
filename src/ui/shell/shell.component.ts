@@ -7,12 +7,13 @@ import { APPLICATION } from './application.token';
 import { PageStateService } from './page-state.service';
 import { SettingsFacade } from './settings.facade';
 import { SettingsComponent } from '../settings/settings.component';
+import { UpdateBannerComponent } from '../updates/update-banner.component';
 
 const CLOCK_TICK_MS = 1_000;
 
 @Component({
   selector: 'cm-shell',
-  imports: [NgComponentOutlet, SettingsComponent],
+  imports: [NgComponentOutlet, SettingsComponent, UpdateBannerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

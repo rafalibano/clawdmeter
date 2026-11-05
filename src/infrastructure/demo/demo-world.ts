@@ -7,6 +7,7 @@ import {
   type GitHubOrgAccess,
 } from '../../domain/connections';
 import type { NotificationPermissionState } from '../../application/ports';
+import { parseDemoUpdateScenario, type DemoUpdateScenario } from './demo-updates';
 
 export interface DemoWorld {
   claude: { missing: boolean; expired: boolean; keychainDenied: boolean };
@@ -15,6 +16,7 @@ export interface DemoWorld {
   skills: { claudeMissing: boolean; mcpNeedsAuth: boolean };
   usage: { high: boolean; rateLimited: boolean };
   notifications: NotificationPermissionState;
+  update: DemoUpdateScenario;
   failOnce: Set<ConnectionId>;
   prefs: ConnectionPrefs;
 }
@@ -51,6 +53,7 @@ export function createDemoWorld(search: string): DemoWorld {
     skills: { claudeMissing: false, mcpNeedsAuth: false },
     usage: { high: false, rateLimited: false },
     notifications: 'granted',
+    update: parseDemoUpdateScenario(parseDemoEntries(search).get('update')),
     failOnce: new Set(),
     prefs: createDefaultConnectionPrefs(),
   };
@@ -61,7 +64,7 @@ export function createDemoWorld(search: string): DemoWorld {
   world.claude.missing = claude === 'claude-code-missing';
   if (claude === 'disconnected') world.prefs.claude.enabled = false;
 
-  const github = scenario.get('github');
+  const github = scenario.get('github') ?? (parseDemoEntries(search).has('update') ? 'ok' : undefined);
   if (github === 'gh-not-installed') world.github.cli = 'not-installed';
   else if (github !== undefined && github !== 'disconnected' && github !== 'gh-not-logged-in') {
     world.github.cli = 'logged-in';
