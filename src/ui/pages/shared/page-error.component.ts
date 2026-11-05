@@ -8,9 +8,9 @@ import { PageProblemFacade } from './page-problem.facade';
   styles: `
     .error {
       padding: 12px;
-      border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
-      border-radius: 8px;
-      background: color-mix(in srgb, #ef4444 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--dp-danger) 40%, transparent);
+      border-radius: var(--dp-radius-md);
+      background: color-mix(in srgb, var(--dp-danger) 10%, transparent);
     }
     .message {
       margin: 0 0 10px;
@@ -22,7 +22,7 @@ import { PageProblemFacade } from './page-problem.facade';
     .btn {
       padding: 4px 10px;
       border: 1px solid var(--dp-border);
-      border-radius: 6px;
+      border-radius: var(--dp-radius-btn);
       background: var(--dp-surface);
       color: inherit;
       cursor: pointer;
@@ -31,6 +31,11 @@ import { PageProblemFacade } from './page-problem.facade';
       border-color: var(--dp-accent);
       background: var(--dp-accent);
       color: var(--dp-accent-fg);
+    }
+    .btn.primary:active:not(:disabled) {
+      border-color: var(--dp-accent-active);
+      background: var(--dp-accent-active);
+      color: var(--dp-accent-fg-active);
     }
     .btn:disabled {
       opacity: 0.6;

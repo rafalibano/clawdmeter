@@ -1,6 +1,6 @@
-import type { PullRequest } from '../../../domain/pull-requests';
+import { slaLevel, type PullRequest, type SlaLevel } from '../../../domain/pull-requests';
 
-export type BadgeTone = 'ok' | 'warn' | 'bad' | 'muted';
+export type BadgeTone = 'ok' | 'info' | 'bad' | 'muted';
 
 export interface PullRequestBadge {
   label: string;
@@ -10,13 +10,13 @@ export interface PullRequestBadge {
 const CI: Record<string, PullRequestBadge> = {
   success: { label: '✓ CI', tone: 'ok' },
   failure: { label: '✗ CI', tone: 'bad' },
-  pending: { label: '… CI', tone: 'warn' },
+  pending: { label: '… CI', tone: 'muted' },
 };
 
 const REVIEW: Record<string, PullRequestBadge> = {
   approved: { label: 'Aprovado', tone: 'ok' },
-  'changes-requested': { label: 'Mudanças pedidas', tone: 'bad' },
-  'review-required': { label: 'Aguardando review', tone: 'warn' },
+  'changes-requested': { label: 'Mudanças pedidas', tone: 'info' },
+  'review-required': { label: 'Aguardando review', tone: 'muted' },
 };
 
 const STATE: Record<string, PullRequestBadge> = {
@@ -35,4 +35,8 @@ export function badgesFor(pr: PullRequest): PullRequestBadge[] {
   if (review) badges.push(review);
   if (pr.merge === 'conflicting') badges.push({ label: 'Conflito', tone: 'bad' });
   return badges;
+}
+
+export function slaFor(pr: PullRequest, now: number): SlaLevel | null {
+  return pr.state === 'open' ? slaLevel(pr.createdAt, now) : null;
 }
