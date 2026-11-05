@@ -1,0 +1,167 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDefaultSettings, type AppSettings } from '../../domain/settings';
+import { PageRegistry } from '../pages/page-registry';
+import { FakeClock, flushPromises } from '../testing/fake-clock';
+import { fakePage } from '../testing/fake-page';
+import { PollingScheduler, type PageUpdate } from './polling-scheduler';
+
+function settingsWith(enabledPages: Record<string, boolean>): AppSettings {
+  return { ...createDefaultSettings(), enabledPages };
+}
+
+describe('PollingScheduler', () => {
+  let clock: FakeClock;
+  let updates: PageUpdate[];
+  const fast = vi.fn(async () => 'fast');
+  const slow = vi.fn(async () => 'slow');
+  const once = vi.fn(async () => 'once');
+
+  function build(): PollingScheduler {
+    const registry = new PageRegistry([
+      fakePage({ id: 'fast', pollIntervalMs: 1_000, load: fast }),
+      fakePage({ id: 'slow', pollIntervalMs: 5_000, load: slow }),
+      fakePage({ id: 'once', pollIntervalMs: null, load: once }),
+    ]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    return scheduler;
+  }
+
+  beforeEach(() => {
+    clock = new FakeClock();
+    updates = [];
+    fast.mockClear();
+    slow.mockClear();
+    once.mockClear();
+  });
+
+  it('só agenda páginas ligadas', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ fast: true, slow: false, once: false }));
+    await clock.advance(10_000);
+    expect(fast).toHaveBeenCalledTimes(11);
+    expect(slow).not.toHaveBeenCalled();
+    expect(once).not.toHaveBeenCalled();
+    expect(clock.activeTimers()).toBe(1);
+  });
+
+  it('carrega na hora ao ligar e respeita o intervalo de cada página', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ once: false }));
+    await flushPromises();
+    expect(fast).toHaveBeenCalledTimes(1);
+    expect(slow).toHaveBeenCalledTimes(1);
+    await clock.advance(5_000);
+    expect(fast).toHaveBeenCalledTimes(6);
+    expect(slow).toHaveBeenCalledTimes(2);
+  });
+
+  it('página sem intervalo carrega uma vez e não agenda timer', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ fast: false, slow: false }));
+    await clock.advance(60_000);
+    expect(once).toHaveBeenCalledTimes(1);
+    expect(clock.activeTimers()).toBe(0);
+  });
+
+  it('para de agendar ao desligar a página', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await clock.advance(2_000);
+    expect(fast).toHaveBeenCalledTimes(3);
+    scheduler.sync(settingsWith({ fast: false, slow: false, once: false }));
+    await clock.advance(10_000);
+    expect(fast).toHaveBeenCalledTimes(3);
+    expect(clock.activeTimers()).toBe(0);
+  });
+
+  it('recomeça ao ligar de novo, com carga imediata', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await clock.advance(1_000);
+    scheduler.sync(settingsWith({ fast: false, slow: false, once: false }));
+    await clock.advance(5_000);
+    expect(fast).toHaveBeenCalledTimes(2);
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await flushPromises();
+    expect(fast).toHaveBeenCalledTimes(3);
+    await clock.advance(2_000);
+    expect(fast).toHaveBeenCalledTimes(5);
+  });
+
+  it('sync repetido com as mesmas configurações não duplica timers nem cargas', async () => {
+    const scheduler = build();
+    const settings = settingsWith({ slow: false, once: false });
+    scheduler.sync(settings);
+    scheduler.sync(settings);
+    await flushPromises();
+    expect(fast).toHaveBeenCalledTimes(1);
+    expect(clock.activeTimers()).toBe(1);
+  });
+
+  it('publica o resultado com o horário do relógio injetado', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ slow: false, once: false }));
+    await clock.advance(1_000);
+    expect(updates).toEqual([
+      { pageId: 'fast', status: 'ok', data: 'fast', at: 0 },
+      { pageId: 'fast', status: 'ok', data: 'fast', at: 1_000 },
+    ]);
+  });
+
+  it('publica erro de load sem derrubar o agendamento', async () => {
+    const failing = vi.fn().mockRejectedValueOnce(new Error('falhou')).mockResolvedValue('ok');
+    const registry = new PageRegistry([fakePage({ id: 'flaky', pollIntervalMs: 1_000, load: failing })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await clock.advance(1_000);
+    expect(updates.map((update) => update.status)).toEqual(['error', 'ok']);
+    expect(updates[0]).toMatchObject({ error: 'falhou' });
+  });
+
+  it('não sobrepõe cargas enquanto a anterior não terminou', async () => {
+    let release: (value: string) => void = () => undefined;
+    const hanging = vi.fn(() => new Promise<string>((resolve) => (release = resolve)));
+    const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: 1_000, load: hanging })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.sync(createDefaultSettings());
+    await clock.advance(5_000);
+    expect(hanging).toHaveBeenCalledTimes(1);
+    release('fim');
+    await flushPromises();
+    await clock.advance(1_000);
+    expect(hanging).toHaveBeenCalledTimes(2);
+  });
+
+  it('descarta o resultado de uma carga que terminou depois de a página ser desligada', async () => {
+    let release: (value: string) => void = () => undefined;
+    const registry = new PageRegistry([
+      fakePage({ id: 'late', pollIntervalMs: null, load: () => new Promise<string>((resolve) => (release = resolve)) }),
+    ]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    scheduler.sync(settingsWith({ late: false }));
+    release('tarde');
+    await flushPromises();
+    expect(updates).toEqual([]);
+  });
+
+  it('stopAll cancela tudo', async () => {
+    const scheduler = build();
+    scheduler.sync(createDefaultSettings());
+    scheduler.stopAll();
+    expect(clock.activeTimers()).toBe(0);
+  });
+
+  it('permite cancelar a assinatura', async () => {
+    const registry = new PageRegistry([fakePage({ id: 'p', pollIntervalMs: null })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    const listener = vi.fn();
+    scheduler.subscribe(listener)();
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
