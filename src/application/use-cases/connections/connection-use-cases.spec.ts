@@ -154,6 +154,19 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
+  it('cancelar depois de receber o token, antes de gravar, descarta o resultado', async () => {
+    const controller = new AbortController();
+    world.githubAccounts.inspect = async () => {
+      controller.abort();
+      return { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'ok' };
+    };
+    expect(await connections.github.completeDeviceFlow.execute(DEVICE_CODE, controller.signal)).toEqual({
+      state: 'disconnected',
+    });
+    expect(world.secrets.values.size).toBe(0);
+    expect(world.prefs.current.github.method).toBeNull();
+  });
+
   it('Device Flow negado não grava nada', async () => {
     world.deviceFlow.completion = new ConnectionProblemError('github-unauthorized', 'Acesso negado');
     const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
@@ -215,6 +228,17 @@ describe('GitHub', () => {
     expect(world.urls.opened).toEqual([ssoUrl]);
     expect(after).toMatchObject({ problem: 'github-org-access' });
     expect(after.state === 'error' && after.message).toContain('Verificar de novo');
+  });
+
+  it('falha ao descobrir a URL de SSO cai na página de SSO da org', async () => {
+    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required' };
+    const status = await connections.connect.execute('github');
+    expect(status).toMatchObject({ problem: 'github-org-access' });
+    world.githubAccounts.inspect = async () => {
+      throw new Error('rede fora');
+    };
+    await runFix('github', 'authorize-org');
+    expect(world.urls.opened).toEqual([GITHUB_ORG_SSO_URL]);
   });
 
   it('SSO pendente sem URL no header cai na página de SSO da org', async () => {

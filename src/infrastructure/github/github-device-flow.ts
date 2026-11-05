@@ -74,12 +74,13 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
       await this.sleep(interval * 1000, signal);
       if (signal?.aborted) throw cancelled();
       waited += interval;
-      const response = await this.post(ACCESS_TOKEN_URL, {
-        client_id: clientId,
-        device_code: code.deviceCode,
-        grant_type: DEVICE_GRANT,
-      });
+      const response = await this.post(
+        ACCESS_TOKEN_URL,
+        { client_id: clientId, device_code: code.deviceCode, grant_type: DEVICE_GRANT },
+        signal,
+      );
       const body = (await response.json()) as TokenResponse;
+      if (signal?.aborted) throw cancelled();
       if (body.access_token) return body.access_token;
       switch (body.error) {
         case 'authorization_pending':
@@ -104,11 +105,12 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
     throw new ConnectionProblemError('github-unauthorized', 'O código expirou. Tente de novo.');
   }
 
-  private post(url: string, body: Record<string, string>): Promise<Response> {
+  private post(url: string, body: Record<string, string>, signal?: AbortSignal): Promise<Response> {
     return this.fetcher(url, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
   }
 }

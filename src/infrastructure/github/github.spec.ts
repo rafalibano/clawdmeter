@@ -175,6 +175,18 @@ describe('GitHubDeviceFlowAuthorizer', () => {
     expect(requests).toEqual([]);
   });
 
+  it('passa o AbortSignal ao fetch do polling e ignora token que chega depois do cancelamento', async () => {
+    const controller = new AbortController();
+    const { fetcher, requests } = createFakeFetch(() => {
+      controller.abort();
+      return { json: { access_token: 'tarde-demais' } };
+    });
+    const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG, noSleep);
+    const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 5, expiresInSeconds: 900 };
+    await expect(flow.complete(code, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(requests[0]?.signal).toBe(controller.signal);
+  });
+
   it('o sleep real acorda com AbortError quando o sinal é abortado', async () => {
     const { fetcher } = createFakeFetch(() => ({ json: {} }));
     const controller = new AbortController();

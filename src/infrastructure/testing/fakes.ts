@@ -6,6 +6,7 @@ export interface RecordedRequest {
   method: string;
   headers: Record<string, string>;
   body: string | undefined;
+  signal?: AbortSignal;
 }
 
 export interface FakeResponse {
@@ -24,6 +25,7 @@ export function createFakeFetch(responder: Responder): { fetcher: FetchLike; req
       method: init?.method ?? 'GET',
       headers: (init?.headers ?? {}) as Record<string, string>,
       body: typeof init?.body === 'string' ? init.body : undefined,
+      ...(init?.signal ? { signal: init.signal } : {}),
     };
     requests.push(request);
     const reply = responder(request);

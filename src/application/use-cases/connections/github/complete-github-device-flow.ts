@@ -27,6 +27,7 @@ export class CompleteGitHubDeviceFlow {
         await this.urls.open(code.verificationUri);
         const token = await this.flow.complete(code, signal);
         const account = await this.accounts.inspect(token);
+        if (signal?.aborted) return { state: 'disconnected' };
         await this.secrets.set(SECRET_KEYS.githubToken, token);
         await updatePrefs(this.prefs, (current) => ({ ...current, github: { method: 'device-flow' } }));
         return evaluateGitHubAccount(account);

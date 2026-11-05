@@ -44,11 +44,14 @@ impl LoopbackRegistry {
         if let Ok(mut listeners) = self.listeners.lock() {
             listeners.insert(id.clone(), Arc::clone(&shared));
         }
+        let weak = Arc::downgrade(&shared);
         let listeners = Arc::clone(&self.listeners);
         let expiring = id.clone();
         thread::spawn(move || {
             thread::sleep(ttl);
-            shared.cancelled.store(true, Ordering::SeqCst);
+            if let Some(listener) = weak.upgrade() {
+                listener.cancelled.store(true, Ordering::SeqCst);
+            }
             if let Ok(mut listeners) = listeners.lock() {
                 listeners.remove(&expiring);
             }
@@ -317,6 +320,22 @@ mod tests {
         assert!(kept.cancelled.load(Ordering::SeqCst));
         drop(kept);
         thread::sleep(Duration::from_millis(50));
+        assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
+    }
+
+    #[test]
+    fn removed_listener_closes_its_socket_without_waiting_for_the_ttl() {
+        let registry = LoopbackRegistry::default();
+        let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        let id = registry.insert_with_ttl(
+            LoopbackListener {
+                socket,
+                cancelled: AtomicBool::new(false),
+            },
+            Duration::from_secs(60),
+        );
+        registry.remove(&id);
         assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
     }
 

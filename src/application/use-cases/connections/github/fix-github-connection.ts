@@ -53,11 +53,15 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
   }
 
   private async ssoUrl(): Promise<string> {
-    const { method } = (await this.prefs.load()).github;
-    if (method === null) return GITHUB_ORG_SSO_URL;
-    const token = await this.tokens.resolve(method);
-    if (token === null) return GITHUB_ORG_SSO_URL;
-    return (await this.accounts.inspect(token)).ssoUrl ?? GITHUB_ORG_SSO_URL;
+    try {
+      const { method } = (await this.prefs.load()).github;
+      if (method === null) return GITHUB_ORG_SSO_URL;
+      const token = await this.tokens.resolve(method);
+      if (token === null) return GITHUB_ORG_SSO_URL;
+      return (await this.accounts.inspect(token)).ssoUrl ?? GITHUB_ORG_SSO_URL;
+    } catch {
+      return GITHUB_ORG_SSO_URL;
+    }
   }
 
   private async reauthenticate(
