@@ -41,6 +41,16 @@ impl ProcessRegistry {
     fn contains(&self, pid: u32) -> bool {
         self.0.lock().map(|pids| pids.contains(&pid)).unwrap_or(false)
     }
+
+    fn drain(&self) -> Vec<u32> {
+        self.0.lock().map(|mut pids| pids.drain().collect()).unwrap_or_default()
+    }
+
+    pub fn terminate_all(&self) {
+        for pid in self.drain() {
+            let _ = terminate(pid, true);
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -257,8 +267,12 @@ pub fn process_spawn(
 
 #[tauri::command(async)]
 pub fn process_kill(registry: State<ProcessRegistry>, pid: u32) -> CommandResult<()> {
+    kill_registered(&registry, pid)
+}
+
+fn kill_registered(registry: &ProcessRegistry, pid: u32) -> CommandResult<()> {
     if !registry.contains(pid) {
-        return Err(CommandError::new(ErrorKind::InvalidArgument, "pid não foi iniciado por este app"));
+        return Ok(());
     }
     terminate(pid, false)
 }
@@ -273,9 +287,13 @@ fn terminate(pid: u32, force: bool) -> CommandResult<()> {
     }
     let single = unsafe { libc::kill(target, signal) };
     if single == 0 {
+        return Ok(());
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
         Ok(())
     } else {
-        Err(CommandError::io(std::io::Error::last_os_error()))
+        Err(CommandError::io(error))
     }
 }
 
@@ -413,6 +431,42 @@ mod tests {
     fn current_process_is_alive_and_pid_zero_is_not() {
         assert!(is_alive(std::process::id()));
         assert!(!process_is_alive(0));
+    }
+
+    #[test]
+    fn killing_a_pid_this_app_never_started_is_a_noop() {
+        let registry = ProcessRegistry::default();
+        assert!(kill_registered(&registry, std::process::id()).is_ok());
+        assert!(kill_registered(&registry, 0).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn killing_an_already_exited_registered_pid_is_ignored() {
+        use std::os::unix::process::CommandExt;
+        let mut child = Command::new("/bin/sh").args(["-c", "exit 0"]).process_group(0).spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        let registry = ProcessRegistry::default();
+        registry.insert(pid);
+        assert!(kill_registered(&registry, pid).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_all_kills_every_registered_group_and_empties_the_registry() {
+        use std::os::unix::process::{CommandExt, ExitStatusExt};
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30 & wait"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let registry = ProcessRegistry::default();
+        registry.insert(child.id());
+        thread::sleep(Duration::from_millis(150));
+        registry.terminate_all();
+        assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
+        assert!(!registry.contains(child.id()));
     }
 
     #[test]

@@ -4,6 +4,7 @@ mod tray;
 
 use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,6 +38,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(tray::on_window_event)
-        .run(tauri::generate_context!())
-        .expect("erro ao iniciar o Dev Pulse");
+        .build(tauri::generate_context!())
+        .expect("erro ao iniciar o Dev Pulse")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<ProcessRegistry>().terminate_all();
+            }
+        });
 }
