@@ -49,7 +49,7 @@ describe('lint de arquitetura', () => {
     it('barra application importando ui', async () => {
       const rules = await rulesViolatedBy(
         'src/application/__fixture__.ts',
-        `import { formatUpdatedAgo } from '../ui/shell/elapsed';\nexport const f = formatUpdatedAgo;\n`,
+        `import { Localizer } from '../ui/i18n/localizer';\nexport const f = Localizer;\n`,
       );
       expect(rules).toContain('boundaries/dependencies');
     });

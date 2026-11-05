@@ -82,7 +82,7 @@ describe('LoadUsage', () => {
     const status = connections.monitor.get('claude');
     expect(status).toMatchObject({ state: 'error', problem: 'claude-expired' });
     const fix = actionsFor('claude', status).find((action) => action.kind === 'fix');
-    expect(fix).toMatchObject({ label: 'Refazer login do Claude' });
+    expect(fix).toMatchObject({ label: 'relogin-claude' });
     expect(history.saved).toHaveLength(0);
   });
 
@@ -103,7 +103,7 @@ describe('LoadUsage', () => {
 
   it('Claude desconectado em Ajustes: não chama o Rust', async () => {
     await connections.disconnect.execute('claude');
-    await expect(loadUsage.execute()).rejects.toThrow('Claude desconectado');
+    await expect(loadUsage.execute()).rejects.toThrow('usage-disconnected');
     expect(gateway.fetches).toBe(0);
     expect(connections.monitor.get('claude')).toEqual({ state: 'disconnected' });
   });
@@ -142,7 +142,7 @@ describe('LoadUsage e o indicador da bandeja', () => {
     gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
     await connections.disconnect.execute('claude');
-    await expect(loadUsage.execute()).rejects.toThrow('Claude desconectado');
+    await expect(loadUsage.execute()).rejects.toThrow('usage-disconnected');
     expect(indicator.updates).toEqual([
       { snapshot: null, now: START },
       { snapshot: null, now: START },

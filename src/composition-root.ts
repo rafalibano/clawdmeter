@@ -1,6 +1,7 @@
 import { createApplication, type Application } from './application/application';
 import type { ConnectionAdapters } from './application/connections/connection-adapters';
 import { GitHubTokenResolver } from './application/connections/github-token-resolver';
+import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
 import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
@@ -40,6 +41,7 @@ import {
   TauriUsageIndicator,
   tauriFetch,
 } from './infrastructure/platform';
+import { LiveTranslator } from './ui/i18n/live-translator';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
 import { createReviewsPage } from './ui/pages/reviews/reviews.page';
 import { createSessionsPage } from './ui/pages/sessions/sessions.page';
@@ -50,6 +52,8 @@ import { createUsagePage } from './ui/pages/usage/usage.page';
 
 export function createComposition(): Application {
   const clock = new SystemClock();
+  const language = new CurrentLanguage();
+  const translator = new LiveTranslator(language);
   const commands = new TauriCommands();
   const secrets = new TauriSecretStore(commands);
   const urls = new TauriUrlOpener(commands);
@@ -88,6 +92,7 @@ export function createComposition(): Application {
 
   const application: Application = createApplication({
     clock,
+    language,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
     skills: ({ connections }) =>
@@ -99,6 +104,7 @@ export function createComposition(): Application {
           terminal: connectionAdapters.terminal,
           urls,
           notifier: new TauriNotifier(),
+          translator,
         },
         clock,
         connections,
@@ -111,7 +117,7 @@ export function createComposition(): Application {
           new JsonUsageHistoryStore(new TauriJsonFile('usage-history.json')),
           clock,
           connections,
-          new TauriUsageIndicator(commands),
+          new TauriUsageIndicator(commands, translator),
           new ImportExternalUsageHistory(new TauriClaudeUsageBarHistorySource()),
         ),
       }),

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { isRunning, type RunFix, type SkillDefinition } from '../../../domain/skills';
+import { I18n } from '../../i18n';
 import { APPLICATION } from '../../shell/application.token';
 import { PageStateService } from '../../shell/page-state.service';
 import { PageErrorComponent } from '../shared/page-error.component';
@@ -125,20 +126,20 @@ const CLOCK_TICK_MS = 1_000;
   template: `
     @let state = update();
     @if (state === undefined) {
-      <p class="muted">Carregando…</p>
+      <p class="muted">{{ i18n.t('common.loading') }}</p>
     } @else if (state.status === 'error') {
-      <dp-page-error pageId="skills" connection="claude" [message]="state.error" />
+      <dp-page-error pageId="skills" connection="claude" [message]="state.error" [code]="state.code" [args]="state.args" />
     } @else {
       @if (facade.error(); as message) {
         <p class="error" role="alert">{{ message }}</p>
       }
-      <section class="section" aria-label="Skills">
-        <h2 class="heading">Skills</h2>
+      <section class="section" [attr.aria-label]="i18n.t('skills.heading')">
+        <h2 class="heading">{{ i18n.t('skills.heading') }}</h2>
         @for (skill of state.data.skills; track skill.id) {
           <div class="card row" [attr.data-skill]="skill.id">
             <div class="grow">
               <div class="name">{{ skill.name }}</div>
-              <div class="muted">{{ skill.prompt }} · até US$ {{ skill.maxBudgetUsd }}</div>
+              <div class="muted">{{ i18n.t('skills.budget', { prompt: skill.prompt, budget: i18n.localizer().budget(skill.maxBudgetUsd) }) }}</div>
             </div>
             <button
               type="button"
@@ -147,16 +148,16 @@ const CLOCK_TICK_MS = 1_000;
               [disabled]="isRunning(skill)"
               (click)="facade.run(skill.id)"
             >
-              ▶ Rodar
+              {{ i18n.t('skills.run') }}
             </button>
           </div>
         } @empty {
-          <p class="muted">Nenhuma skill configurada em skills.json.</p>
+          <p class="muted">{{ i18n.t('skills.noSkills') }}</p>
         }
       </section>
 
-      <section class="section" aria-label="Runs">
-        <h2 class="heading">Runs</h2>
+      <section class="section" [attr.aria-label]="i18n.t('skills.runs')">
+        <h2 class="heading">{{ i18n.t('skills.runs') }}</h2>
         @for (run of runViews(); track run.id) {
           <article class="card" [attr.data-run]="run.id" [attr.data-status]="run.status">
             <div class="row">
@@ -175,7 +176,7 @@ const CLOCK_TICK_MS = 1_000;
                 }
               </ul>
               <div class="actions">
-                <button type="button" class="btn" data-action="cancel" (click)="facade.cancel(run.id)">⏹ Cancelar</button>
+                <button type="button" class="btn" data-action="cancel" (click)="facade.cancel(run.id)">{{ i18n.t('skills.cancel') }}</button>
               </div>
             }
 
@@ -197,13 +198,13 @@ const CLOCK_TICK_MS = 1_000;
             @if (run.canContinue) {
               <div class="actions">
                 <button type="button" class="btn" data-action="continue" (click)="facade.continueInTerminal(run.id)">
-                  Continuar no terminal
+                  {{ i18n.t('skills.continue') }}
                 </button>
               </div>
             }
           </article>
         } @empty {
-          <p class="muted">Nenhuma run ainda. As skills só rodam quando você clica em Rodar.</p>
+          <p class="muted">{{ i18n.t('skills.noRuns') }}</p>
         }
       </section>
     }
@@ -211,12 +212,13 @@ const CLOCK_TICK_MS = 1_000;
 })
 export class SkillsComponent {
   protected readonly facade = inject(SkillsFacade);
+  protected readonly i18n = inject(I18n);
   private readonly pageState = inject(PageStateService);
   private readonly clock = inject(APPLICATION).clock;
   private readonly now = signal(this.clock.now());
 
   protected readonly update = computed(() => this.pageState.get(SKILLS_PAGE));
-  protected readonly runViews = computed<RunView[]>(() => this.facade.runs().map((run) => toRunView(run, this.now())));
+  protected readonly runViews = computed<RunView[]>(() => this.facade.runs().map((run) => toRunView(run, this.now(), this.i18n.localizer())));
 
   constructor() {
     const stop = this.clock.every(CLOCK_TICK_MS, () => this.now.set(this.clock.now()));

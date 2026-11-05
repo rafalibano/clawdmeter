@@ -187,14 +187,14 @@ describe('PollingScheduler', () => {
     expect(hanging).toHaveBeenCalledTimes(2);
   });
 
-  it('problema de conexão vira mensagem legível e carrega o problema', async () => {
+  it('problema de conexão carrega o problema e deixa o texto para a UI', async () => {
     const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired'));
     const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
     const scheduler = new PollingScheduler(registry, clock);
     scheduler.subscribe((update) => updates.push(update));
     scheduler.sync(createDefaultSettings());
     await flushPromises();
-    expect(updates[0]).toMatchObject({ status: 'error', error: 'O login da Microsoft expirou.', problem: 'microsoft-expired' });
+    expect(updates[0]).toMatchObject({ status: 'error', error: 'microsoft-expired', problem: 'microsoft-expired' });
   });
 
   it('problema com mensagem específica mantém a mensagem', async () => {

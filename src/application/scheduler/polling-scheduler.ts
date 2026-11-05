@@ -1,4 +1,6 @@
-import { ConnectionProblemError, problemMessage, type ConnectionProblem } from '../../domain/connections';
+import { CodedError, type ErrorArgs, type ErrorCode } from '../../domain/coded-error';
+import { ConnectionProblemError, type ConnectionProblem } from '../../domain/connections';
+import { RateLimitedError, rateLimitDelay } from '../../domain/rate-limit';
 import type { AppSettings, PageId } from '../../domain/settings';
 import type { PageModule } from '../pages/page-module';
 import type { PageRegistry } from '../pages/page-registry';
@@ -6,7 +8,7 @@ import type { Clock, Unsubscribe } from '../ports';
 
 export type PageUpdate<T = unknown> =
   | { pageId: PageId; status: 'ok'; data: T; at: number }
-  | { pageId: PageId; status: 'error'; error: string; problem?: ConnectionProblem; at: number };
+  | { pageId: PageId; status: 'error'; error: string; problem?: ConnectionProblem; code?: ErrorCode; args?: ErrorArgs; rateLimitedUntil?: number; at: number };
 
 type PageUpdateListener = (update: PageUpdate) => void;
 
@@ -14,6 +16,8 @@ interface Run {
   cancel: Unsubscribe;
   inflight: Promise<void> | null;
   pending: boolean;
+  rateLimitFailures: number;
+  blockedUntil: number;
 }
 
 export class PollingScheduler {
@@ -59,7 +63,7 @@ export class PollingScheduler {
   }
 
   private start(page: PageModule): void {
-    const run: Run = { cancel: () => undefined, inflight: null, pending: false };
+    const run: Run = { cancel: () => undefined, inflight: null, pending: false, rateLimitFailures: 0, blockedUntil: 0 };
     this.runs.set(page.id, run);
     void this.poll(page, run, false);
     if (page.pollIntervalMs !== null) {
@@ -67,7 +71,13 @@ export class PollingScheduler {
     }
   }
 
+  backoffUntil(pageId: PageId): number | null {
+    const run = this.runs.get(pageId);
+    return run && run.blockedUntil > this.clock.now() ? run.blockedUntil : null;
+  }
+
   private poll(page: PageModule, run: Run, queueIfBusy: boolean): Promise<void> {
+    if (run.blockedUntil > this.clock.now()) return run.inflight ?? Promise.resolve();
     if (run.inflight) {
       if (queueIfBusy) run.pending = true;
       return run.inflight;
@@ -91,9 +101,24 @@ export class PollingScheduler {
   private async load(page: PageModule, run: Run): Promise<void> {
     try {
       const data = await page.load();
+      run.rateLimitFailures = 0;
+      run.blockedUntil = 0;
       this.publish(page, run, { pageId: page.id, status: 'ok', data, at: this.clock.now() });
     } catch (error) {
-      this.publish(page, run, { ...describeFailure(error), pageId: page.id, status: 'error', at: this.clock.now() });
+      const now = this.clock.now();
+      let rateLimitedUntil: number | undefined;
+      if (error instanceof RateLimitedError) {
+        run.rateLimitFailures += 1;
+        run.blockedUntil = now + rateLimitDelay(run.rateLimitFailures, error.retryAfterMs);
+        rateLimitedUntil = run.blockedUntil;
+      }
+      this.publish(page, run, {
+        ...describeFailure(error),
+        ...(rateLimitedUntil === undefined ? {} : { rateLimitedUntil }),
+        pageId: page.id,
+        status: 'error',
+        at: now,
+      });
     }
   }
 
@@ -104,7 +129,10 @@ export class PollingScheduler {
   }
 }
 
-function describeFailure(error: unknown): { error: string; problem?: ConnectionProblem } {
-  if (error instanceof ConnectionProblemError) return { error: problemMessage(error), problem: error.problem };
+function describeFailure(error: unknown): { error: string; problem?: ConnectionProblem; code?: ErrorCode; args?: ErrorArgs } {
+  if (error instanceof ConnectionProblemError) {
+    return { error: error.message, problem: error.problem, ...(error.code ? { code: error.code } : {}) };
+  }
+  if (error instanceof CodedError) return { error: error.message, code: error.code, ...(error.args ? { args: error.args } : {}) };
   return { error: error instanceof Error ? error.message : String(error) };
 }

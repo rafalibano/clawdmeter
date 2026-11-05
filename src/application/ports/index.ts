@@ -13,5 +13,6 @@ export * from './settings-store';
 export * from './skills-stores';
 export * from './streaming-process-runner';
 export * from './system-actions';
+export * from './translator';
 export * from './usage-gateway';
 export * from './usage-indicator';

@@ -1,3 +1,4 @@
+import { CodedError } from '../../../domain/coded-error';
 import { githubWebUrl } from '../../../domain/pull-requests';
 import type { UrlOpener } from '../../ports';
 
@@ -6,7 +7,7 @@ export class OpenGitHubUrl {
 
   async execute(raw: string): Promise<void> {
     const url = githubWebUrl(raw);
-    if (url === null) throw new Error('Link do GitHub inválido');
+    if (url === null) throw new CodedError('link-invalid-github');
     await this.opener.open(url);
   }
 }

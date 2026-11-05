@@ -27,7 +27,7 @@ export class FixClaudeConnection implements StatusUseCase<FixAction> {
         await this.urls.open(CLAUDE_CODE_INSTALL_URL);
         return errorStatus('claude-code-missing', 'Instale o Claude Code e clique em "Verificar de novo".');
       default:
-        throw new ConnectionProblemError('unexpected', `Conserto não se aplica ao Claude: ${fix}`);
+        throw new ConnectionProblemError('unexpected', `Fix does not apply to Claude: ${fix}`);
     }
   }
 }

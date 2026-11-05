@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ConnectionProblemError, FIX_FOR, FIX_LABELS } from '../../../domain/connections';
+import { ConnectionProblemError, FIX_FOR } from '../../../domain/connections';
 import type { PullRequest } from '../../../domain/pull-requests';
 import { GitHubTokenResolver } from '../../connections/github-token-resolver';
 import { createPullRequests, type PullRequests } from '../../pull-requests';
@@ -76,7 +76,7 @@ describe('PRs', () => {
     prefs.current = { ...prefs.current, github: { method: null } };
     await expect(features.loadMine.execute()).rejects.toMatchObject({
       problem: 'github-unauthorized',
-      message: expect.stringContaining('Conexões'),
+      code: 'github-not-connected',
     });
     expect(gateway.calls).toHaveLength(0);
   });
@@ -91,7 +91,7 @@ describe('PRs', () => {
       gateway.outcome = new ConnectionProblemError(problem);
       const error = await features.loadMine.execute().catch((caught: unknown) => caught);
       expect(error).toMatchObject({ problem });
-      expect(FIX_LABELS[FIX_FOR[problem]]).not.toBe('');
+      expect(FIX_FOR[problem]).not.toBe('retry');
     }
   });
 });
@@ -143,7 +143,7 @@ describe('OpenGitHubUrl', () => {
     'nao-e-url',
   ])('recusa %s sem abrir nada', async (url) => {
     const opener = new FakeUrlOpener();
-    await expect(new OpenGitHubUrl(opener).execute(url)).rejects.toThrow('inválido');
+    await expect(new OpenGitHubUrl(opener).execute(url)).rejects.toThrow('link-invalid-github');
     expect(opener.opened).toEqual([]);
   });
 });

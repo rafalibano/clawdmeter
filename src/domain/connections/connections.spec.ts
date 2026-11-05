@@ -4,32 +4,28 @@ import { CONNECTIONS } from './connection';
 import { createDefaultConnectionPrefs, parseConnectionPrefs } from './connection-prefs';
 import { CONNECTION_PROBLEMS } from './connection-problem';
 import { errorStatus } from './connection-status';
-import { FIX_FOR, FIX_LABELS, PROBLEM_MESSAGES } from './fix-action';
+import { FIX_FOR } from './fix-action';
 import { evaluateGitHubAccount, missingScopes, parseSsoUrl } from './github';
 
 describe('tabela de consertos', () => {
-  it('todo problema tem conserto, rótulo e mensagem', () => {
-    for (const problem of CONNECTION_PROBLEMS) {
-      expect(FIX_FOR[problem]).toBeDefined();
-      expect(FIX_LABELS[FIX_FOR[problem]]).not.toBe('');
-      expect(PROBLEM_MESSAGES[problem]).not.toBe('');
-    }
+  it('todo problema tem conserto', () => {
+    for (const problem of CONNECTION_PROBLEMS) expect(FIX_FOR[problem]).toBeDefined();
   });
 
   it.each([
-    ['keychain-denied', 'Refazer permissão'],
-    ['claude-expired', 'Refazer login do Claude'],
-    ['claude-code-missing', 'Instalar Claude Code'],
-    ['github-unauthorized', 'Refazer login do GitHub'],
-    ['github-missing-scope', 'Refazer permissões'],
-    ['github-org-access', 'Autorizar na org'],
-    ['microsoft-expired', 'Refazer login da Microsoft'],
-    ['microsoft-not-connected', 'Conectar'],
-    ['notifications-blocked', 'Abrir ajustes do sistema'],
-    ['notifications-unverifiable', 'Abrir ajustes do sistema'],
-    ['github-not-member', 'Abrir página da org'],
-  ] as const)('%s mostra o botão "%s"', (problem, label) => {
-    expect(FIX_LABELS[FIX_FOR[problem]]).toBe(label);
+    ['keychain-denied', 'retry-permission'],
+    ['claude-expired', 'relogin-claude'],
+    ['claude-code-missing', 'install-claude-code'],
+    ['github-unauthorized', 'relogin-github'],
+    ['github-missing-scope', 'regrant-scopes'],
+    ['github-org-access', 'authorize-org'],
+    ['microsoft-expired', 'relogin-microsoft'],
+    ['microsoft-not-connected', 'connect-microsoft'],
+    ['notifications-blocked', 'open-system-settings'],
+    ['notifications-unverifiable', 'open-system-settings'],
+    ['github-not-member', 'open-org-page'],
+  ] as const)('%s usa o conserto "%s"', (problem, fix) => {
+    expect(FIX_FOR[problem]).toBe(fix);
   });
 });
 
@@ -58,8 +54,8 @@ describe('actionsFor', () => {
   });
 
   it('desconectada oferece Conectar; checando não oferece nada', () => {
-    expect(actionsFor('microsoft', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'Conectar' }]);
-    expect(actionsFor('github', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'Conectar GitHub CLI' }]);
+    expect(actionsFor('microsoft', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'connect' }]);
+    expect(actionsFor('github', { state: 'disconnected' })).toEqual([{ kind: 'connect', label: 'connect-github-cli' }]);
     expect(actionsFor('github', { state: 'checking' })).toEqual([]);
   });
 
@@ -82,7 +78,7 @@ describe('evaluateGitHubAccount', () => {
 
   it('escopo faltando', () => {
     const status = evaluateGitHubAccount({ ...ok, scopes: ['repo'] });
-    expect(status).toMatchObject({ state: 'error', problem: 'github-missing-scope' });
+    expect(status).toMatchObject({ state: 'error', problem: 'github-missing-scope', note: 'missing-scopes', noteArg: 'read:org' });
   });
 
   it('SSO pendente e não-membro têm problemas distintos', () => {
@@ -155,6 +151,6 @@ describe('actionsForProblem', () => {
   });
 
   it('Microsoft nunca conectada oferece só Conectar', () => {
-    expect(actionsForProblem('microsoft', 'microsoft-not-connected')).toEqual([{ kind: 'connect', label: 'Conectar' }]);
+    expect(actionsForProblem('microsoft', 'microsoft-not-connected')).toEqual([{ kind: 'connect', label: 'connect' }]);
   });
 });

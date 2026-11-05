@@ -4,7 +4,7 @@ import type { CalendarGateway, Clock } from '../../../application/ports';
 import { TeamsComponent } from './teams.component';
 import { TEAMS_PAGE } from './teams-page-ref';
 
-const AGENDA_POLL_MS = 5 * 60_000;
+const AGENDA_POLL_MS = 10 * 60_000;
 
 export function createTeamsPage(deps: {
   clock: Clock;

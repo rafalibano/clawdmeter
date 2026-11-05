@@ -9,6 +9,7 @@ import {
 } from '../../domain/connections';
 import { toRowView, type ConnectionRowView } from '../settings/connections/connection-view';
 import { APPLICATION } from './application.token';
+import { I18n } from '../i18n/i18n.service';
 import { SettingsFacade } from './settings.facade';
 
 @Injectable({ providedIn: 'root' })
@@ -16,6 +17,7 @@ export class ConnectionsFacade {
   private readonly connections = inject(APPLICATION).connections;
   private readonly registry = inject(APPLICATION).registry;
   private readonly settings = inject(SettingsFacade);
+  private readonly i18n = inject(I18n);
   private readonly statuses = signal<ReadonlyMap<ConnectionId, ConnectionStatus>>(new Map());
 
   readonly requiredIds = computed(() => {
@@ -24,7 +26,7 @@ export class ConnectionsFacade {
   });
 
   readonly rows = computed<ConnectionRowView[]>(() =>
-    this.requiredIds().map((id) => toRowView(id, this.statuses().get(id) ?? UNKNOWN_STATUS)),
+    this.requiredIds().map((id) => toRowView(id, this.statuses().get(id) ?? UNKNOWN_STATUS, this.i18n.localizer())),
   );
 
   constructor() {

@@ -32,7 +32,6 @@ export class LoadReviews {
       sections: [
         {
           id: 'to-review',
-          title: 'Para revisar',
           groups: groupByRepo(toReview.items),
           shown: toReview.items.length,
           total: toReview.total,
@@ -40,7 +39,6 @@ export class LoadReviews {
         },
         {
           id: 'reviewed',
-          title: 'Revisados por mim (abertos e últimos 30 dias)',
           groups: groupByRepo(reviewed),
           shown: reviewed.length,
           total: reviewedOpen.total + reviewedRecent.total,

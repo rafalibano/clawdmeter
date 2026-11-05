@@ -1,4 +1,4 @@
-import { GITHUB_CLI_HINTS, evaluateGitHubAccount, type ConnectionStatus } from '../../../../domain/connections';
+import { GITHUB_CLI_NOTES, evaluateGitHubAccount, type ConnectionStatus } from '../../../../domain/connections';
 import { updatePrefs } from '../../../connections/update-prefs';
 import type { StatusUseCase } from '../../../connections/connection-runner';
 import type { ConnectionPrefsStore, GitHubAccountGateway, GitHubCliTokenSource } from '../../../ports';
@@ -12,7 +12,7 @@ export class ConnectGitHub implements StatusUseCase {
 
   async execute(): Promise<ConnectionStatus> {
     const result = await this.cli.token();
-    if ('missing' in result) return { state: 'disconnected', hint: GITHUB_CLI_HINTS[result.missing], cli: result.missing };
+    if ('missing' in result) return { state: 'disconnected', note: GITHUB_CLI_NOTES[result.missing], cli: result.missing };
     const status = evaluateGitHubAccount(await this.accounts.inspect(result.token));
     await updatePrefs(this.prefs, (current) => ({ ...current, github: { method: 'gh-cli' } }));
     return status;

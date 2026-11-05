@@ -83,7 +83,7 @@ describe('JoinMeeting', () => {
     'recusa %s sem abrir nada',
     async (url) => {
       const opener = new FakeUrlOpener();
-      await expect(new JoinMeeting(opener).execute(url)).rejects.toThrow('inválido');
+      await expect(new JoinMeeting(opener).execute(url)).rejects.toThrow('link-invalid-meeting');
       expect(opener.opened).toEqual([]);
     },
   );

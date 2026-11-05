@@ -1,22 +1,14 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterRenderEffect, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
-import type { SettingsSessionError } from '../../application/session';
-import { formatUpdatedAgo } from './elapsed';
+import { I18n } from '../i18n';
+import { REFRESH_COOLDOWN_MS, refreshState } from './refresh-state';
 import { APPLICATION } from './application.token';
 import { PageStateService } from './page-state.service';
 import { SettingsFacade } from './settings.facade';
 import { SettingsComponent } from '../settings/settings.component';
 
 const CLOCK_TICK_MS = 1_000;
-
-const ERROR_MESSAGES: Record<SettingsSessionError, string> = {
-  load: 'Não foi possível ler as configurações. Usando os padrões.',
-  save: 'Não foi possível salvar as configurações.',
-  watch: 'Edições manuais em settings.json não serão recarregadas.',
-  invalid: 'settings.json inválido — ajustes não estão sendo salvos.',
-  future: 'settings.json de versão mais nova — ajustes não estão sendo salvos.',
-};
 
 @Component({
   selector: 'dp-shell',
@@ -27,16 +19,21 @@ const ERROR_MESSAGES: Record<SettingsSessionError, string> = {
 })
 export class ShellComponent {
   private readonly facade = inject(SettingsFacade);
+  protected readonly i18n = inject(I18n);
+  private readonly scheduler = inject(APPLICATION).scheduler;
   private readonly pageState = inject(PageStateService);
   private readonly clock = inject(APPLICATION).clock;
   private readonly now = signal(this.clock.now());
   private readonly requestedPageId = signal<string | null>(null);
 
+  private readonly refreshing = signal(false);
+  private readonly cooldowns = signal<ReadonlyMap<string, number>>(new Map());
+
   protected readonly showingSettings = signal(false);
   protected readonly pages = this.facade.enabledPages;
   protected readonly errorMessage = computed(() => {
     const error = this.facade.error();
-    return error === null ? null : ERROR_MESSAGES[error];
+    return error === null ? null : this.i18n.t(`shell.error.${error}`);
   });
   protected readonly current = computed<PageModule | null>(
     () => this.pages().find((page) => page.id === this.requestedPageId()) ?? this.pages()[0] ?? null,
@@ -44,7 +41,21 @@ export class ShellComponent {
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
     const update = page ? this.pageState.get(page) : undefined;
-    return formatUpdatedAgo(update?.at ?? null, this.now());
+    return this.i18n.localizer().updatedAgo(update?.at ?? null, this.now());
+  });
+  protected readonly refresh = computed(() => {
+    const page = this.current();
+    const update = page ? this.pageState.get(page) : undefined;
+    const state = refreshState({
+      now: this.now(),
+      loading: this.refreshing(),
+      cooldownUntil: page ? (this.cooldowns().get(page.id) ?? 0) : 0,
+      backoffUntil: update?.status === 'error' ? (update.rateLimitedUntil ?? null) : null,
+    });
+    const tooltip = state.tooltip;
+    const l = this.i18n.localizer();
+    const text = 'remainingMs' in tooltip ? l.t(tooltip.key, { span: l.span(tooltip.remainingMs) }) : l.t(tooltip.key);
+    return { ...state, text };
   });
 
   constructor() {
@@ -61,6 +72,18 @@ export class ShellComponent {
   protected select(id: string): void {
     this.requestedPageId.set(id);
     this.showingSettings.set(false);
+  }
+
+  protected async reload(): Promise<void> {
+    const page = this.current();
+    if (!page || this.refresh().disabled) return;
+    this.refreshing.set(true);
+    this.cooldowns.update((current) => new Map(current).set(page.id, this.clock.now() + REFRESH_COOLDOWN_MS));
+    try {
+      await this.scheduler.refresh(page.id);
+    } finally {
+      this.refreshing.set(false);
+    }
   }
 
   protected toggleSettings(): void {

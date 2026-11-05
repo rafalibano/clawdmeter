@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitHubTokenResolver } from '../../application/connections/github-token-resolver';
 import { createConnections } from '../../application/connections/create-connections';
 import { createPullRequests } from '../../application/pull-requests';
+import { FakeTranslator } from '../../application/testing/fake-translator';
 import { createSkills } from '../../application/skills';
 import { FakeClock } from '../../application/testing/fake-clock';
 import { FIX_FOR } from '../../domain/connections';
@@ -28,7 +29,7 @@ function setup(search: string) {
     clock,
   );
   const skills = createSkills(
-    createDemoSkillAdapters(world, { terminal: adapters.terminal, urls: adapters.urlOpener, notifier: new DemoNotifier() }),
+    createDemoSkillAdapters(world, { terminal: adapters.terminal, urls: adapters.urlOpener, notifier: new DemoNotifier(), translator: new FakeTranslator() }),
     clock,
     connections,
   );

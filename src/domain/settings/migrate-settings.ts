@@ -1,5 +1,5 @@
-import type { AppSettings, ThemeMode } from './app-settings';
-import { THEME_MODES } from './app-settings';
+import type { AppSettings, ThemeMode, UsageThresholds } from './app-settings';
+import { DEFAULT_LANGUAGE, DEFAULT_USAGE_THRESHOLDS, THEME_MODES, isAppLanguage, isValidUsageThresholds } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { isHexColor } from './hex-color';
 import { SCHEMA_VERSION } from './schema-version';
@@ -16,7 +16,13 @@ const adoptMottuAccent: Migration = (raw) => {
   return { ...raw, appearance: { ...appearance, accentColor: DEFAULT_ACCENT_COLOR } };
 };
 
-export const MIGRATIONS: readonly Migration[] = [(raw) => ({ ...raw }), adoptMottuAccent];
+const addLanguageAndThresholds: Migration = (raw) => ({
+  ...raw,
+  language: isAppLanguage(raw['language']) ? raw['language'] : DEFAULT_LANGUAGE,
+  usageThresholds: raw['usageThresholds'] ?? { ...DEFAULT_USAGE_THRESHOLDS },
+});
+
+export const MIGRATIONS: readonly Migration[] = [(raw) => ({ ...raw }), adoptMottuAccent, addLanguageAndThresholds];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -40,6 +46,13 @@ function readEnabledPages(value: unknown): Record<string, boolean> {
   return pages;
 }
 
+function readThresholds(value: unknown): UsageThresholds {
+  if (isRecord(value) && isValidUsageThresholds({ warning: value['warning'], critical: value['critical'] })) {
+    return { warning: value['warning'] as number, critical: value['critical'] as number };
+  }
+  return { ...DEFAULT_USAGE_THRESHOLDS };
+}
+
 function normalize(raw: Record<string, unknown>): AppSettings {
   const defaults = createDefaultSettings();
   const appearance = isRecord(raw['appearance']) ? raw['appearance'] : {};
@@ -54,6 +67,8 @@ function normalize(raw: Record<string, unknown>): AppSettings {
       popoverBackground: isHexColor(background) ? background.toLowerCase() : null,
       theme: THEME_MODES.includes(theme as ThemeMode) ? (theme as ThemeMode) : defaults.appearance.theme,
     },
+    language: isAppLanguage(raw['language']) ? raw['language'] : DEFAULT_LANGUAGE,
+    usageThresholds: readThresholds(raw['usageThresholds']),
   };
 }
 

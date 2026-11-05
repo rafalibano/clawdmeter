@@ -1,5 +1,6 @@
 import { createConnections } from '../connections/create-connections';
 import type { Clock } from '../ports';
+import { FakeTranslator } from './fake-translator';
 import { createSkills, type Skills } from '../skills';
 import { FakeTerminal, FakeUrlOpener, createFakeConnectionWorld } from './fake-connection-adapters';
 import {
@@ -18,6 +19,7 @@ export function createFakeSkills(clock: Clock): Skills {
       terminal: new FakeTerminal(),
       urls: new FakeUrlOpener(),
       notifier: new FakeNotifier(),
+      translator: new FakeTranslator(),
     },
     clock,
     createConnections(createFakeConnectionWorld().adapters, clock),

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RateLimitedError } from '../../domain/rate-limit';
 import { createFakeCommands, rejectWith } from '../testing/fakes';
 import { AnthropicUsageGateway } from './anthropic-usage-gateway';
 
@@ -31,9 +32,26 @@ describe('AnthropicUsageGateway', () => {
     });
   });
 
-  it('erro HTTP do Rust mantém a mensagem com o status', async () => {
-    const { commands } = createFakeCommands(() => rejectWith('http', 'Anthropic respondeu 429 em /api/oauth/usage'));
-    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('Anthropic respondeu 429');
+  it('kind rate_limited vira RateLimitedError com o Retry-After em ms', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('rate_limited', 'limite', { retryAfterSecs: 120 }));
+    const error = await new AnthropicUsageGateway(commands).fetch().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RateLimitedError);
+    expect((error as RateLimitedError).retryAfterMs).toBe(120_000);
+  });
+
+  it('rate_limited sem Retry-After não traz tempo', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('rate_limited', 'limite'));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toMatchObject({ retryAfterMs: null });
+  });
+
+  it.each([['429'], ['500'], ['503']])('erro HTTP %s genérico também vira RateLimitedError', async (status) => {
+    const { commands } = createFakeCommands(() => rejectWith('http', `Anthropic respondeu ${status}`));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toBeInstanceOf(RateLimitedError);
+  });
+
+  it('erro HTTP 4xx comum mantém a mensagem', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('http', 'Anthropic respondeu 403'));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('Anthropic respondeu 403');
   });
 
   it('resposta sem janelas reconhecíveis falha', async () => {

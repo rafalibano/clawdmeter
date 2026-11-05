@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { AgendaSnapshot } from '../../../application/use-cases/calendar';
 import { dayBounds, type Meeting } from '../../../domain/calendar';
-import { isStale, toAgendaView } from './agenda-view';
+import { Localizer } from '../../i18n';
+import { isStale, toAgendaView as toAgendaViewWith } from './agenda-view';
+
+const PT = new Localizer('pt-BR');
+const toAgendaView = (snapshot: AgendaSnapshot, now: number) => toAgendaViewWith(snapshot, now, PT);
 
 const ZONE = 'America/Sao_Paulo';
 const NOW = Date.parse('2026-11-05T13:00:00Z');
@@ -15,6 +19,21 @@ function meeting(id: string, startsAt: number, endsAt: number, extra: Partial<Me
 function snapshot(meetings: Meeting[]): AgendaSnapshot {
   return { meetings, day: dayBounds(NOW, ZONE), timeZone: ZONE };
 }
+
+describe('contagem regressiva por língua', () => {
+  it.each([
+    [0, 'agora', 'now', 'ahora'],
+    [-3, 'agora', 'now', 'ahora'],
+    [1, 'em 1 min', 'in 1 min', 'en 1 min'],
+    [59, 'em 59 min', 'in 59 min', 'en 59 min'],
+    [60, 'em 1h', 'in 1h', 'en 1h'],
+    [80, 'em 1h 20min', 'in 1h 20min', 'en 1h 20min'],
+  ])('%i min', (minutes, pt, en, es) => {
+    expect(PT.countdown(minutes)).toBe(pt);
+    expect(new Localizer('en').countdown(minutes)).toBe(en);
+    expect(new Localizer('es-MX').countdown(minutes)).toBe(es);
+  });
+});
 
 describe('toAgendaView', () => {
   const past = meeting('Passada', NOW - 120 * MIN, NOW - 90 * MIN, { joinUrl: JOIN });

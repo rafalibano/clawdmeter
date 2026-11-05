@@ -1,4 +1,4 @@
-import { errorStatus, type ConnectionStatus } from './connection-status';
+import { noteStatus, errorStatus, type ConnectionStatus, type StatusNote } from './connection-status';
 
 export type GitHubAuthMethod = 'gh-cli' | 'device-flow' | 'pat';
 
@@ -8,10 +8,10 @@ export const GITHUB_REQUIRED_SCOPES: readonly string[] = ['repo', 'read:org'];
 export type GitHubCliMissing = 'not-installed' | 'not-logged-in';
 export type GitHubCliStep = GitHubCliMissing | 'install-opened' | 'login-opened';
 
-export const GITHUB_CLI_HINTS: Record<GitHubCliMissing, string> = {
-  'not-logged-in': 'Conecte o GitHub CLI ou entre pelo navegador com um código.',
-  'not-installed': 'GitHub CLI não encontrado. Instale e conecte o GitHub CLI, ou entre pelo navegador com um código.',
-};
+export const GITHUB_CLI_NOTES = {
+  'not-logged-in': 'github-cli-not-logged-in',
+  'not-installed': 'github-cli-not-installed',
+} as const satisfies Record<GitHubCliMissing, StatusNote>;
 
 export type GitHubOrgAccess = 'ok' | 'sso-required' | 'not-member';
 
@@ -58,7 +58,7 @@ export function parseSsoUrl(header: string | null): string | null {
 
 export function evaluateGitHubAccount(account: GitHubAccount): ConnectionStatus {
   const missing = missingScopes(account);
-  if (missing.length > 0) return errorStatus('github-missing-scope', `Faltam: ${missing.join(', ')}`);
+  if (missing.length > 0) return noteStatus('github-missing-scope', 'missing-scopes', missing.join(', '));
   if (account.orgAccess === 'not-member') return errorStatus('github-not-member');
   if (account.orgAccess === 'sso-required') return errorStatus('github-org-access');
   return { state: 'connected', account: account.login };

@@ -4,7 +4,6 @@ import {
   ConnectionProblemError,
   GITHUB_ORG_SSO_URL,
   GITHUB_ORG_URL,
-  PROBLEM_MESSAGES,
   actionsFor,
   type ConnectionId,
   type ConnectionStatus,
@@ -51,7 +50,7 @@ describe('Claude', () => {
     world.claude.outcome = new ConnectionProblemError('keychain-denied');
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ state: 'error', problem: 'keychain-denied' });
-    expect(fixLabel('claude', status)).toBe('Refazer permissão');
+    expect(fixLabel('claude', status)).toBe('retry-permission');
     world.claude.outcome = { expiresAt: null, subscriptionType: null };
     expect(await runFix('claude', 'retry-permission')).toEqual({ state: 'connected' });
   });
@@ -60,7 +59,7 @@ describe('Claude', () => {
     world.claude.outcome = { expiresAt: 5_000, subscriptionType: 'pro' };
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ problem: 'claude-expired' });
-    expect(fixLabel('claude', status)).toBe('Refazer login do Claude');
+    expect(fixLabel('claude', status)).toBe('relogin-claude');
     const after = await runFix('claude', 'relogin-claude');
     expect(world.terminal.commands).toEqual([{ program: 'claude', args: ['/login'] }]);
     expect(after).toMatchObject({ state: 'error', problem: 'claude-expired' });
@@ -69,7 +68,7 @@ describe('Claude', () => {
   it('Claude Code ausente -> "Instalar Claude Code" abre a página de instalação', async () => {
     world.claude.outcome = new ConnectionProblemError('claude-code-missing');
     const status = await connections.check.execute('claude');
-    expect(fixLabel('claude', status)).toBe('Instalar Claude Code');
+    expect(fixLabel('claude', status)).toBe('install-claude-code');
     await runFix('claude', 'install-claude-code');
     expect(world.urls.opened).toEqual([CLAUDE_CODE_INSTALL_URL]);
   });
@@ -106,10 +105,10 @@ describe('GitHub', () => {
     const status = await connections.connect.execute('github');
     expect(status).toEqual({
       state: 'disconnected',
-      hint: 'Conecte o GitHub CLI ou entre pelo navegador com um código.',
+      note: 'github-cli-not-logged-in',
       cli: 'not-logged-in',
     });
-    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['Conectar GitHub CLI']);
+    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['connect-github-cli']);
     expect(world.prefs.current.github.method).toBeNull();
   });
 
@@ -118,10 +117,10 @@ describe('GitHub', () => {
     const status = await connections.connect.execute('github');
     expect(status).toEqual({
       state: 'disconnected',
-      hint: 'GitHub CLI não encontrado. Instale e conecte o GitHub CLI, ou entre pelo navegador com um código.',
+      note: 'github-cli-not-installed',
       cli: 'not-installed',
     });
-    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['Instalar GitHub CLI']);
+    expect(actionsFor('github', status).map((a) => a.label)).toEqual(['install-github-cli']);
   });
 
   it('a verificação sem método mostra o motivo do gh já na abertura', async () => {
@@ -138,7 +137,7 @@ describe('GitHub', () => {
     const opened = await runFix('github', 'connect-github-cli');
     expect(world.terminal.commands).toEqual([{ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] }]);
     expect(opened).toMatchObject({ state: 'disconnected', cli: 'login-opened' });
-    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['Conectar GitHub CLI', 'Verificar de novo']);
+    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['connect-github-cli', 'recheck']);
     world.githubCli.outcome = 'gh-token';
     expect(await connections.connect.execute('github')).toEqual({ state: 'connected', account: 'dev' });
   });
@@ -148,7 +147,7 @@ describe('GitHub', () => {
     const opened = await runFix('github', 'install-github-cli');
     expect(world.urls.opened).toEqual(['https://cli.github.com']);
     expect(opened).toMatchObject({ state: 'disconnected', cli: 'install-opened' });
-    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['Instalar GitHub CLI', 'Verificar de novo']);
+    expect(actionsFor('github', opened).map((a) => a.label)).toEqual(['install-github-cli', 'recheck']);
     world.githubCli.outcome = { missing: 'not-logged-in' };
     expect(await connections.connect.execute('github')).toMatchObject({ cli: 'not-logged-in' });
   });
@@ -173,7 +172,7 @@ describe('GitHub', () => {
       problem: 'unexpected',
       message: 'client_id do GitHub OAuth App não configurado',
     });
-    expect(fixLabel('github', status)).toBe('Tentar de novo');
+    expect(fixLabel('github', status)).toBe('retry');
   });
 
   it('falha ao abrir a página de verificação também vira estado de erro', async () => {
@@ -237,7 +236,7 @@ describe('GitHub', () => {
     await connections.connect.execute('github');
     world.githubAccounts.outcome = new ConnectionProblemError('github-unauthorized');
     const status = await connections.check.execute('github');
-    expect(fixLabel('github', status)).toBe('Refazer login do GitHub');
+    expect(fixLabel('github', status)).toBe('relogin-github');
     await runFix('github', 'relogin-github');
     expect(world.terminal.commands).toEqual([{ program: 'gh', args: ['auth', 'login', '-h', 'github.com', '-w'] }]);
   });
@@ -255,7 +254,7 @@ describe('GitHub', () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['gist'], orgAccess: 'ok' };
     const status = await connections.connect.execute('github');
     expect(status).toMatchObject({ problem: 'github-missing-scope' });
-    expect(fixLabel('github', status)).toBe('Refazer permissões');
+    expect(fixLabel('github', status)).toBe('regrant-scopes');
     await runFix('github', 'regrant-scopes');
     expect(world.terminal.commands).toEqual([
       { program: 'gh', args: ['auth', 'refresh', '-h', 'github.com', '-s', 'repo,read:org'] },
@@ -267,11 +266,11 @@ describe('GitHub', () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required', ssoUrl };
     const status = await connections.connect.execute('github');
     expect(status).toMatchObject({ problem: 'github-org-access' });
-    expect(fixLabel('github', status)).toBe('Autorizar na org');
+    expect(fixLabel('github', status)).toBe('authorize-org');
     const after = await runFix('github', 'authorize-org');
     expect(world.urls.opened).toEqual([ssoUrl]);
     expect(after).toMatchObject({ problem: 'github-org-access' });
-    expect(after.state === 'error' && after.message).toContain('Verificar de novo');
+    expect(after).toMatchObject({ note: 'authorize-org' });
   });
 
   it('falha ao descobrir a URL de SSO cai na página de SSO da org', async () => {
@@ -296,8 +295,7 @@ describe('GitHub', () => {
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'not-member' };
     const status = await connections.connect.execute('github');
     expect(status).toEqual({ state: 'error', problem: 'github-not-member' });
-    expect(PROBLEM_MESSAGES['github-not-member']).toBe('Você não é membro da org Mottu-ops.');
-    expect(fixLabel('github', status)).toBe('Abrir página da org');
+    expect(fixLabel('github', status)).toBe('open-org-page');
     await runFix('github', 'open-org-page');
     expect(world.urls.opened).toEqual([GITHUB_ORG_URL]);
   });
@@ -332,7 +330,7 @@ describe('Microsoft', () => {
     await connections.connect.execute('microsoft');
     world.microsoft.tokenOutcome = new ConnectionProblemError('microsoft-expired');
     const status = await connections.check.execute('microsoft');
-    expect(fixLabel('microsoft', status)).toBe('Refazer login da Microsoft');
+    expect(fixLabel('microsoft', status)).toBe('relogin-microsoft');
     expect(await runFix('microsoft', 'relogin-microsoft')).toMatchObject({ state: 'connected' });
     expect(world.microsoft.signedIn).toBe(2);
   });
@@ -342,7 +340,7 @@ describe('Microsoft', () => {
     world.microsoft.tokenOutcome = new ConnectionProblemError('microsoft-not-connected');
     const status = await connections.check.execute('microsoft');
     expect(status).toEqual({ state: 'disconnected' });
-    expect(actionsFor('microsoft', status)).toEqual([{ kind: 'connect', label: 'Conectar' }]);
+    expect(actionsFor('microsoft', status)).toEqual([{ kind: 'connect', label: 'connect' }]);
     expect(await runFix('microsoft', 'connect-microsoft')).toMatchObject({ state: 'connected' });
   });
 
@@ -368,7 +366,7 @@ describe('Notificações', () => {
     world.notifications.state = 'denied';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ problem: 'notifications-blocked' });
-    expect(fixLabel('notifications', status)).toBe('Abrir ajustes do sistema');
+    expect(fixLabel('notifications', status)).toBe('open-system-settings');
     await runFix('notifications', 'open-system-settings');
     expect(world.systemSettings.notificationsOpened).toBe(1);
   });
@@ -377,7 +375,7 @@ describe('Notificações', () => {
     world.notifications.state = 'unknown';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ state: 'error', problem: 'notifications-unverifiable' });
-    expect(fixLabel('notifications', status)).toBe('Abrir ajustes do sistema');
+    expect(fixLabel('notifications', status)).toBe('open-system-settings');
     const after = await runFix('notifications', 'open-system-settings');
     expect(world.systemSettings.notificationsOpened).toBe(1);
     expect(after).toMatchObject({ problem: 'notifications-unverifiable' });
@@ -387,14 +385,14 @@ describe('Notificações', () => {
     world.notifications.state = 'prompt';
     const status = await connections.check.execute('notifications');
     expect(status).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
-    expect(fixLabel('notifications', status)).toBe('Abrir ajustes do sistema');
+    expect(fixLabel('notifications', status)).toBe('open-system-settings');
     const after = await runFix('notifications', 'open-system-settings');
     expect(world.systemSettings.notificationsOpened).toBe(1);
     expect(after).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
   });
 
   it('não pode ser desconectada', async () => {
-    await expect(connections.disconnect.execute('notifications')).rejects.toThrow('não pode ser desconectada');
+    await expect(connections.disconnect.execute('notifications')).rejects.toThrow('cannot be disconnected');
   });
 });
 
@@ -405,7 +403,7 @@ describe('erros inesperados e monitor', () => {
     world.prefs.current = { ...world.prefs.current, github: { method: 'gh-cli' } };
     const status = await connections.check.execute('github');
     expect(status).toEqual({ state: 'error', problem: 'unexpected', message: 'rede fora' });
-    expect(fixLabel('github', status)).toBe('Tentar de novo');
+    expect(fixLabel('github', status)).toBe('retry');
     world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'ok' };
     expect(await runFix('github', 'retry')).toMatchObject({ state: 'connected' });
   });

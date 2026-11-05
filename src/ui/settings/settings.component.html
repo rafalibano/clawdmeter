@@ -1,5 +1,5 @@
 <section class="section">
-  <h2 class="heading">Páginas</h2>
+  <h2 class="heading">{{ i18n.t('settings.pages') }}</h2>
   @for (page of pageRows(); track page.id) {
     <label class="check">
       <input
@@ -15,12 +15,31 @@
 <dp-connections />
 
 <section class="section">
-  <h2 class="heading">Aparência</h2>
+  <h2 class="heading">{{ i18n.t('settings.appearance') }}</h2>
 
   <div class="field">
-    <span class="label">Cor de destaque</span>
+    <span class="label">{{ i18n.t('settings.language') }}</span>
+    <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.language')">
+      @for (language of languages; track language) {
+        <button
+          type="button"
+          role="radio"
+          class="segment"
+          [attr.data-language]="language"
+          [class.selected]="settings().language === language"
+          [attr.aria-checked]="settings().language === language"
+          (click)="setLanguage(language)"
+        >
+          {{ languageLabel(language) }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="label">{{ i18n.t('settings.accent') }}</span>
     <dp-color-picker
-      label="Cor de destaque"
+      [label]="i18n.t('settings.accent')"
       [presets]="accentPresets"
       [value]="settings().appearance.accentColor"
       (picked)="setAccent($event)"
@@ -28,9 +47,9 @@
   </div>
 
   <div class="field">
-    <span class="label">Fundo do popover</span>
+    <span class="label">{{ i18n.t('settings.background') }}</span>
     <dp-color-picker
-      label="Fundo do popover"
+      [label]="i18n.t('settings.background')"
       [presets]="backgroundPresets"
       [value]="backgroundValue()"
       [marked]="settings().appearance.popoverBackground !== null"
@@ -42,25 +61,64 @@
       [disabled]="settings().appearance.popoverBackground === null"
       (click)="setBackground(null)"
     >
-      Usar padrão do tema
+      {{ i18n.t('settings.background.reset') }}
     </button>
   </div>
 
   <div class="field">
-    <span class="label">Tema</span>
-    <div class="segmented" role="radiogroup" aria-label="Tema">
-      @for (theme of themes; track theme.mode) {
+    <span class="label">{{ i18n.t('settings.theme') }}</span>
+    <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.theme')">
+      @for (mode of themes; track mode) {
         <button
           type="button"
           role="radio"
           class="segment"
-          [class.selected]="settings().appearance.theme === theme.mode"
-          [attr.aria-checked]="settings().appearance.theme === theme.mode"
-          (click)="setTheme(theme.mode)"
+          [class.selected]="settings().appearance.theme === mode"
+          [attr.aria-checked]="settings().appearance.theme === mode"
+          (click)="setTheme(mode)"
         >
-          {{ theme.label }}
+          {{ themeLabel(mode) }}
         </button>
       }
     </div>
   </div>
+</section>
+
+<section class="section">
+  <h2 class="heading">{{ i18n.t('settings.thresholds') }}</h2>
+  <div class="thresholds">
+    <label class="threshold">
+      <span class="label">{{ i18n.t('settings.thresholds.warning') }}</span>
+      <input
+        type="number"
+        class="number"
+        data-threshold="warning"
+        min="1"
+        max="99"
+        step="1"
+        [class.invalid]="thresholdsInvalid()"
+        [attr.aria-invalid]="thresholdsInvalid()"
+        [value]="warningText()"
+        (input)="setThreshold('warning', $event)"
+      />
+    </label>
+    <label class="threshold">
+      <span class="label">{{ i18n.t('settings.thresholds.critical') }}</span>
+      <input
+        type="number"
+        class="number"
+        data-threshold="critical"
+        min="2"
+        max="100"
+        step="1"
+        [class.invalid]="thresholdsInvalid()"
+        [attr.aria-invalid]="thresholdsInvalid()"
+        [value]="criticalText()"
+        (input)="setThreshold('critical', $event)"
+      />
+    </label>
+  </div>
+  @if (thresholdsInvalid()) {
+    <p class="invalid-note" role="alert">{{ i18n.t('settings.thresholds.invalid') }}</p>
+  }
 </section>

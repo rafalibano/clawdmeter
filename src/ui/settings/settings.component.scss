@@ -65,3 +65,32 @@
   background: var(--dp-accent);
   color: var(--dp-accent-fg);
 }
+
+.thresholds {
+  display: flex;
+  gap: 12px;
+}
+
+.threshold {
+  flex: 1;
+}
+
+.number {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--dp-control-border);
+  border-radius: var(--dp-radius-btn);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.number.invalid {
+  border-color: var(--dp-danger);
+}
+
+.invalid-note {
+  margin: 6px 0 0;
+  color: var(--dp-danger-text);
+  font-size: 12px;
+}

@@ -48,7 +48,7 @@ export class DisconnectConnection {
   execute(id: ConnectionId): Promise<ConnectionStatus> {
     const disconnect = this.disconnects[id];
     if (!connectionDefinition(id).disconnectable || !disconnect) {
-      return Promise.reject(new Error(`A conexão ${id} não pode ser desconectada`));
+      return Promise.reject(new Error(`Connection ${id} cannot be disconnected`));
     }
     return this.runner.run(id, () => disconnect.execute());
   }

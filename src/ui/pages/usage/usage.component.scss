@@ -30,6 +30,11 @@
   color: var(--dp-fg);
 }
 
+.range:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .range.active {
   background: var(--dp-accent);
   color: var(--dp-accent-fg);
@@ -92,7 +97,6 @@
 .track {
   position: relative;
   height: 8px;
-  overflow: hidden;
   border-radius: var(--dp-radius-pill);
   background: var(--dp-track);
 }
@@ -106,9 +110,16 @@
 
 .projection {
   position: absolute;
-  top: calc(50% - 1px);
-  height: 2px;
-  background: repeating-linear-gradient(90deg, var(--tone) 0 2px, transparent 2px 4px);
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--tone);
+}
+
+.projection[data-exhausts='true'] {
+  margin-left: -2px;
 }
 
 .bar-foot {

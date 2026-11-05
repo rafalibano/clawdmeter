@@ -1,19 +1,37 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import type { PullRequestSection } from '../../../application/pull-requests';
-import { formatAge, type PullRequest, type PullRequestGroup, type SlaLevel } from '../../../domain/pull-requests';
+import { DEPLOY_GROUP_KEY, formatAge, type PullRequest, type PullRequestGroup, type SlaLevel } from '../../../domain/pull-requests';
+import { I18n } from '../../i18n';
 import { APPLICATION } from '../../shell/application.token';
+import { hasGroups } from './pull-request-groups';
+import { PullRequestGroupsState } from './pull-request-groups.state';
 import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
-
-const SLA_TITLES: Record<SlaLevel, string> = {
-  fresh: 'Dentro do prazo',
-  attention: 'Aberto há 3 dias ou mais',
-  overdue: 'Aberto há 7 dias ou mais',
-};
 
 @Component({
   selector: 'dp-pull-request-sections',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
+    .toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 6px;
+    }
+    .toggle-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border: 0;
+      border-radius: var(--dp-radius-sm);
+      background: transparent;
+      color: var(--dp-muted);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .toggle-all:hover {
+      background: var(--dp-hover);
+      color: var(--dp-fg);
+    }
     .section {
       margin-bottom: 18px;
     }
@@ -138,10 +156,18 @@ const SLA_TITLES: Record<SlaLevel, string> = {
     }
   `,
   template: `
+    @if (hasGroups()) {
+      <div class="toolbar">
+        <button type="button" class="toggle-all" data-action="toggle-all" (click)="toggleAll()">
+          <span aria-hidden="true">{{ allOpen() ? '▾' : '▸' }}</span>
+          {{ allOpen() ? i18n.t('prs.collapseAll') : i18n.t('prs.expandAll') }}
+        </button>
+      </div>
+    }
     @for (section of sections(); track section.id) {
       <section class="section" [attr.data-section]="section.id">
         <h2 class="heading">
-          <span>{{ section.title }}</span>
+          <span>{{ sectionTitle(section) }}</span>
           <span class="count">{{ countLabel(section) }}</span>
         </h2>
         @for (group of section.groups; track group.key) {
@@ -153,7 +179,7 @@ const SLA_TITLES: Record<SlaLevel, string> = {
             (click)="toggle(section, group)"
           >
             <span class="chevron" aria-hidden="true">{{ isOpen(section, group) ? '▾' : '▸' }}</span>
-            <span class="group-title">{{ group.title }}</span>
+            <span class="group-title">{{ groupTitle(group) }}</span>
             <span class="count">{{ group.items.length }}</span>
           </button>
           @if (isOpen(section, group)) {
@@ -174,12 +200,12 @@ const SLA_TITLES: Record<SlaLevel, string> = {
             }
           }
         } @empty {
-          <p class="empty">Nada por aqui.</p>
+          <p class="empty">{{ i18n.t('prs.empty') }}</p>
         }
         @if (section.total > section.shown) {
           <p class="muted">
-            Mostrando {{ section.shown }} de {{ section.total }}.
-            <button type="button" class="link" data-action="open-search" (click)="openUrl(section.searchUrl)">Ver todos no GitHub</button>
+            {{ i18n.t('prs.showing', { shown: section.shown, total: section.total }) }}
+            <button type="button" class="link" data-action="open-search" (click)="openUrl(section.searchUrl)">{{ i18n.t('prs.seeAll') }}</button>
           </p>
         }
       </section>
@@ -188,8 +214,10 @@ const SLA_TITLES: Record<SlaLevel, string> = {
 })
 export class PullRequestSectionsComponent {
   private readonly openGitHubUrl = inject(APPLICATION).openGitHubUrl;
-  private readonly toggled = signal<ReadonlySet<string>>(new Set());
+  private readonly groups = inject(PullRequestGroupsState);
+  protected readonly i18n = inject(I18n);
 
+  readonly scope = input.required<string>();
   readonly sections = input.required<readonly PullRequestSection[]>();
   readonly now = input.required<number>();
   readonly showAuthor = input(false);
@@ -198,18 +226,27 @@ export class PullRequestSectionsComponent {
     return section.total > section.shown ? `${section.shown}+` : String(section.shown);
   }
 
+  protected readonly hasGroups = computed(() => hasGroups(this.sections()));
+  protected readonly allOpen = computed(() => this.groups.allOpen(this.scope(), this.sections()));
+
+  protected sectionTitle(section: PullRequestSection): string {
+    return this.i18n.t(`prs.section.${section.id as 'mine' | 'to-review' | 'reviewed'}`);
+  }
+
+  protected groupTitle(group: PullRequestGroup): string {
+    return group.key === DEPLOY_GROUP_KEY ? this.i18n.t('prs.group.deploy') : group.title;
+  }
+
   protected isOpen(section: PullRequestSection, group: PullRequestGroup): boolean {
-    const flipped = this.toggled().has(this.key(section, group));
-    return group.collapsedByDefault ? flipped : !flipped;
+    return this.groups.isOpen(this.scope(), section.id, group);
   }
 
   protected toggle(section: PullRequestSection, group: PullRequestGroup): void {
-    const key = this.key(section, group);
-    this.toggled.update((current) => {
-      const next = new Set(current);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
+    this.groups.toggle(this.scope(), section.id, group);
+  }
+
+  protected toggleAll(): void {
+    this.groups.toggleAll(this.scope(), this.sections());
   }
 
   protected age(pr: PullRequest): string {
@@ -222,11 +259,11 @@ export class PullRequestSectionsComponent {
 
   protected slaTitle(pr: PullRequest): string | null {
     const level = this.sla(pr);
-    return level === null ? null : SLA_TITLES[level];
+    return level === null ? null : this.i18n.t(`prs.sla.${level}`);
   }
 
   protected badges(pr: PullRequest): PullRequestBadge[] {
-    return badgesFor(pr);
+    return badgesFor(pr, this.i18n.localizer());
   }
 
   protected open(pr: PullRequest): void {
@@ -235,9 +272,5 @@ export class PullRequestSectionsComponent {
 
   protected openUrl(url: string): void {
     void this.openGitHubUrl.execute(url).catch(() => undefined);
-  }
-
-  private key(section: PullRequestSection, group: PullRequestGroup): string {
-    return `${section.id}/${group.key}`;
   }
 }

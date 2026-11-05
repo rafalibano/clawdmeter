@@ -1,5 +1,6 @@
+import type { Localizer } from '../../i18n';
 import type { AgendaSnapshot } from '../../../application/use-cases/calendar';
-import { buildAgenda, dayBounds, formatClock, formatCountdown, type AgendaItem, type Meeting, type NextMeeting } from '../../../domain/calendar';
+import { buildAgenda, dayBounds, formatClock, type AgendaItem, type Meeting, type NextMeeting } from '../../../domain/calendar';
 
 export type RowTone = 'now' | 'upcoming' | 'past' | 'cancelled';
 
@@ -20,12 +21,13 @@ export interface AgendaView {
   isEmpty: boolean;
 }
 
-function headlineOf(current: readonly Meeting[], next: NextMeeting | null): string | null {
+function headlineOf(current: readonly Meeting[], next: NextMeeting | null, l: Localizer): string | null {
   if (current[0]) {
-    const extra = current.length > 1 ? ` (+${current.length - 1})` : '';
-    return `Agora: ${current[0].title}${extra}`;
+    return current.length > 1
+      ? l.t('teams.nowMore', { title: current[0].title, extra: current.length - 1 })
+      : l.t('teams.now', { title: current[0].title });
   }
-  if (next) return `Próxima ${formatCountdown(next.minutesUntil)}: ${next.meeting.title}`;
+  if (next) return l.t('teams.next', { when: l.countdown(next.minutesUntil), title: next.meeting.title });
   return null;
 }
 
@@ -34,7 +36,7 @@ function detailOf(item: AgendaItem): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-export function toAgendaView(snapshot: AgendaSnapshot, now: number): AgendaView {
+export function toAgendaView(snapshot: AgendaSnapshot, now: number, l: Localizer): AgendaView {
   const agenda = buildAgenda(snapshot.meetings, now);
   const zone = snapshot.timeZone;
   const nextId = agenda.next?.meeting.id ?? null;
@@ -43,11 +45,11 @@ export function toAgendaView(snapshot: AgendaSnapshot, now: number): AgendaView 
     const { meeting } = item;
     const joinable = !meeting.cancelled && item.phase !== 'past' && meeting.joinUrl !== null;
     let badge: string | null = null;
-    if (item.phase === 'now') badge = 'agora';
-    else if (meeting.id === nextId && agenda.next) badge = `próxima ${formatCountdown(agenda.next.minutesUntil)}`;
+    if (item.phase === 'now') badge = l.t('teams.badge.now');
+    else if (meeting.id === nextId && agenda.next) badge = l.t('teams.badge.next', { when: l.countdown(agenda.next.minutesUntil) });
     return {
       id: meeting.id,
-      time: meeting.allDay ? 'Dia todo' : `${formatClock(meeting.startsAt, zone)}–${formatClock(meeting.endsAt, zone)}`,
+      time: meeting.allDay ? l.t('teams.allDay') : `${formatClock(meeting.startsAt, zone)}–${formatClock(meeting.endsAt, zone)}`,
       title: meeting.title,
       detail: detailOf(item),
       tone: item.phase,
@@ -57,7 +59,7 @@ export function toAgendaView(snapshot: AgendaSnapshot, now: number): AgendaView 
   };
 
   return {
-    headline: headlineOf(agenda.current, agenda.next),
+    headline: headlineOf(agenda.current, agenda.next, l),
     allDay: agenda.allDay.map(toRow),
     rows: agenda.timed.map(toRow),
     isEmpty: snapshot.meetings.length === 0,

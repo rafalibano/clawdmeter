@@ -16,7 +16,7 @@ export class FixMicrosoftConnection implements StatusUseCase<FixAction> {
       case 'connect-microsoft':
         return this.connect.execute();
       default:
-        throw new ConnectionProblemError('unexpected', `Conserto não se aplica à Microsoft: ${fix}`);
+        throw new ConnectionProblemError('unexpected', `Fix does not apply to Microsoft: ${fix}`);
     }
   }
 }

@@ -5,9 +5,9 @@
       class="swatch"
       [class.selected]="marked() && value() === preset.color"
       [style.background]="preset.color"
-      [attr.aria-label]="preset.name"
+      [attr.aria-label]="i18n.t(preset.name)"
       [attr.aria-pressed]="marked() && value() === preset.color"
-      [title]="preset.name"
+      [title]="i18n.t(preset.name)"
       (click)="pick(preset.color)"
     ></button>
   }
@@ -19,7 +19,7 @@
     autocomplete="off"
     placeholder="#rrggbb"
     [class.invalid]="invalid()"
-    [attr.aria-label]="label() + ' em hexadecimal'"
+    [attr.aria-label]="i18n.t('settings.hexAria', { label: label() })"
     [attr.aria-invalid]="invalid()"
     [value]="text()"
     (input)="type($event)"

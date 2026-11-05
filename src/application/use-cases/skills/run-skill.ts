@@ -1,3 +1,4 @@
+import { CodedError } from '../../../domain/coded-error';
 import { ConnectionProblemError } from '../../../domain/connections';
 import {
   applyStreamEvent,
@@ -34,8 +35,8 @@ export class RunSkill {
 
   async execute(skillId: string): Promise<StartedRun> {
     const skill = (await this.config.load()).find((candidate) => candidate.id === skillId);
-    if (!skill) throw new Error(`Skill desconhecida: ${skillId}`);
-    if (this.board.isSkillRunning(skill.id)) throw new Error(`${skill.name} já está rodando.`);
+    if (!skill) throw new CodedError('skill-unknown', { id: skillId });
+    if (this.board.isSkillRunning(skill.id)) throw new CodedError('skill-running', { name: skill.name });
     const args = buildClaudeArgs(skill);
 
     this.sequence += 1;

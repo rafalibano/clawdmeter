@@ -1,6 +1,6 @@
 import {
   ConnectionProblemError,
-  problemMessage,
+  customMessage,
   errorStatus,
   statusForProblem,
   type ConnectionId,
@@ -14,7 +14,7 @@ export interface StatusUseCase<I = void> {
 
 export function statusFromError(error: unknown): ConnectionStatus {
   if (error instanceof ConnectionProblemError) {
-    return statusForProblem(error.problem, problemMessage(error));
+    return statusForProblem(error.problem, customMessage(error));
   }
   const detail = error instanceof Error ? error.message : String(error);
   return errorStatus('unexpected', detail);

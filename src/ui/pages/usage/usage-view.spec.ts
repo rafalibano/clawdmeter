@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageData } from '../../../application/use-cases';
-import { PROBLEM_MESSAGES, actionsFor, errorStatus } from '../../../domain/connections';
+import { actionsFor, errorStatus } from '../../../domain/connections';
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { buildForecasts, createEmptyHistory, type Forecast, type UsageHistory } from '../../../domain/usage';
+import { buildForecasts, createEmptyHistory, type Forecast, type UsageHistory, type UsageWindowKind } from '../../../domain/usage';
 import { toRowView } from '../../settings/connections/connection-view';
-import { usageTone } from './usage-tone';
-import { projectionOf, resetText, toUsageErrorView, toUsageView } from './usage-view';
+import { Localizer } from '../../i18n';
+import { projectionTone } from './usage-tone';
+import {
+  projectionOf as projectionWith,
+  resetText as resetTextWith,
+  toUsageErrorView,
+  toUsageView as toUsageViewWith,
+} from './usage-view';
+
+const PT = new Localizer('pt-BR');
+const THRESHOLDS = { warning: 70, critical: 90 };
+const projectionOf = (kind: UsageWindowKind, forecast: Forecast, current: number, thresholds = THRESHOLDS, l = PT) =>
+  projectionWith(kind, forecast, current, thresholds, l);
+const resetText = (resetsAt: number | null, now: number, l = PT) => resetTextWith(resetsAt, now, l);
+const toUsageView = (data: UsageData, rangeId: string, thresholds = THRESHOLDS, l = PT) => toUsageViewWith(data, rangeId, l, thresholds);
 
 const NOW = new Date(2026, 10, 5, 14, 0).getTime();
 const RESET = new Date(2026, 10, 5, 16, 6).getTime();
@@ -49,60 +62,78 @@ describe('resetText', () => {
 });
 
 describe('projectionOf', () => {
-  it('sem previsão pronta não há trecho', () => {
+  it('sem previsão pronta não há marca', () => {
     expect(projectionOf('fiveHour', { status: 'collecting' }, 40)).toBeNull();
     expect(projectionOf('fiveHour', { status: 'unavailable' }, 40)).toBeNull();
   });
 
-  it('abaixo de 100%: do percentual atual até o previsto no reset', () => {
+  it('abaixo de 100%: uma linha vertical no percentual projetado', () => {
     expect(projectionOf('fiveHour', ready(78.4), 40)).toEqual({
-      from: 40,
-      to: 78.4,
+      at: 78.4,
       exhausts: false,
       tone: 'base',
       label: 'Projetado 78%',
     });
   });
 
-  it('estoura: o trecho vai até o fim da barra em alerta', () => {
-    expect(projectionOf('fiveHour', ready(160), 40)).toEqual({
-      from: 40,
-      to: 100,
+  it('estoura: a linha fica no fim da barra, em vermelho, e a legenda traz o número real', () => {
+    expect(projectionOf('fiveHour', ready(132), 40)).toEqual({
+      at: 100,
       exhausts: true,
       tone: 'danger',
-      label: 'Projetado >100%',
+      label: 'Projetado 132%',
     });
-    expect(projectionOf('sevenDay', ready(100), 100)).toMatchObject({ from: 100, to: 100, exhausts: true, tone: 'danger', label: 'Projetado 100%' });
+    expect(projectionOf('sevenDay', ready(100), 100)).toMatchObject({ at: 100, exhausts: true, tone: 'danger', label: 'Projetado 100%' });
+    expect(projectionOf('fiveHour', ready(160), 40)!.label).not.toContain('>');
   });
 
   it('nunca recua abaixo do valor atual', () => {
-    expect(projectionOf('fiveHour', ready(30), 40)).toMatchObject({ from: 40, to: 40, exhausts: false, label: 'Projetado 40%' });
+    expect(projectionOf('fiveHour', ready(30), 40)).toMatchObject({ at: 40, exhausts: false, label: 'Projetado 40%' });
+  });
+
+  it('a legenda segue a língua', () => {
+    expect(projectionOf('fiveHour', ready(132), 40, THRESHOLDS, new Localizer('en'))!.label).toBe('Projected 132%');
+    expect(projectionOf('fiveHour', ready(132), 40, THRESHOLDS, new Localizer('es-MX'))!.label).toBe('Proyectado 132%');
   });
 });
 
-describe('cor do 7d por faixa', () => {
+describe('cor da projeção por faixa', () => {
   it.each([
     [69.9, 'base'],
     [70, 'attention'],
     [89.9, 'attention'],
     [90, 'danger'],
-  ])('7d a %s%% fica %s e a 5h sempre base', (value, tone) => {
-    expect(usageTone('sevenDay', value)).toBe(tone);
-    expect(usageTone('fiveHour', value)).toBe('base');
+    [100, 'danger'],
+    [140, 'danger'],
+  ])('7d projetado a %s%% fica %s', (value, tone) => {
+    expect(projectionTone('sevenDay', value, THRESHOLDS)).toBe(tone);
   });
 
-  it('projetado do 7d segue a faixa do valor projetado; 5h projetada fica verde; estouro fica vermelho', () => {
+  it('a 5h projetada fica verde (base) e só vira vermelha a partir de 100%', () => {
+    expect(projectionTone('fiveHour', 99, THRESHOLDS)).toBe('base');
+    expect(projectionTone('fiveHour', 100, THRESHOLDS)).toBe('danger');
+    expect(projectionTone('fiveHour', 95, { warning: 10, critical: 20 })).toBe('base');
+  });
+
+  it('os limiares editáveis movem as faixas do 7d', () => {
+    expect(projectionTone('sevenDay', 55, { warning: 50, critical: 60 })).toBe('attention');
+    expect(projectionTone('sevenDay', 60, { warning: 50, critical: 60 })).toBe('danger');
+    expect(projectionTone('sevenDay', 75, { warning: 80, critical: 95 })).toBe('base');
+  });
+
+  it('projetado do 7d usa a faixa do valor projetado; 5h verde; estouro vermelho', () => {
     expect(projectionOf('sevenDay', ready(69.9), 10)!.tone).toBe('base');
     expect(projectionOf('sevenDay', ready(75), 10)!.tone).toBe('attention');
     expect(projectionOf('sevenDay', ready(95), 10)!.tone).toBe('danger');
     expect(projectionOf('fiveHour', ready(95), 10)!.tone).toBe('base');
-    expect(projectionOf('fiveHour', ready(132), 10)).toMatchObject({ tone: 'danger', label: 'Projetado >100%' });
+    expect(projectionOf('fiveHour', ready(132), 10)).toMatchObject({ tone: 'danger', label: 'Projetado 132%' });
+    expect(projectionOf('sevenDay', ready(75), 10, { warning: 80, critical: 95 })!.tone).toBe('base');
   });
 
-  it('a barra do 7d usa a faixa do percentual atual', () => {
+  it('a barra de consumo atual é sempre neutra, mesmo com 7d em 93%', () => {
     const data = dataWith(createEmptyHistory());
     const high = { ...data, snapshot: { ...data.snapshot, sevenDay: { utilization: 93, resetsAt: RESET } } };
-    expect(toUsageView(high, '1d').bars.map((bar) => bar.tone)).toEqual(['base', 'danger']);
+    expect(toUsageView(high, '1d').bars.map((bar) => bar.tone)).toEqual(['base', 'base']);
   });
 
   it('sem projeção a barra não traz legenda', () => {
@@ -142,6 +173,20 @@ describe('toUsageView', () => {
     expect(bars[0]).toEqual({ kind: 'fiveHour', label: '5h', percent: '—', fill: 0, tone: 'base', reset: '', projection: null });
   });
 
+  it('o seletor Reset só fica disponível com reset semanal conhecido', () => {
+    const data = dataWith(createEmptyHistory());
+    expect(toUsageView(data, 'cycle').cycleAvailable).toBe(true);
+    const unknown = { ...data, snapshot: { ...data.snapshot, sevenDay: { utilization: 12, resetsAt: null } } };
+    expect(toUsageView(unknown, 'cycle').cycleAvailable).toBe(false);
+    expect(toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, 'cycle').cycleAvailable).toBe(false);
+  });
+
+  it('o período Reset monta o eixo do último reset semanal até o próximo', () => {
+    const { chart } = toUsageView(dataWith(ramp((i) => 10 + i)), 'cycle');
+    const weeklyReset = NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS;
+    expect(chart).toMatchObject({ cycle: true, xMin: weeklyReset - 7 * 24 * HOUR_MS, xMax: weeklyReset });
+  });
+
   it('percentual acima de 100 enche a barra sem passar do trilho', () => {
     const data = dataWith(createEmptyHistory(), 130);
     expect(toUsageView(data, '1d').bars[0]).toMatchObject({ percent: '130%', fill: 100 });
@@ -151,21 +196,21 @@ describe('toUsageView', () => {
 describe('toUsageErrorView', () => {
   it('401: mostra a mensagem da conexão e o botão "Refazer login do Claude"', () => {
     const status = errorStatus('claude-expired');
-    const row = toRowView('claude', status);
+    const row = toRowView('claude', status, PT);
     const view = toUsageErrorView('claude-expired', row);
-    expect(view.message).toBe(PROBLEM_MESSAGES['claude-expired']);
-    expect(view.actions.map((action) => action.label)).toEqual(['Refazer login do Claude', 'Verificar de novo']);
+    expect(view.message).toBe('Token vencido — abra o Claude Code para renová-lo ou refaça o login.');
+    expect(view.actions.map((action) => action.label)).toEqual(['relogin-claude', 'recheck']);
     expect(actionsFor('claude', status).some((action) => action.kind === 'disconnect')).toBe(true);
     expect(view.actions.some((action) => action.kind === 'disconnect')).toBe(false);
   });
 
   it('desconectado: oferece Conectar', () => {
-    const view = toUsageErrorView('Claude desconectado.', toRowView('claude', { state: 'disconnected' }));
-    expect(view.actions.map((action) => action.label)).toEqual(['Conectar']);
+    const view = toUsageErrorView('Claude desconectado.', toRowView('claude', { state: 'disconnected' }, PT));
+    expect(view.actions.map((action) => action.label)).toEqual(['connect']);
   });
 
   it('erro de rede com a conexão ok: só a mensagem, sem botão', () => {
-    const view = toUsageErrorView('Anthropic respondeu 500', toRowView('claude', { state: 'connected' }));
+    const view = toUsageErrorView('Anthropic respondeu 500', toRowView('claude', { state: 'connected' }, PT));
     expect(view).toEqual({ message: 'Anthropic respondeu 500', actions: [] });
     expect(toUsageErrorView('x', undefined)).toEqual({ message: 'x', actions: [] });
   });

@@ -37,6 +37,8 @@ describe('migrateSettings', () => {
       schemaVersion: SCHEMA_VERSION,
       enabledPages: { example: true },
       appearance: { accentColor: '#22C55E', popoverBackground: '#101010', theme: 'light' },
+      language: 'es-MX',
+      usageThresholds: { warning: 60, critical: 85 },
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
@@ -78,6 +80,38 @@ describe('migrateSettings', () => {
 
   it('o destaque padrão é o verde Mottu', () => {
     expect(createDefaultSettings().appearance.accentColor).toBe('#00b131');
+  });
+
+  it('arquivo da versão 2 sem idioma nem faixas ganha pt-BR e 70/90', () => {
+    const migrated = migrateSettings({ schemaVersion: 2, enabledPages: { usage: true }, appearance: { theme: 'dark' } });
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.language).toBe('pt-BR');
+    expect(migrated.usageThresholds).toEqual({ warning: 70, critical: 90 });
+    expect(migrated.appearance.theme).toBe('dark');
+  });
+
+  it('idioma conhecido é preservado; desconhecido volta para pt-BR', () => {
+    expect(migrateSettings({ schemaVersion: 2, language: 'en' }).language).toBe('en');
+    expect(migrateSettings({ schemaVersion: 3, language: 'es-MX' }).language).toBe('es-MX');
+    expect(migrateSettings({ schemaVersion: 3, language: 'fr' }).language).toBe('pt-BR');
+    expect(migrateSettings({ schemaVersion: 3, language: 42 }).language).toBe('pt-BR');
+  });
+
+  it('faixas inválidas (alerta >= crítico, fora de 0..100, não numéricas) voltam ao padrão', () => {
+    for (const usageThresholds of [
+      { warning: 90, critical: 70 },
+      { warning: 80, critical: 80 },
+      { warning: 0, critical: 50 },
+      { warning: 50, critical: 101 },
+      { warning: '50', critical: 90 },
+      'x',
+    ]) {
+      expect(migrateSettings({ schemaVersion: 3, usageThresholds }).usageThresholds).toEqual({ warning: 70, critical: 90 });
+    }
+    expect(migrateSettings({ schemaVersion: 3, usageThresholds: { warning: 50, critical: 100 } }).usageThresholds).toEqual({
+      warning: 50,
+      critical: 100,
+    });
   });
 
   it('só roda as migrações pendentes', () => {

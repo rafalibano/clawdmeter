@@ -1,18 +1,16 @@
 import {
   RUN_FIX_FOR,
-  RUN_FIX_LABELS,
-  RUN_PROBLEM_MESSAGES,
-  formatCost,
   formatDuration,
   isResumableSession,
   isRunning,
   runDurationMs,
-  runProblemMessage,
   type RunFix,
   type RunLogEntry,
   type RunStatus,
   type SkillRun,
 } from '../../../domain/skills';
+import { describeRunFailure } from '../../../application/use-cases/skills';
+import type { Localizer } from '../../i18n';
 
 export const VISIBLE_LOG_ENTRIES = 5;
 
@@ -37,35 +35,36 @@ export interface RunView {
   canContinue: boolean;
 }
 
-const STATUS_LABELS: Record<RunStatus, string> = {
-  running: 'Rodando…',
-  succeeded: 'Concluída',
-  failed: 'Falhou',
-  cancelled: 'Cancelada',
-};
+export { formatDuration };
 
-export { formatCost, formatDuration };
+function problemMessage(run: SkillRun, l: Localizer): string {
+  if (run.problem === 'mcp-unauthenticated' && run.mcpNeedingAuth.length > 0) {
+    return l.t('run.problem.mcp-servers', { servers: run.mcpNeedingAuth.join(', ') });
+  }
+  return l.t(`run.problem.${run.problem ?? 'claude-code-missing'}`);
+}
 
-export function toRunView(run: SkillRun, now: number): RunView {
+export function toRunView(run: SkillRun, now: number, l: Localizer): RunView {
   const problem =
     run.problem === null
       ? null
       : {
-          message: runProblemMessage(run) ?? RUN_PROBLEM_MESSAGES[run.problem],
+          message: problemMessage(run, l),
           fix: RUN_FIX_FOR[run.problem],
-          label: RUN_FIX_LABELS[RUN_FIX_FOR[run.problem]],
+          label: l.t(`action.${RUN_FIX_FOR[run.problem]}`),
         };
+  const error = run.status === 'failed' ? describeRunFailure(run, l) : '';
   return {
     id: run.id,
     name: run.name,
     status: run.status,
-    statusLabel: STATUS_LABELS[run.status],
+    statusLabel: l.t(`run.status.${run.status}`),
     running: isRunning(run),
     duration: formatDuration(runDurationMs(run, now)),
-    cost: formatCost(run.costUsd),
+    cost: run.costUsd === null ? null : l.cost(run.costUsd),
     recentLog: run.log.slice(-VISIBLE_LOG_ENTRIES),
     resultText: run.resultText,
-    error: run.status === 'failed' ? run.error : null,
+    error: error === '' ? null : error,
     problem,
     canContinue: !isRunning(run) && isResumableSession(run.sessionId),
   };

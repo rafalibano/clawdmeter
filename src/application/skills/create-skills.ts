@@ -6,6 +6,7 @@ import type {
   SkillsConfigStore,
   StreamingProcessRunner,
   TerminalLauncher,
+  Translator,
   UrlOpener,
 } from '../ports';
 import {
@@ -26,6 +27,7 @@ export interface SkillAdapters {
   terminal: TerminalLauncher;
   urls: UrlOpener;
   notifier: Notifier;
+  translator: Translator;
 }
 
 export interface Skills {
@@ -54,7 +56,7 @@ export function createSkills(
       adapters.runs,
       board,
       clock,
-      new NotifyRunFinished(adapters.notifier, connections),
+      new NotifyRunFinished(adapters.notifier, connections, adapters.translator),
     ),
     cancel: new CancelSkillRun(board),
     continueInTerminal: new ContinueSkillInTerminal(board, adapters.terminal),

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionProblemError } from '../../domain/connections';
+import { RateLimitedError } from '../../domain/rate-limit';
 
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -16,7 +17,7 @@ export class PlatformCommandError extends Error {
   }
 }
 
-function isCommandError(raw: unknown): raw is { kind: string; message: string } {
+function isCommandError(raw: unknown): raw is { kind: string; message: string; retryAfterSecs?: number } {
   return (
     typeof raw === 'object' &&
     raw !== null &&
@@ -34,6 +35,10 @@ export function toDomainError(raw: unknown): Error {
       return new ConnectionProblemError('claude-code-missing', raw.message);
     case 'claude_expired':
       return new ConnectionProblemError('claude-expired', raw.message);
+    case 'rate_limited':
+      return new RateLimitedError(
+        typeof raw.retryAfterSecs === 'number' && raw.retryAfterSecs > 0 ? raw.retryAfterSecs * 1_000 : null,
+      );
     case 'too_many_processes':
       return new PlatformCommandError(raw.kind, TOO_MANY_PROCESSES_MESSAGE);
     default:

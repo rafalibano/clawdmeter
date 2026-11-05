@@ -1,4 +1,4 @@
-import { mcpProblemMessage, type RunProblem } from './skill-problem';
+import type { RunProblem } from './skill-problem';
 import type { SkillDefinition } from './skill-definition';
 import type { StreamEvent } from './stream-json';
 
@@ -8,6 +8,8 @@ export interface RunLogEntry {
   kind: 'text' | 'tool';
   text: string;
 }
+
+export type RunFailure = 'execution-failed' | 'no-result' | 'truncated';
 
 export interface SkillRun {
   id: string;
@@ -22,6 +24,8 @@ export interface SkillRun {
   cwd: string | null;
   resultText: string | null;
   error: string | null;
+  failure: RunFailure | null;
+  exitCode: number | null;
   problem: RunProblem | null;
   mcpNeedingAuth: string[];
   log: RunLogEntry[];
@@ -31,8 +35,6 @@ export const MAX_LOG_ENTRIES = 80;
 export const MAX_RUN_HISTORY = 20;
 export const NEEDS_AUTH_STATUS = 'needs-auth';
 export const MCP_PROBLEM_STATUSES: readonly string[] = [NEEDS_AUTH_STATUS, 'pending', 'failed'];
-
-export const TRUNCATED_STREAM_ERROR = 'Saída truncada: um evento do Claude passou de 4 MiB e foi cortado.';
 
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
@@ -58,6 +60,8 @@ export function startRun(id: string, skill: SkillDefinition, now: number): Skill
     cwd: skill.cwd,
     resultText: null,
     error: null,
+    failure: null,
+    exitCode: null,
     problem: null,
     mcpNeedingAuth: [],
     log: [],
@@ -97,10 +101,11 @@ export function applyStreamEvent(run: SkillRun, event: StreamEvent): SkillRun {
         costUsd: event.costUsd ?? run.costUsd,
         resultText: event.text ?? run.resultText,
         status: event.isError ? 'failed' : 'succeeded',
-        error: event.isError ? (event.text ?? event.subtype ?? 'A execução falhou.') : null,
+        error: event.isError ? (event.text ?? event.subtype ?? null) : null,
+        failure: event.isError && (event.text ?? event.subtype ?? null) === null ? 'execution-failed' : null,
       };
     case 'truncated':
-      return { ...run, error: TRUNCATED_STREAM_ERROR };
+      return { ...run, failure: 'truncated' };
     case 'other':
       return run;
   }
@@ -118,15 +123,10 @@ export function finishRun(run: SkillRun, exit: RunExit): SkillRun {
   if (exit.cancelled) return { ...finished, status: 'cancelled', error: null };
   if (run.status !== 'running') return finished;
   const detail = [run.error ?? '', exit.stderrTail.trim()].filter((part) => part !== '').join('\n');
-  return {
-    ...finished,
-    status: 'failed',
-    error: detail !== '' ? detail : `O Claude Code encerrou sem resultado (código ${exit.code ?? 'desconhecido'}).`,
-  };
-}
-
-export function runProblemMessage(run: SkillRun): string | null {
-  return run.problem === 'mcp-unauthenticated' ? mcpProblemMessage(run.mcpNeedingAuth) : null;
+  if (detail !== '' || run.failure !== null) {
+    return { ...finished, status: 'failed', error: detail !== '' ? detail : null, exitCode: exit.code };
+  }
+  return { ...finished, status: 'failed', error: null, failure: 'no-result', exitCode: exit.code };
 }
 
 export function formatDuration(ms: number): string {
@@ -136,25 +136,30 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? `${seconds}s` : `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-export function formatCost(costUsd: number | null): string | null {
-  return costUsd === null ? null : `US$ ${costUsd.toFixed(2)}`;
-}
-
 export interface RunNotice {
-  title: string;
-  body: string;
+  outcome: 'succeeded' | 'failed';
+  name: string;
+  error: string;
+  failure: RunFailure | null;
+  exitCode: number | null;
+  costUsd: number | null;
+  durationMs: number;
 }
 
 const NOTICE_ERROR_CHARS = 140;
 
 export function runNotice(run: SkillRun): RunNotice | null {
   if (isRunning(run) || run.status === 'cancelled') return null;
-  const details = [formatCost(run.costUsd), formatDuration(runDurationMs(run, run.endedAt ?? run.startedAt))].filter(
-    (part): part is string => part !== null,
-  );
-  if (run.status === 'succeeded') return { title: `${run.name} concluída`, body: details.join(' · ') };
-  const reason = (run.error ?? '').trim().replace(/\s+/g, ' ').slice(0, NOTICE_ERROR_CHARS);
-  return { title: `${run.name} falhou`, body: [reason, ...details].filter((part) => part !== '').join(' · ') };
+  const failed = run.status !== 'succeeded';
+  return {
+    outcome: failed ? 'failed' : 'succeeded',
+    name: run.name,
+    error: failed ? (run.error ?? '').trim().replace(/\s+/g, ' ').slice(0, NOTICE_ERROR_CHARS) : '',
+    failure: failed ? run.failure : null,
+    exitCode: run.exitCode,
+    costUsd: run.costUsd,
+    durationMs: runDurationMs(run, run.endedAt ?? run.startedAt),
+  };
 }
 
 export function runDurationMs(run: SkillRun, now: number): number {
@@ -170,6 +175,7 @@ export function toStoredRun(run: SkillRun): SkillRun {
 }
 
 const STATUSES: readonly string[] = ['succeeded', 'failed', 'cancelled'];
+const FAILURES: readonly string[] = ['execution-failed', 'no-result', 'truncated'];
 const PROBLEMS: readonly string[] = ['claude-code-missing', 'mcp-unauthenticated'];
 
 function optionalString(value: unknown): string | null {
@@ -196,6 +202,8 @@ function parseStoredRun(raw: unknown): SkillRun | null {
     cwd: optionalString(source['cwd']),
     resultText: optionalString(source['resultText']),
     error: optionalString(source['error']),
+    failure: FAILURES.includes(source['failure'] as string) ? (source['failure'] as RunFailure) : null,
+    exitCode: typeof source['exitCode'] === 'number' ? source['exitCode'] : null,
     problem: typeof problem === 'string' && PROBLEMS.includes(problem) ? (problem as RunProblem) : null,
     mcpNeedingAuth: Array.isArray(mcpNeedingAuth) ? mcpNeedingAuth.filter((name) => typeof name === 'string') : [],
     log: [],

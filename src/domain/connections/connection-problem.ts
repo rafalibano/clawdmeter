@@ -1,3 +1,5 @@
+import type { ErrorCode } from '../coded-error';
+
 export type ConnectionProblem =
   | 'keychain-denied'
   | 'claude-expired'
@@ -31,8 +33,13 @@ export class ConnectionProblemError extends Error {
   constructor(
     readonly problem: ConnectionProblem,
     message?: string,
+    readonly code?: ErrorCode,
   ) {
     super(message ?? problem);
     this.name = 'ConnectionProblemError';
   }
+}
+
+export function customMessage(error: ConnectionProblemError): string | undefined {
+  return error.message === error.problem ? undefined : error.message;
 }

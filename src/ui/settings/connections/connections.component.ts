@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked } from '@angular/core';
 import type { DeviceCode } from '../../../application/ports';
 import { GITHUB_NEW_TOKEN_URL, type ConnectionAction, type ConnectionId } from '../../../domain/connections';
+import { I18n } from '../../i18n';
 import { ConnectionsFacade } from '../../shell/connections.facade';
 import type { ConnectionRowView } from './connection-view';
 
@@ -14,6 +15,7 @@ const TONE_ICONS = { ok: '✓', error: '⚠', idle: '○', busy: '…' } as cons
 })
 export class ConnectionsComponent {
   private readonly facade = inject(ConnectionsFacade);
+  protected readonly i18n = inject(I18n);
 
   protected readonly rows = this.facade.rows;
   protected readonly deviceCode = signal<DeviceCode | null>(null);

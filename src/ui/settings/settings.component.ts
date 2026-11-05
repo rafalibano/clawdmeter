@@ -1,17 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { isPageEnabled, THEME_MODES, type ThemeMode } from '../../domain/settings';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  APP_LANGUAGES,
+  THEME_MODES,
+  isPageEnabled,
+  isValidUsageThresholds,
+  type AppLanguage,
+  type ThemeMode,
+} from '../../domain/settings';
+import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
 import { ACCENT_PRESETS, BACKGROUND_PRESETS } from '../theme/accent-presets';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
 import { ConnectionsComponent } from './connections/connections.component';
-
-const THEME_LABELS: Record<ThemeMode, string> = {
-  light: 'Claro',
-  dark: 'Escuro',
-  system: 'Sistema',
-};
 
 @Component({
   selector: 'dp-settings',
@@ -23,15 +25,24 @@ const THEME_LABELS: Record<ThemeMode, string> = {
 export class SettingsComponent {
   private readonly facade = inject(SettingsFacade);
   private readonly theme = inject(ThemeService);
+  protected readonly i18n = inject(I18n);
+  private readonly warningDraft = signal<string | null>(null);
+  private readonly criticalDraft = signal<string | null>(null);
 
   protected readonly settings = this.facade.settings;
   protected readonly accentPresets = ACCENT_PRESETS;
   protected readonly backgroundPresets = BACKGROUND_PRESETS;
-  protected readonly themes = THEME_MODES.map((mode) => ({ mode, label: THEME_LABELS[mode] }));
+  protected readonly themes = THEME_MODES;
+  protected readonly languages = APP_LANGUAGES;
+  protected readonly warningText = computed(() => this.warningDraft() ?? String(this.settings().usageThresholds.warning));
+  protected readonly criticalText = computed(() => this.criticalDraft() ?? String(this.settings().usageThresholds.critical));
+  protected readonly thresholdsInvalid = computed(
+    () => !isValidUsageThresholds({ warning: Number(this.warningText()), critical: Number(this.criticalText()) }),
+  );
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
-      title: page.title,
+      title: this.i18n.pageTitle(page.id, page.title),
       enabled: isPageEnabled(this.settings(), page.id),
     })),
   );
@@ -53,6 +64,30 @@ export class SettingsComponent {
 
   protected setTheme(mode: ThemeMode): void {
     this.facade.update({ appearance: { theme: mode } });
+  }
+
+  protected languageLabel(language: AppLanguage): string {
+    return this.i18n.t(`language.${language}`);
+  }
+
+  protected themeLabel(mode: ThemeMode): string {
+    return this.i18n.t(`theme.${mode}`);
+  }
+
+  protected setLanguage(language: AppLanguage): void {
+    this.facade.update({ language });
+  }
+
+  protected setThreshold(field: 'warning' | 'critical', event: Event): void {
+    const text = (event.target as HTMLInputElement).value;
+    (field === 'warning' ? this.warningDraft : this.criticalDraft).set(text);
+    const warning = Number(field === 'warning' ? text : this.warningText());
+    const critical = Number(field === 'critical' ? text : this.criticalText());
+    if (text.trim() !== '' && isValidUsageThresholds({ warning, critical })) {
+      this.facade.update({ usageThresholds: { warning, critical } });
+      this.warningDraft.set(null);
+      this.criticalDraft.set(null);
+    }
   }
 
   protected checkedOf(event: Event): boolean {

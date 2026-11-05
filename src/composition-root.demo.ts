@@ -1,11 +1,13 @@
 import { createApplication, type Application } from './application/application';
 import { GitHubTokenResolver } from './application/connections/github-token-resolver';
+import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
 import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoCalendar,
+  applyDemoLanguage,
   DemoExternalUsageHistorySource,
   DemoNotifier,
   DemoProcessProbe,
@@ -21,6 +23,7 @@ import {
 } from './infrastructure/demo';
 import { JsonSettingsStore, LocalStorageJsonFile } from './infrastructure/persistence';
 import { SystemClock } from './infrastructure/platform/system-clock';
+import { LiveTranslator } from './ui/i18n/live-translator';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
 import { createReviewsPage } from './ui/pages/reviews/reviews.page';
 import { createSessionsPage } from './ui/pages/sessions/sessions.page';
@@ -31,6 +34,9 @@ import { createUsagePage } from './ui/pages/usage/usage.page';
 
 export function createComposition(): Application {
   const clock = new SystemClock();
+  const language = new CurrentLanguage();
+  const translator = new LiveTranslator(language);
+  applyDemoLanguage(window.location.search, window.localStorage);
   const world = createDemoWorld(window.location.search);
   const connectionAdapters = createDemoConnectionAdapters(world);
   const origin = clock.now();
@@ -45,6 +51,7 @@ export function createComposition(): Application {
   );
   const application: Application = createApplication({
     clock,
+    language,
     settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('dev-pulse.settings')),
     connectionAdapters,
     skills: ({ connections }) =>
@@ -53,6 +60,7 @@ export function createComposition(): Application {
           terminal: connectionAdapters.terminal,
           urls: connectionAdapters.urlOpener,
           notifier: new DemoNotifier(),
+          translator,
         }),
         clock,
         connections,
@@ -61,7 +69,7 @@ export function createComposition(): Application {
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
-          new DemoUsageGateway(usageModel, () => clock.now(), connectionAdapters.claudeCredentials),
+          new DemoUsageGateway(usageModel, () => clock.now(), connectionAdapters.claudeCredentials, world.usage.rateLimited),
           new DemoUsageHistoryStore(usageModel.history(origin)),
           clock,
           connections,

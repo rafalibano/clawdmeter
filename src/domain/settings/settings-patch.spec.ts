@@ -32,6 +32,29 @@ describe('applyPatch', () => {
   });
 });
 
+describe('idioma e faixas no patch', () => {
+  it('troca o idioma e ignora valor desconhecido', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { language: 'en' }).language).toBe('en');
+    expect(applyPatch(base, { language: 'fr' as never }).language).toBe('pt-BR');
+    expect(applyPatch(base, {}).language).toBe('pt-BR');
+  });
+
+  it('aplica faixas válidas, mesmo parciais, e ignora as inválidas', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { usageThresholds: { warning: 50, critical: 80 } }).usageThresholds).toEqual({ warning: 50, critical: 80 });
+    expect(applyPatch(base, { usageThresholds: { warning: 60 } }).usageThresholds).toEqual({ warning: 60, critical: 90 });
+    expect(applyPatch(base, { usageThresholds: { warning: 95 } }).usageThresholds).toEqual({ warning: 70, critical: 90 });
+    expect(applyPatch(base, { usageThresholds: { critical: 101 } }).usageThresholds).toEqual({ warning: 70, critical: 90 });
+    expect(applyPatch(base, { usageThresholds: { warning: 0, critical: 10 } }).usageThresholds).toEqual({ warning: 70, critical: 90 });
+  });
+
+  it('o merge junta idioma e faixas', () => {
+    const merged = mergePatches({ language: 'en', usageThresholds: { warning: 50 } }, { usageThresholds: { critical: 95 } });
+    expect(merged).toMatchObject({ language: 'en', usageThresholds: { warning: 50, critical: 95 } });
+  });
+});
+
 describe('mergePatches', () => {
   it('o segundo patch vence nos mesmos campos', () => {
     const merged = mergePatches(

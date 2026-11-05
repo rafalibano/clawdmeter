@@ -1,10 +1,10 @@
 <div class="popover">
   <header class="header">
     @if (showingSettings()) {
-      <button type="button" class="back" (click)="toggleSettings()">← Voltar</button>
-      <h1 class="title">Ajustes</h1>
+      <button type="button" class="back" (click)="toggleSettings()">{{ i18n.t('shell.back') }}</button>
+      <h1 class="title">{{ i18n.t('shell.settings') }}</h1>
     } @else {
-      <nav class="tabs" aria-label="Páginas">
+      <nav class="tabs" [attr.aria-label]="i18n.t('shell.pages')">
         @for (page of pages(); track page.id) {
           <button
             type="button"
@@ -13,7 +13,7 @@
             [attr.data-page-id]="page.id"
             (click)="select(page.id)"
           >
-            {{ page.title }}
+            {{ i18n.pageTitle(page.id, page.title) }}
           </button>
         }
       </nav>
@@ -31,22 +31,36 @@
       @if (current(); as page) {
         <ng-container [ngComponentOutlet]="page.component" />
       } @else {
-        <p class="empty">Nenhuma página ativa. Ative páginas em Ajustes.</p>
+        <p class="empty">{{ i18n.t('shell.empty') }}</p>
       }
     }
   </main>
 
   <footer class="footer">
     <span class="updated">{{ updatedAgo() }}</span>
+    <span class="footer-actions">
+    <button
+      type="button"
+      class="gear refresh"
+      [class.spinning]="refresh().spinning"
+      [disabled]="refresh().disabled || current() === null || showingSettings()"
+      [attr.aria-label]="refresh().text"
+      [title]="refresh().text"
+      data-action="refresh"
+      (click)="reload()"
+    >
+      &#8635;
+    </button>
     <button
       type="button"
       class="gear"
       [class.active]="showingSettings()"
-      aria-label="Ajustes"
-      title="Ajustes"
+      [attr.aria-label]="i18n.t('shell.settings')"
+      [title]="i18n.t('shell.settings')"
       (click)="toggleSettings()"
     >
       &#9881;&#xFE0E;
     </button>
+    </span>
   </footer>
 </div>

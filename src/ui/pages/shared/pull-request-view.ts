@@ -1,3 +1,4 @@
+import type { Localizer, MessageKey } from '../../i18n';
 import { slaLevel, type PullRequest, type SlaLevel } from '../../../domain/pull-requests';
 
 export type BadgeTone = 'ok' | 'info' | 'bad' | 'muted';
@@ -13,27 +14,28 @@ const CI: Record<string, PullRequestBadge> = {
   pending: { label: '… CI', tone: 'muted' },
 };
 
-const REVIEW: Record<string, PullRequestBadge> = {
-  approved: { label: 'Aprovado', tone: 'ok' },
-  'changes-requested': { label: 'Mudanças pedidas', tone: 'info' },
-  'review-required': { label: 'Aguardando review', tone: 'muted' },
+const REVIEW: Record<string, { key: MessageKey; tone: BadgeTone }> = {
+  approved: { key: 'prs.badge.approved', tone: 'ok' },
+  'changes-requested': { key: 'prs.badge.changes', tone: 'info' },
+  'review-required': { key: 'prs.badge.awaiting', tone: 'muted' },
 };
 
-const STATE: Record<string, PullRequestBadge> = {
-  merged: { label: 'Mergeado', tone: 'muted' },
-  closed: { label: 'Fechado', tone: 'muted' },
+const STATE: Record<string, { key: MessageKey; tone: BadgeTone }> = {
+  merged: { key: 'prs.badge.merged', tone: 'muted' },
+  closed: { key: 'prs.badge.closed', tone: 'muted' },
 };
 
-export function badgesFor(pr: PullRequest): PullRequestBadge[] {
+export function badgesFor(pr: PullRequest, l: Localizer): PullRequestBadge[] {
   const badges: PullRequestBadge[] = [];
+  const named = (entry: { key: MessageKey; tone: BadgeTone }): PullRequestBadge => ({ label: l.t(entry.key), tone: entry.tone });
   const state = STATE[pr.state];
-  if (state) badges.push(state);
-  if (pr.isDraft) badges.push({ label: 'Rascunho', tone: 'muted' });
+  if (state) badges.push(named(state));
+  if (pr.isDraft) badges.push({ label: l.t('prs.badge.draft'), tone: 'muted' });
   const ci = CI[pr.ci];
   if (ci) badges.push(ci);
   const review = pr.state === 'open' ? REVIEW[pr.review] : undefined;
-  if (review) badges.push(review);
-  if (pr.merge === 'conflicting') badges.push({ label: 'Conflito', tone: 'bad' });
+  if (review) badges.push(named(review));
+  if (pr.merge === 'conflicting') badges.push({ label: l.t('prs.badge.conflict'), tone: 'bad' });
   return badges;
 }
 

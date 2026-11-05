@@ -5,6 +5,7 @@ import type {
   UsageHistoryStore,
 } from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
+import { RateLimitedError } from '../../domain/rate-limit';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../domain/time';
 import {
   createEmptyHistory,
@@ -111,9 +112,14 @@ export class DemoUsageGateway implements UsageGateway {
     private readonly model: DemoUsageModel,
     private readonly now: () => number = Date.now,
     private readonly credentials?: ClaudeCredentialSource,
+    private readonly rateLimitedAfterFirst = false,
   ) {}
 
+  private calls = 0;
+
   async fetch(): Promise<UsageSnapshot> {
+    this.calls += 1;
+    if (this.rateLimitedAfterFirst && this.calls > 1) throw new RateLimitedError(12 * MINUTE_MS);
     const credential = await this.credentials?.read();
     if (credential?.expiresAt != null && credential.expiresAt <= this.now()) {
       throw new ConnectionProblemError('claude-expired');

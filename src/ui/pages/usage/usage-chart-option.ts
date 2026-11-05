@@ -1,9 +1,9 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import { DAY_MS } from '../../../domain/time';
-import { formatAxisTick } from '../../format/time';
-import type { ChartPalette, SeriesColors } from '../../theme/chart-palette';
+import type { Localizer } from '../../i18n';
+import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
 import type { UsageChartModel, WindowSeries } from './usage-chart-model';
-import { WEEKLY_ATTENTION_AT, WEEKLY_DANGER_AT } from './usage-tone';
+import type { UsageTone } from './usage-tone';
 
 const AXIS_MAX = 100;
 
@@ -24,23 +24,29 @@ function fade(colors: SeriesColors) {
 }
 
 function markers(model: UsageChartModel, palette: ChartPalette) {
-  const resets = model.windows
-    .filter((window) => window.resetsAt !== null && window.resetsAt > model.now && window.resetsAt <= model.xMax)
-    .map((window) => ({
-      xAxis: window.resetsAt,
-      lineStyle: { color: palette.series[window.kind].marker, type: 'dashed', width: 1 },
-      label: { show: false },
-    }));
+  const resets = model.cycle
+    ? model.fiveHourResets.map((at) => ({ xAxis: at, lineStyle: { color: withAlpha(palette.series.fiveHour.line, 0.14), type: 'dashed', width: 1 }, label: { show: false } }))
+    : model.windows
+        .filter((window) => window.resetsAt !== null && window.resetsAt > model.now && window.resetsAt <= model.xMax)
+        .map((window) => ({
+          xAxis: window.resetsAt,
+          lineStyle: { color: palette.series[window.kind].marker, type: 'dashed', width: 1 },
+          label: { show: false },
+        }));
   return [
     { xAxis: model.now, lineStyle: { color: palette.now, type: 'dashed', width: 1 }, label: { show: false } },
     ...resets,
   ];
 }
 
-function strokeColor(window: WindowSeries, colors: SeriesColors, width: number, type?: string) {
-  const lineStyle = type === undefined ? { width } : { width, type };
-  if (window.kind === 'sevenDay') return { lineStyle };
-  return { lineStyle: { ...lineStyle, color: colors.line }, itemStyle: { color: colors.line } };
+function strokeColor(colors: SeriesColors, width: number, type?: string, color: string = colors.line) {
+  const lineStyle = type === undefined ? { width, color } : { width, type, color };
+  return { lineStyle, itemStyle: { color } };
+}
+
+function toneColor(tone: UsageTone, colors: SeriesColors, palette: ChartPalette): string {
+  if (tone === 'danger') return palette.danger;
+  return tone === 'attention' ? palette.attention : colors.line;
 }
 
 function realSeries(window: WindowSeries, palette: ChartPalette, width: number, withMarkers: unknown) {
@@ -52,48 +58,27 @@ function realSeries(window: WindowSeries, palette: ChartPalette, width: number, 
     showSymbol: false,
     sampling: 'lttb',
     data: window.points,
-    ...strokeColor(window, colors, width),
+    ...strokeColor(colors, width),
     areaStyle: fade(colors),
     ...(withMarkers === null ? {} : { markLine: { silent: true, symbol: 'none', animation: false, data: withMarkers } }),
   };
 }
 
-function trendSeries(window: WindowSeries, palette: ChartPalette) {
+function trendSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) {
   const colors = palette.series[window.kind];
   return {
-    name: `${window.label} tendência`,
+    name: l.t('usage.trend', { label: window.label }),
     type: 'line',
     showSymbol: false,
     silent: true,
     data: window.trend,
-    ...strokeColor(window, colors, 1.2, 'dashed'),
+    ...strokeColor(colors, 1.2, 'dashed', toneColor(window.trendTone, colors, palette)),
     tooltip: { show: false },
     z: 3,
   };
 }
 
-function weeklyVisualMap(model: UsageChartModel, palette: ChartPalette) {
-  const trended = model.windows.filter((window) => window.trend !== null);
-  const seriesIndex = model.windows.flatMap((window, index) => (window.kind === 'sevenDay' ? [index] : []));
-  trended.forEach((window, index) => {
-    if (window.kind === 'sevenDay') seriesIndex.push(model.windows.length + index);
-  });
-  const neutral = palette.series.sevenDay.line;
-  return {
-    type: 'piecewise',
-    show: false,
-    dimension: 1,
-    seriesIndex,
-    pieces: [
-      { lt: WEEKLY_ATTENTION_AT, color: neutral },
-      { gte: WEEKLY_ATTENTION_AT, lt: WEEKLY_DANGER_AT, color: palette.attention },
-      { gte: WEEKLY_DANGER_AT, color: palette.danger },
-    ],
-    outOfRange: { color: neutral },
-  };
-}
-
-export function buildChartOption(model: UsageChartModel, palette: ChartPalette): EChartsCoreOption {
+export function buildChartOption(model: UsageChartModel, palette: ChartPalette, l: Localizer): EChartsCoreOption {
   const lineWidth = model.rangeMs > DAY_MS ? 1.5 : 2;
   return {
     animation: false,
@@ -110,7 +95,7 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette):
         color: palette.muted,
         fontSize: 10,
         hideOverlap: true,
-        formatter: (value: number) => formatAxisTick(value, model.rangeMs),
+        formatter: (value: number) => l.axisTick(value, model.rangeMs),
       },
     },
     yAxis: {
@@ -136,10 +121,9 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette):
       valueFormatter: (value: unknown) => `${Math.round(Number(value))}%`,
       axisPointer: { lineStyle: { color: palette.now, type: 'dashed' } },
     },
-    visualMap: weeklyVisualMap(model, palette),
     series: [
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
-      ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette)])),
+      ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette, l)])),
     ],
   };
 }

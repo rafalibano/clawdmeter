@@ -1,4 +1,4 @@
-import type { AppSettings } from './app-settings';
+import { DEFAULT_LANGUAGE, DEFAULT_USAGE_THRESHOLDS, type AppSettings } from './app-settings';
 import { SCHEMA_VERSION } from './schema-version';
 
 export const DEFAULT_ACCENT_COLOR = '#00b131';
@@ -12,5 +12,7 @@ export function createDefaultSettings(): AppSettings {
       popoverBackground: null,
       theme: 'system',
     },
+    language: DEFAULT_LANGUAGE,
+    usageThresholds: { ...DEFAULT_USAGE_THRESHOLDS },
   };
 }

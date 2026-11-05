@@ -1,4 +1,4 @@
-import { ConnectionProblemError, errorStatus, type ConnectionStatus, type FixAction } from '../../../../domain/connections';
+import { ConnectionProblemError, noteStatus, type ConnectionStatus, type FixAction } from '../../../../domain/connections';
 import type { StatusUseCase } from '../../../connections/connection-runner';
 import type { SystemSettings } from '../../../ports';
 
@@ -15,13 +15,10 @@ export class FixNotifications implements StatusUseCase<FixAction> {
       case 'open-system-settings': {
         const before = await this.check.execute();
         await this.settings.openNotifications();
-        return errorStatus(
-          before.state === 'error' ? before.problem : 'notifications-blocked',
-          'Libere as notificações e clique em "Verificar de novo".',
-        );
+        return noteStatus(before.state === 'error' ? before.problem : 'notifications-blocked', 'enable-notifications');
       }
       default:
-        throw new ConnectionProblemError('unexpected', `Conserto não se aplica às notificações: ${fix}`);
+        throw new ConnectionProblemError('unexpected', `Fix does not apply to notifications: ${fix}`);
     }
   }
 }

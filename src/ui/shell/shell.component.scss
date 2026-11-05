@@ -122,3 +122,29 @@
   background: var(--dp-hover);
   color: var(--dp-accent-text);
 }
+
+.footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.gear:disabled:hover {
+  background: transparent;
+  color: var(--dp-muted);
+}
+
+.refresh.spinning {
+  animation: dp-spin 900ms linear infinite;
+}
+
+@keyframes dp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

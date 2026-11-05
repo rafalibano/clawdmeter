@@ -10,17 +10,15 @@ import {
   parseSkillsConfig,
   type SkillDefinition,
 } from './skill-definition';
-import { RUN_FIX_FOR, RUN_FIX_LABELS, RUN_PROBLEM_MESSAGES, mcpProblemMessage, type RunProblem } from './skill-problem';
+import { RUN_FIX_FOR, type RunProblem } from './skill-problem';
 import {
   MAX_LOG_ENTRIES,
   MAX_RUN_HISTORY,
   applyStreamEvent,
   finishRun,
-  TRUNCATED_STREAM_ERROR,
   isResumableSession,
   parseRunHistory,
   runDurationMs,
-  runProblemMessage,
   startRun,
   toStoredRun,
   trimHistory,
@@ -110,7 +108,6 @@ describe('applyStreamEvent', () => {
   it('detecta MCP sem autenticação no init e marca o problema', () => {
     const run = replay(MCP_NEEDS_AUTH_STREAM);
     expect(run).toMatchObject({ status: 'failed', problem: 'mcp-unauthenticated', mcpNeedingAuth: ['atlassian'] });
-    expect(runProblemMessage(run)).toBe('MCP com problema: atlassian.');
   });
 
   it('MCP pending ou failed no init também viram problema; connected não', () => {
@@ -156,9 +153,7 @@ describe('linha truncada pelo Rust', () => {
       if (event) run = applyStreamEvent(run, event);
     }
     const done = finishRun(run, { code: 0, cancelled: false, stderrTail: '', now: 2_000 });
-    expect(done).toMatchObject({ status: 'failed', error: TRUNCATED_STREAM_ERROR });
-    expect(done.error).toContain('truncada');
-    expect(done.error).not.toContain('sem resultado');
+    expect(done).toMatchObject({ status: 'failed', error: null, failure: 'truncated' });
   });
 
   it('result truncado mostra a marca e, em seguida, o stderr do processo', () => {
@@ -169,7 +164,7 @@ describe('linha truncada pelo Rust', () => {
     }
     const done = finishRun(run, { code: 1, cancelled: false, stderrTail: 'Error: out of memory\n', now: 2_000 });
     expect(done.status).toBe('failed');
-    expect(done.error).toBe(`${TRUNCATED_STREAM_ERROR}\nError: out of memory`);
+    expect(done).toMatchObject({ failure: 'truncated', error: 'Error: out of memory' });
   });
 
   it('evento truncado no meio não derruba uma run que termina com result válido', () => {
@@ -193,7 +188,11 @@ describe('finishRun', () => {
       status: 'failed',
       error: 'boom',
     });
-    expect(finishRun(running, { code: 2, cancelled: false, stderrTail: '', now: 2_000 }).error).toContain('código 2');
+    expect(finishRun(running, { code: 2, cancelled: false, stderrTail: '', now: 2_000 })).toMatchObject({
+      failure: 'no-result',
+      exitCode: 2,
+      error: null,
+    });
   });
 
   it('código diferente de zero sem result mostra o stderr inteiro, sem espaços nas pontas', () => {
@@ -376,14 +375,10 @@ describe('configuração de skills', () => {
 });
 
 describe('problemas de run', () => {
-  it('todo problema tem conserto com rótulo e mensagem', () => {
+  it('todo problema tem conserto', () => {
     const problems: RunProblem[] = ['claude-code-missing', 'mcp-unauthenticated'];
-    for (const problem of problems) {
-      expect(RUN_FIX_LABELS[RUN_FIX_FOR[problem]]).not.toBe('');
-      expect(RUN_PROBLEM_MESSAGES[problem]).not.toBe('');
-    }
-    expect(RUN_FIX_LABELS['reconnect-mcp']).toBe('Reconectar MCP');
-    expect(RUN_FIX_LABELS['install-claude-code']).toBe('Instalar Claude Code');
-    expect(mcpProblemMessage([])).toBe(RUN_PROBLEM_MESSAGES['mcp-unauthenticated']);
+    for (const problem of problems) expect(RUN_FIX_FOR[problem]).toBeDefined();
+    expect(RUN_FIX_FOR['mcp-unauthenticated']).toBe('reconnect-mcp');
+    expect(RUN_FIX_FOR['claude-code-missing']).toBe('install-claude-code');
   });
 });

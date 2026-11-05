@@ -1,6 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { CodedError } from '../../../domain/coded-error';
 import type { ConnectionAction } from '../../../domain/connections';
+import { I18n } from '../../i18n';
 import { APPLICATION } from '../../shell/application.token';
 import { ConnectionsFacade } from '../../shell/connections.facade';
 import { PageStateService } from '../../shell/page-state.service';
@@ -117,7 +119,7 @@ const CLOCK_TICK_MS = 1_000;
         <p>{{ problem.message }}</p>
         <div class="actions">
           @for (action of problem.actions; track action.kind) {
-            <button type="button" class="btn" [attr.data-action]="action.kind" (click)="run(action)">{{ action.label }}</button>
+            <button type="button" class="btn" [attr.data-action]="action.kind" (click)="run(action)">{{ i18n.actionText(action) }}</button>
           }
         </div>
       </div>
@@ -127,7 +129,7 @@ const CLOCK_TICK_MS = 1_000;
           <p class="headline">{{ day.headline }}</p>
         }
         @if (day.allDay.length > 0) {
-          <h2>Dia todo</h2>
+          <h2>{{ i18n.t('teams.allDay') }}</h2>
           <ul class="list">
             @for (row of day.allDay; track row.id) {
               <ng-container *ngTemplateOutlet="item; context: { $implicit: row }" />
@@ -141,13 +143,13 @@ const CLOCK_TICK_MS = 1_000;
             }
           </ul>
         } @else if (day.isEmpty) {
-          <p class="hint">Nenhuma reunião hoje.</p>
+          <p class="hint">{{ i18n.t('teams.empty') }}</p>
         }
         @if (joinError(); as message) {
           <p class="hint" role="alert">{{ message }}</p>
         }
       } @else {
-        <p class="hint">Carregando…</p>
+        <p class="hint">{{ i18n.t('common.loading') }}</p>
       }
     }
 
@@ -164,7 +166,7 @@ const CLOCK_TICK_MS = 1_000;
           }
         </span>
         @if (row.joinUrl) {
-          <button type="button" class="btn" data-action="join" (click)="join(row)">Entrar</button>
+          <button type="button" class="btn" data-action="join" (click)="join(row)">{{ i18n.t('teams.join') }}</button>
         }
       </li>
     </ng-template>
@@ -172,6 +174,7 @@ const CLOCK_TICK_MS = 1_000;
   imports: [NgTemplateOutlet],
 })
 export class TeamsComponent {
+  protected readonly i18n = inject(I18n);
   private readonly application = inject(APPLICATION);
   private readonly connections = inject(ConnectionsFacade);
   private readonly update = inject(PageStateService).of(TEAMS_PAGE);
@@ -181,10 +184,10 @@ export class TeamsComponent {
 
   protected readonly agenda = computed(() => {
     const update = this.update();
-    return update?.status === 'ok' ? toAgendaView(update.data, this.now()) : null;
+    return update?.status === 'ok' ? toAgendaView(update.data, this.now(), this.i18n.localizer()) : null;
   });
 
-  protected readonly failure = computed(() => toFailureView(this.update()));
+  protected readonly failure = computed(() => toFailureView(this.update(), this.i18n));
 
   private readonly stale = computed(() => {
     const update = this.update();
@@ -209,7 +212,11 @@ export class TeamsComponent {
     try {
       await this.application.joinMeeting.execute(row.joinUrl);
     } catch (error) {
-      this.joinError.set(error instanceof Error ? error.message : 'Não foi possível abrir a reunião.');
+      this.joinError.set(
+        error instanceof CodedError
+          ? this.i18n.t(`error.${error.code}`, error.args)
+          : this.i18n.t('error.meeting-open-failed'),
+      );
     }
   }
 }

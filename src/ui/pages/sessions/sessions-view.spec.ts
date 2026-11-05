@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { Localizer } from '../../i18n';
 import type { SessionsData } from '../../../application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG, type ClaudeSession } from '../../../domain/sessions';
 import { MINUTE_MS } from '../../../domain/time';
-import { toSessionsView } from './sessions-view';
+import { toSessionsView as toSessionsViewWith } from './sessions-view';
 
 const NOW = 1_800_000_000_000;
 
@@ -23,6 +24,9 @@ function session(pid: number, overrides: Partial<ClaudeSession> = {}): ClaudeSes
 }
 
 const data = (sessions: ClaudeSession[]): SessionsData => ({ at: NOW, sessions, attention: DEFAULT_ATTENTION_CONFIG });
+
+const PT = new Localizer('pt-BR');
+const toSessionsView = (data: Parameters<typeof toSessionsViewWith>[0]) => toSessionsViewWith(data, PT);
 
 describe('toSessionsView', () => {
   it('mostra nome, pasta curta, status e há quanto tempo', () => {

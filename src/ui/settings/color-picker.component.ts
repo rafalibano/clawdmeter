@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { I18n } from '../i18n';
 import type { AccentPreset } from '../theme/accent-presets';
 import { parseHexInput } from '../theme/color';
 
@@ -9,6 +10,8 @@ import { parseHexInput } from '../theme/color';
   styleUrl: './color-picker.component.scss',
 })
 export class ColorPickerComponent {
+  protected readonly i18n = inject(I18n);
+
   readonly label = input.required<string>();
   readonly value = input.required<string>();
   readonly presets = input.required<readonly AccentPreset[]>();

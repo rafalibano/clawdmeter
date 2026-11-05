@@ -1,8 +1,8 @@
-<section class="section" aria-label="Conexões">
-  <h2 class="heading">Conexões</h2>
+<section class="section" [attr.aria-label]="i18n.t('connections.heading')">
+  <h2 class="heading">{{ i18n.t('connections.heading') }}</h2>
 
   @if (rows().length === 0) {
-    <p class="muted">Nenhuma conexão necessária pelas páginas ativas.</p>
+    <p class="muted">{{ i18n.t('connections.none') }}</p>
   }
 
   @for (row of rows(); track row.id) {
@@ -29,14 +29,14 @@
               [disabled]="row.busy"
               (click)="run(row.id, action)"
             >
-              {{ action.label }}
+              {{ i18n.actionText(action) }}
             </button>
           }
           @if (row.signInOptions && !row.busy) {
             <button type="button" class="btn" data-action="device-flow" [disabled]="githubStarting()" (click)="startDeviceFlow()">
-              Entrar pelo navegador
+              {{ i18n.t('connections.signIn.browser') }}
             </button>
-            <button type="button" class="link" data-action="pat" (click)="openPat()">Colar token</button>
+            <button type="button" class="link" data-action="pat" (click)="openPat()">{{ i18n.t('connections.signIn.paste') }}</button>
           }
         </div>
       }
@@ -44,24 +44,24 @@
       @if (row.id === 'github') {
         @if (deviceCode(); as code) {
           <div class="device">
-            <span class="muted">Copie o código abaixo, cole na página do GitHub que abrimos e clique em Autorizar.</span>
+            <span class="muted">{{ i18n.t('connections.device.instructions') }}</span>
             <div class="code-row">
               <code class="user-code">{{ code.userCode }}</code>
               <button type="button" class="btn" data-action="copy-code" (click)="copyCode(code.userCode)">
-                {{ copied() ? 'Copiado' : 'Copiar' }}
+                {{ copied() ? i18n.t('connections.device.copied') : i18n.t('connections.device.copy') }}
               </button>
             </div>
-            <span class="muted">Aguardando autorização…</span>
+            <span class="muted">{{ i18n.t('connections.device.waiting') }}</span>
             <button type="button" class="btn" data-action="cancel-device-flow" (click)="cancelDeviceFlow()">
-              Cancelar
+              {{ i18n.t('connections.device.cancel') }}
             </button>
           </div>
         }
         @if (patOpen()) {
           <form class="pat" (submit)="$event.preventDefault(); submitPat(patInput.value)">
-            <input #patInput class="pat-input" type="password" autocomplete="off" placeholder="ghp_…" aria-label="Token de acesso pessoal" />
-            <button type="submit" class="btn primary">Salvar</button>
-            <button type="button" class="link" data-action="create-token" (click)="createToken()">Criar token no GitHub</button>
+            <input #patInput class="pat-input" type="password" autocomplete="off" placeholder="ghp_…" [attr.aria-label]="i18n.t('connections.pat.aria')" />
+            <button type="submit" class="btn primary">{{ i18n.t('connections.pat.save') }}</button>
+            <button type="button" class="link" data-action="create-token" (click)="createToken()">{{ i18n.t('connections.pat.create') }}</button>
           </form>
         }
       }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PullRequest } from '../../../domain/pull-requests';
-import { badgesFor, slaFor } from './pull-request-view';
+import { Localizer } from '../../i18n';
+import { badgesFor as badgesWith, slaFor } from './pull-request-view';
+
+const PT = new Localizer('pt-BR');
+const badgesFor = (pr: PullRequest) => badgesWith(pr, PT);
 
 const BASE: PullRequest = {
   id: 'a',

@@ -1,12 +1,11 @@
-import type { UsageWindowKind } from '../../../domain/usage';
+import { EXHAUSTION_LEVEL, type UsageWindowKind } from '../../../domain/usage';
+import type { UsageThresholds } from '../../../domain/settings';
 
 export type UsageTone = 'base' | 'attention' | 'danger';
 
-export const WEEKLY_ATTENTION_AT = 70;
-export const WEEKLY_DANGER_AT = 90;
-
-export function usageTone(kind: UsageWindowKind, value: number): UsageTone {
+export function projectionTone(kind: UsageWindowKind, projected: number, thresholds: UsageThresholds): UsageTone {
+  if (projected >= EXHAUSTION_LEVEL) return 'danger';
   if (kind === 'fiveHour') return 'base';
-  if (value >= WEEKLY_DANGER_AT) return 'danger';
-  return value >= WEEKLY_ATTENTION_AT ? 'attention' : 'base';
+  if (projected >= thresholds.critical) return 'danger';
+  return projected >= thresholds.warning ? 'attention' : 'base';
 }

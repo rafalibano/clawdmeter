@@ -1,3 +1,4 @@
+import { CodedError } from '../../../domain/coded-error';
 import { ConnectionProblemError } from '../../../domain/connections';
 import { buildForecasts, recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageForecasts, UsageHistory, UsageSnapshot } from '../../../domain/usage';
@@ -47,7 +48,7 @@ export class LoadUsage {
   private async fetchSnapshot(now: number): Promise<UsageSnapshot> {
     try {
       if (!(await this.prefs.load()).claude.enabled) {
-        throw new Error('Claude desconectado. Conecte em Ajustes > Conexões.');
+        throw new CodedError('usage-disconnected');
       }
       return await this.gateway.fetch();
     } catch (error) {

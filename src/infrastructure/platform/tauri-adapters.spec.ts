@@ -12,6 +12,7 @@ import { TauriOAuthLoopback } from './tauri-oauth-loopback';
 import { TauriProcessRunner } from './tauri-process-runner';
 import { TauriSecretStore } from './tauri-secret-store';
 import { TauriSystemSettings, TauriTerminalLauncher, TauriUrlOpener } from './tauri-system-actions';
+import { FakeTranslator } from '../../application/testing/fake-translator';
 import { TauriUsageIndicator } from './tauri-usage-indicator';
 
 describe('toDomainError', () => {
@@ -173,7 +174,7 @@ describe('TauriUsageIndicator', () => {
 
   it('manda os percentuais e o tooltip para tray_set_usage', async () => {
     const { commands, calls } = createFakeCommands(() => undefined);
-    await new TauriUsageIndicator(commands).update(
+    await new TauriUsageIndicator(commands, new FakeTranslator()).update(
       {
         fiveHour: { utilization: 24, resetsAt: NOW + 3_600_000 },
         sevenDay: { utilization: 51, resetsAt: null },
@@ -188,7 +189,7 @@ describe('TauriUsageIndicator', () => {
 
   it('janela ausente ou snapshot nulo viram null (barra sem dado)', async () => {
     const { commands, calls } = createFakeCommands(() => undefined);
-    const indicator = new TauriUsageIndicator(commands);
+    const indicator = new TauriUsageIndicator(commands, new FakeTranslator());
     await indicator.update({ fiveHour: null, sevenDay: { utilization: 5, resetsAt: null } }, NOW);
     await indicator.update(null, NOW);
     expect(calls[0]?.args).toMatchObject({ fiveHour: null, sevenDay: 5 });
@@ -197,6 +198,6 @@ describe('TauriUsageIndicator', () => {
 
   it('propaga o erro do command', async () => {
     const { commands } = createFakeCommands(() => rejectWith('tray', 'sem bandeja'));
-    await expect(new TauriUsageIndicator(commands).update(null, NOW)).rejects.toMatchObject({ kind: 'tray' });
+    await expect(new TauriUsageIndicator(commands, new FakeTranslator()).update(null, NOW)).rejects.toMatchObject({ kind: 'tray' });
   });
 });

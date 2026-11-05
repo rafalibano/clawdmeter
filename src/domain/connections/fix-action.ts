@@ -1,5 +1,4 @@
-import type { ConnectionProblem, ConnectionProblemError } from './connection-problem';
-import { GITHUB_ORG } from './github';
+import type { ConnectionProblem } from './connection-problem';
 
 export type FixAction =
   | 'retry-permission'
@@ -30,38 +29,3 @@ export const FIX_FOR: Record<ConnectionProblem, FixAction> = {
   'github-not-member': 'open-org-page',
   unexpected: 'retry',
 };
-
-export const FIX_LABELS: Record<FixAction, string> = {
-  'retry-permission': 'Refazer permissão',
-  'relogin-claude': 'Refazer login do Claude',
-  'install-claude-code': 'Instalar Claude Code',
-  'relogin-github': 'Refazer login do GitHub',
-  'connect-github-cli': 'Conectar GitHub CLI',
-  'install-github-cli': 'Instalar GitHub CLI',
-  'regrant-scopes': 'Refazer permissões',
-  'authorize-org': 'Autorizar na org',
-  'relogin-microsoft': 'Refazer login da Microsoft',
-  'connect-microsoft': 'Conectar',
-  'open-system-settings': 'Abrir ajustes do sistema',
-  'open-org-page': 'Abrir página da org',
-  retry: 'Tentar de novo',
-};
-
-export const PROBLEM_MESSAGES: Record<ConnectionProblem, string> = {
-  'keychain-denied': 'Acesso ao cofre do sistema negado.',
-  'claude-expired': 'Token vencido — abra o Claude Code para renová-lo ou refaça o login.',
-  'claude-code-missing': 'Claude Code não encontrado.',
-  'github-unauthorized': 'O token do GitHub é inválido ou foi revogado.',
-  'github-missing-scope': 'O token do GitHub não tem os escopos necessários.',
-  'github-org-access': 'Sem acesso à org Mottu-ops (SSO pendente).',
-  'microsoft-expired': 'O login da Microsoft expirou.',
-  'microsoft-not-connected': 'A Microsoft ainda não está conectada.',
-  'notifications-blocked': 'Notificações bloqueadas pelo sistema.',
-  'notifications-unverifiable': 'Não foi possível verificar se as notificações estão liberadas. Confira nos ajustes do sistema.',
-  'github-not-member': `Você não é membro da org ${GITHUB_ORG}.`,
-  unexpected: 'Não foi possível verificar a conexão.',
-};
-
-export function problemMessage(error: ConnectionProblemError): string {
-  return error.message === error.problem ? PROBLEM_MESSAGES[error.problem] : error.message;
-}

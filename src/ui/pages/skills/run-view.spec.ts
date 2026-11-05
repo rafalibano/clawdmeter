@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SKILLS, FIXTURE_SESSION_ID, startRun, type SkillRun } from '../../../domain/skills';
-import { formatCost, formatDuration, toRunView } from './run-view';
+import { Localizer } from '../../i18n';
+import { formatDuration, toRunView as toRunViewWith } from './run-view';
+
+const PT = new Localizer('pt-BR');
+const EN = new Localizer('en');
+const toRunView = (run: SkillRun, now: number) => toRunViewWith(run, now, PT);
 
 const RUNNING = startRun('r1', DEFAULT_SKILLS[0]!, 1_000);
 
@@ -13,10 +18,16 @@ describe('formatDuration', () => {
   });
 });
 
-describe('formatCost', () => {
-  it('usa duas casas e trata ausência', () => {
-    expect(formatCost(0.1234)).toBe('US$ 0.12');
-    expect(formatCost(null)).toBeNull();
+describe('custo por língua', () => {
+  it('usa duas casas, vírgula em pt-BR e ponto em en', () => {
+    expect(PT.cost(0.1234)).toBe('US$ 0,12');
+    expect(EN.cost(0.1234)).toBe('US$ 0.12');
+  });
+
+  it('a view segue a língua do rótulo e do custo', () => {
+    const run: SkillRun = { ...RUNNING, status: 'succeeded', endedAt: 5_000, costUsd: 0.5 };
+    expect(toRunViewWith(run, 6_000, EN)).toMatchObject({ statusLabel: 'Completed', cost: 'US$ 0.50' });
+    expect(toRunView(run, 6_000)).toMatchObject({ statusLabel: 'Concluída', cost: 'US$ 0,50' });
   });
 });
 
@@ -43,7 +54,7 @@ describe('toRunView', () => {
     expect(toRunView(run, 99_000)).toMatchObject({
       statusLabel: 'Concluída',
       duration: '1m 05s',
-      cost: 'US$ 0.50',
+      cost: 'US$ 0,50',
       resultText: '# ok',
       canContinue: true,
       error: null,

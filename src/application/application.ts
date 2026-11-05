@@ -2,6 +2,7 @@ import type { ConnectionAdapters } from './connections/connection-adapters';
 import { createConnections, type Connections } from './connections/create-connections';
 import type { PageModule } from './pages/page-module';
 import { PageRegistry } from './pages/page-registry';
+import { CurrentLanguage } from './language';
 import type { Clock, SettingsStore } from './ports';
 import { PollingScheduler } from './scheduler/polling-scheduler';
 import type { Skills } from './skills';
@@ -17,6 +18,7 @@ export interface Application {
   joinMeeting: JoinMeeting;
   openGitHubUrl: OpenGitHubUrl;
   skills: Skills;
+  language: CurrentLanguage;
   getSettings: GetSettings;
   getSettingsStatus: GetSettingsStatus;
   updateSettings: UpdateSettings;
@@ -33,6 +35,7 @@ export interface PageContext extends SkillsContext {
 
 export interface ApplicationDeps {
   clock: Clock;
+  language?: CurrentLanguage;
   settingsStore: SettingsStore;
   connectionAdapters: ConnectionAdapters;
   skills: Skills | ((context: SkillsContext) => Skills);
@@ -51,6 +54,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     joinMeeting: new JoinMeeting(deps.connectionAdapters.urlOpener),
     openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
+    language: deps.language ?? new CurrentLanguage(),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),
     updateSettings: new UpdateSettings(deps.settingsStore),

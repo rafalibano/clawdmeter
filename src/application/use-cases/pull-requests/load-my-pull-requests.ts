@@ -18,7 +18,6 @@ export class LoadMyPullRequests {
       sections: [
         {
           id: 'mine',
-          title: 'Meus PRs abertos',
           groups: groupByRepo(mine.items),
           shown: mine.items.length,
           total: mine.total,

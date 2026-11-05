@@ -1,11 +1,12 @@
 import {
-  PROBLEM_MESSAGES,
+  GITHUB_ORG,
   actionsFor,
-  connectionDefinition,
   type ConnectionAction,
   type ConnectionId,
   type ConnectionStatus,
+  type StatusNote,
 } from '../../../domain/connections';
+import type { Localizer } from '../../i18n';
 
 export type ConnectionTone = 'ok' | 'error' | 'idle' | 'busy';
 
@@ -20,34 +21,50 @@ export interface ConnectionRowView {
   busy: boolean;
 }
 
-function describe(status: ConnectionStatus): { tone: ConnectionTone; summary: string; message: string | null } {
+function noteText(l: Localizer, note: StatusNote, arg: string | undefined): string {
+  return l.t(`note.${note}`, { org: GITHUB_ORG, scopes: arg ?? '' });
+}
+
+function describe(status: ConnectionStatus, l: Localizer): { tone: ConnectionTone; summary: string; message: string | null } {
   switch (status.state) {
     case 'unknown':
-      return { tone: 'idle', summary: 'Não verificada', message: null };
+      return { tone: 'idle', summary: l.t('connection.status.unknown'), message: null };
     case 'checking':
-      return { tone: 'busy', summary: 'Verificando…', message: null };
+      return { tone: 'busy', summary: l.t('connection.status.checking'), message: null };
     case 'disconnected':
-      return { tone: 'idle', summary: 'Desconectado', message: status.hint ?? null };
+      return {
+        tone: 'idle',
+        summary: l.t('connection.status.disconnected'),
+        message: status.note === undefined ? null : noteText(l, status.note, undefined),
+      };
     case 'connected':
       return {
         tone: 'ok',
-        summary: status.account ? `Conectado · ${status.account}` : 'Conectado',
+        summary: status.account
+          ? l.t('connection.status.connectedAs', { account: status.account })
+          : l.t('connection.status.connected'),
         message: status.detail ?? null,
       };
     case 'error':
       return {
         tone: 'error',
-        summary: status.problem === 'notifications-unverifiable' ? 'Não verificável' : 'Atenção',
-        message: status.message ?? PROBLEM_MESSAGES[status.problem],
+        summary:
+          status.problem === 'notifications-unverifiable'
+            ? l.t('connection.status.unverifiable')
+            : l.t('connection.status.attention'),
+        message:
+          status.note !== undefined
+            ? noteText(l, status.note, status.noteArg)
+            : (status.message ?? l.t(`problem.${status.problem}`, { org: GITHUB_ORG })),
       };
   }
 }
 
-export function toRowView(id: ConnectionId, status: ConnectionStatus): ConnectionRowView {
+export function toRowView(id: ConnectionId, status: ConnectionStatus, l: Localizer): ConnectionRowView {
   return {
     id,
-    label: connectionDefinition(id).label,
-    ...describe(status),
+    label: l.t(`connection.${id}`),
+    ...describe(status, l),
     actions: actionsFor(id, status),
     signInOptions: id === 'github' && (status.state === 'disconnected' || status.state === 'unknown'),
     busy: status.state === 'checking',

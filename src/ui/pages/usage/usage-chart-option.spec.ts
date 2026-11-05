@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
 import { usageRange, type Forecast } from '../../../domain/usage';
 import { chartPalette } from '../../theme/chart-palette';
-import { buildChartModel, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
-import { buildChartOption } from './usage-chart-option';
+import { Localizer } from '../../i18n';
+import { buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
+import { buildChartOption as buildOption } from './usage-chart-option';
+
+const PT = new Localizer('pt-BR');
+const THRESHOLDS = { warning: 70, critical: 90 };
+const buildChartModel = (inputs: WindowInput[], range: ReturnType<typeof usageRange>, now: number, thresholds = THRESHOLDS) =>
+  buildModel(inputs, range, now, thresholds);
+const buildChartOption = (model: ReturnType<typeof buildChartModel>, palette: ReturnType<typeof chartPalette>, l = PT) =>
+  buildOption(model, palette, l);
 
 const NOW = 1_800_000_000_000;
 const palette = chartPalette('#00b131', null, 'light');
@@ -78,13 +86,7 @@ describe('buildChartOption', () => {
       splitLine: { lineStyle: { color: string; type: string } };
     };
     tooltip: { backgroundColor: string };
-    visualMap: {
-      type: string;
-      show: boolean;
-      dimension: number;
-      seriesIndex: number[];
-      pieces: { lt?: number; gte?: number; color: string }[];
-    };
+    visualMap?: unknown;
     textStyle: { fontFamily: string };
     series: {
       name: string;
@@ -105,6 +107,8 @@ describe('buildChartOption', () => {
 
   it('duas séries suaves (5h e 7d) e uma tendência tracejada e mais fina por série com previsão', () => {
     expect(option.series.map((series) => series.name)).toEqual(['5h', '7d', '5h tendência', '7d tendência']);
+    const en = buildChartOption(model, palette, new Localizer('en')) as unknown as typeof option;
+    expect(en.series.map((series) => series.name)).toEqual(['5h', '7d', '5h trend', '7d trend']);
     expect(option.series[0]!.smooth).toBe(true);
     expect(option.series[2]!.lineStyle).toMatchObject({ type: 'dashed', width: 1.2 });
     expect(option.series[2]!.lineStyle.width).toBeLessThan(option.series[0]!.lineStyle.width);
@@ -113,8 +117,7 @@ describe('buildChartOption', () => {
 
   it('5h em verde Mottu e 7d em cinza neutro, com área muito leve', () => {
     expect(option.series[0]!.lineStyle.color).toBe('#00b131');
-    expect(option.series[1]!.lineStyle.color).toBeUndefined();
-    expect(option.visualMap.pieces[0]!.color).toBe('#767676');
+    expect(option.series[1]!.lineStyle.color).toBe('#767676');
     expect(option.series[2]!.lineStyle.color).toBe('#00b131');
     expect(option.series[0]!.areaStyle?.color.colorStops).toEqual([
       { offset: 0, color: 'rgba(0, 177, 49, 0.1)' },
@@ -122,7 +125,7 @@ describe('buildChartOption', () => {
     ]);
     const dark = buildChartOption(model, chartPalette('#00b131', null, 'dark')) as unknown as typeof option;
     expect(dark.series[0]!.lineStyle.color).toBe('#1bd60b');
-    expect(dark.visualMap.pieces[0]!.color).toBe('#a9a9a9');
+    expect(dark.series[1]!.lineStyle.color).toBe('#a9a9a9');
   });
 
   it('marcas: sem linha de 100%, só "agora" e os resets dentro do eixo', () => {
@@ -140,18 +143,43 @@ describe('buildChartOption', () => {
     expect(option.yAxis.splitLine.lineStyle).toMatchObject({ color: 'rgba(18, 18, 18, 0.06)', type: 'dashed' });
   });
 
-  it('visualMap por faixa só na série 7d e na tendência 7d: cinza < 70, amarelo >= 70, vermelho >= 90', () => {
-    expect(option.visualMap).toMatchObject({ type: 'piecewise', show: false, dimension: 1, seriesIndex: [1, 3] });
-    expect(option.visualMap.pieces).toEqual([
-      { lt: 70, color: '#767676' },
-      { gte: 70, lt: 90, color: '#ffc700' },
-      { gte: 90, color: '#ff5449' },
-    ]);
+  it('a série real do 7d é sempre cinza: não há visualMap de faixa', () => {
+    expect(option.visualMap).toBeUndefined();
+    const high = buildChartOption(
+      buildChartModel(inputs(ready(60)).map((input) => ({ ...input, points: input.points.map((point) => ({ ...point, utilization: 95 })) })), usageRange('1h'), NOW),
+      palette,
+    ) as unknown as typeof option;
+    expect(high.series[1]!.lineStyle.color).toBe('#767676');
   });
 
-  it('visualMap sem tendência 7d aponta só a série 7d, e a 5h segue verde', () => {
+  it('a faixa vale só para a projeção: tendência 7d cinza < alerta, amarela >= alerta, vermelha >= crítico', () => {
+    const colorOf = (projected: number) => {
+      const built = buildChartOption(buildChartModel(inputs(ready(40), ready(projected)), usageRange('1h'), NOW), palette) as unknown as typeof option;
+      return built.series[3]!.lineStyle.color;
+    };
+    expect(colorOf(50)).toBe('#767676');
+    expect(colorOf(70)).toBe('#ffc700');
+    expect(colorOf(89)).toBe('#ffc700');
+    expect(colorOf(90)).toBe('#ff5449');
+    expect(colorOf(140)).toBe('#ff5449');
+  });
+
+  it('os limiares editados mudam a cor da tendência na hora', () => {
+    const model = buildChartModel(inputs(ready(40), ready(60)), usageRange('1h'), NOW, { warning: 50, critical: 55 });
+    const built = buildChartOption(model, palette) as unknown as typeof option;
+    expect(built.series[3]!.lineStyle.color).toBe('#ff5449');
+  });
+
+  it('a tendência 5h é verde e só fica vermelha se estourar 100%', () => {
+    const at = (projected: number) =>
+      (buildChartOption(buildChartModel(inputs(ready(projected)), usageRange('1h'), NOW), palette) as unknown as typeof option).series[2]!.lineStyle.color;
+    expect(at(95)).toBe('#00b131');
+    expect(at(100)).toBe('#ff5449');
+    expect(at(160)).toBe('#ff5449');
+  });
+
+  it('a 5h segue verde mesmo sem o 7d na tendência', () => {
     const only = buildChartOption(buildChartModel(inputs(ready(60)), usageRange('1h'), NOW), palette) as unknown as typeof option;
-    expect(only.visualMap.seriesIndex).toEqual([1]);
     expect(only.series[0]!.lineStyle.color).toBe('#00b131');
     expect(only.series[2]!.lineStyle.color).toBe('#00b131');
   });
@@ -178,5 +206,60 @@ describe('buildChartOption', () => {
     expect(option.xAxis.axisLabel.formatter(NOW)).toMatch(/^\d{2}:\d{2}$/);
     const long = buildChartOption(buildChartModel(inputs({ status: 'collecting' }), usageRange('30d'), NOW), palette) as unknown as typeof option;
     expect(long.xAxis.axisLabel.formatter(NOW)).toMatch(/^\d{2}\/\d{2}$/);
+  });
+});
+
+describe('período Reset (ciclo semanal)', () => {
+  const WEEKLY_RESET = NOW + 3 * 24 * HOUR_MS;
+  const cycleInputs = (): WindowInput[] => {
+    const history = [
+      { at: NOW - 3 * 24 * HOUR_MS, utilization: 5, resetsAt: NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS },
+      { at: NOW - 2 * 24 * HOUR_MS, utilization: 20, resetsAt: NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS },
+      { at: NOW - HOUR_MS, utilization: 30, resetsAt: NOW + 4 * HOUR_MS },
+      { at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS },
+    ];
+    return [
+      { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
+      { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
+    ];
+  };
+
+  it('eixo vai de (reset semanal - 7d) até o reset semanal e só traz pontos desse ciclo', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
+    expect(model).toMatchObject({ cycle: true, xMin: WEEKLY_RESET - CYCLE_MS, xMax: WEEKLY_RESET, rangeMs: CYCLE_MS });
+    expect(model.windows[0]!.points.map((point) => point[1])).toEqual([5, 20, 30]);
+    expect(model.windows[0]!.points.some((point) => point[1] === 90)).toBe(false);
+  });
+
+  it('as tendências tracejadas vão até o reset de cada janela', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
+    expect(model.windows[0]!.trend?.[1]?.[0]).toBe(NOW + 4 * HOUR_MS);
+    expect(model.windows[1]!.trend?.[1]?.[0]).toBe(NOW + 4 * HOUR_MS);
+  });
+
+  it('marcadores: agora e os resets do 5h que caem no intervalo (passados e o próximo)', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
+    expect(model.fiveHourResets).toEqual([
+      NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS,
+      NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS,
+      NOW + 4 * HOUR_MS,
+    ]);
+    const option = buildChartOption(model, palette) as unknown as {
+      series: { markLine?: { data: { xAxis: number }[] } }[];
+    };
+    const marks = option.series[0]!.markLine!.data.map((mark) => mark.xAxis);
+    expect(marks).toEqual([NOW, ...model.fiveHourResets]);
+  });
+
+  it('sem reset semanal conhecido cai no período padrão, sem ciclo', () => {
+    const noReset = cycleInputs().map((input) => (input.kind === 'sevenDay' ? { ...input, resetsAt: null } : input));
+    const model = buildChartModel(noReset, usageRange('cycle'), NOW);
+    expect(model.cycle).toBe(false);
+    expect(model.xMin).toBe(NOW - 6 * HOUR_MS);
+    expect(model.fiveHourResets).toEqual([]);
+  });
+
+  it('períodos comuns não ligam o modo ciclo', () => {
+    expect(buildChartModel(cycleInputs(), usageRange('7d'), NOW)).toMatchObject({ cycle: false, fiveHourResets: [] });
   });
 });

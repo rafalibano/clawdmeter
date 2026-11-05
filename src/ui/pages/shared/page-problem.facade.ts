@@ -6,7 +6,7 @@ import { APPLICATION } from '../../shell/application.token';
 export class PageProblemFacade {
   private readonly application = inject(APPLICATION);
 
-  report(connection: ConnectionId, problem: ConnectionProblem, message: string): void {
+  report(connection: ConnectionId, problem: ConnectionProblem, message?: string): void {
     this.application.connections.report.execute(connection, problem, message);
   }
 

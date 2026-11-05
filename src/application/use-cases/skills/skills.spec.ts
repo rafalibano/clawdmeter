@@ -10,6 +10,7 @@ import {
   type SkillRun,
 } from '../../../domain/skills';
 import { createConnections } from '../../connections/create-connections';
+import { FakeTranslator } from '../../testing/fake-translator';
 import { createSkills, type Skills } from '../../skills';
 import { FakeClock } from '../../testing/fake-clock';
 import { FakeTerminal, FakeUrlOpener, createFakeConnectionWorld } from '../../testing/fake-connection-adapters';
@@ -42,7 +43,7 @@ beforeEach(async () => {
   connections = createConnections(world.adapters, clock);
   await connections.check.execute('notifications');
   skills = createSkills(
-    { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier },
+    { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() },
     clock,
     connections,
   );
@@ -75,7 +76,7 @@ describe('RunSkill', () => {
 
   it('skill com ferramenta fora da lista não abre processo e explica o motivo', async () => {
     const config = new FakeSkillsConfigStore(parseSkillsConfig(null).map((skill) => ({ ...skill, allowedTools: ['Read(./**)', 'Write'] })));
-    const guarded = createSkills({ config, runs: store, runner, terminal, urls, notifier }, clock, connections);
+    const guarded = createSkills({ config, runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() }, clock, connections);
     await expect(guarded.run.execute('acabativa')).rejects.toThrow('usa ferramenta não permitida: Write');
     expect(runner.processes).toHaveLength(0);
     expect(guarded.board.finished()).toHaveLength(0);
@@ -107,7 +108,7 @@ describe('RunSkill', () => {
     feed(SUCCESS_STREAM);
     expect(skills.board.get(run.id)?.status).toBe('succeeded');
     expect(skills.board.isSkillRunning('acabativa')).toBe(true);
-    await expect(skills.run.execute('acabativa')).rejects.toThrow('já está rodando');
+    await expect(skills.run.execute('acabativa')).rejects.toThrow('skill-running');
     expect(skills.board.finished()).toHaveLength(0);
     runner.processes[0]?.exit(0);
     await finished;
@@ -170,9 +171,9 @@ describe('RunSkill', () => {
   });
 
   it('recusa skill desconhecida e execução simultânea da mesma skill', async () => {
-    await expect(skills.run.execute('nada')).rejects.toThrow('Skill desconhecida: nada');
+    await expect(skills.run.execute('nada')).rejects.toThrow('skill-unknown');
     await skills.run.execute('acabativa');
-    await expect(skills.run.execute('acabativa')).rejects.toThrow('já está rodando');
+    await expect(skills.run.execute('acabativa')).rejects.toThrow('skill-running');
     expect(runner.processes).toHaveLength(1);
   });
 
@@ -197,7 +198,7 @@ describe('Notificação ao fim da run', () => {
 
   it('sucesso notifica com o custo e a duração', async () => {
     await conclude(SUCCESS_STREAM, 0);
-    expect(notifier.sent).toEqual([{ title: 'Acabativa concluída', body: 'US$ 0.12 · 5s' }]);
+    expect(notifier.sent).toEqual([{ title: 'Acabativa concluída', body: 'US$ 0,12 · 5s' }]);
   });
 
   it('falha notifica com o motivo', async () => {
@@ -225,7 +226,7 @@ describe('Notificação ao fim da run', () => {
   it('com o estado ainda desconhecido verifica a conexão antes de notificar', async () => {
     const fresh = createConnections(world.adapters, clock);
     const lazy = createSkills(
-      { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier },
+      { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() },
       clock,
       fresh,
     );
@@ -288,6 +289,8 @@ describe('histórico', () => {
       cwd: null,
       resultText: 'ok',
       error: null,
+      failure: null,
+      exitCode: null,
       problem: null,
       mcpNeedingAuth: [],
       log: [],
@@ -312,7 +315,7 @@ describe('Continuar no terminal', () => {
     const config = new FakeSkillsConfigStore(
       parseSkillsConfig({ skills: [{ id: 'proj', name: 'Proj', prompt: '/proj', cwd: '/Users/dev/proj' }] }),
     );
-    const scoped = createSkills({ config, runs: store, runner, terminal, urls, notifier }, clock, connections);
+    const scoped = createSkills({ config, runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() }, clock, connections);
     const { run, finished } = await scoped.run.execute('proj');
     expect(runner.processes[0]?.spec.cwd).toBe('/Users/dev/proj');
     feed(SUCCESS_STREAM);
@@ -326,8 +329,8 @@ describe('Continuar no terminal', () => {
 
   it('sem session_id válido recusa', async () => {
     const { run } = await skills.run.execute('acabativa');
-    await expect(skills.continueInTerminal.execute(run.id)).rejects.toThrow('sessão');
-    await expect(skills.continueInTerminal.execute('inexistente')).rejects.toThrow('sessão');
+    await expect(skills.continueInTerminal.execute(run.id)).rejects.toThrow('skill-no-session');
+    await expect(skills.continueInTerminal.execute('inexistente')).rejects.toThrow('skill-no-session');
     expect(terminal.commands).toHaveLength(0);
   });
 });

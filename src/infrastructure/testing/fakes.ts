@@ -60,6 +60,6 @@ export class RejectedCommand {
   constructor(readonly error: unknown) {}
 }
 
-export function rejectWith(kind: string, message: string): RejectedCommand {
-  return new RejectedCommand({ kind, message });
+export function rejectWith(kind: string, message: string, extra: Record<string, unknown> = {}): RejectedCommand {
+  return new RejectedCommand({ kind, message, ...extra });
 }

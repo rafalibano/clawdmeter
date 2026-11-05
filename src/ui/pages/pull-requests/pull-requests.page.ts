@@ -3,7 +3,7 @@ import type { PullRequests, PullRequestsData } from '../../../application/pull-r
 import { PullRequestsComponent } from './pull-requests.component';
 import { PULL_REQUESTS_PAGE } from './pull-requests-page-ref';
 
-export const PULL_REQUESTS_POLL_MS = 120_000;
+export const PULL_REQUESTS_POLL_MS = 5 * 60_000;
 
 export function createPullRequestsPage(deps: { pullRequests: PullRequests }): PageModule<PullRequestsData> {
   return {

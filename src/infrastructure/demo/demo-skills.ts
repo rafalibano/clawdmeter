@@ -8,6 +8,7 @@ import type {
   Notifier,
   StreamingProcessSpec,
   TerminalLauncher,
+  Translator,
   UrlOpener,
 } from '../../application/ports';
 import type { SkillAdapters } from '../../application/skills';
@@ -88,7 +89,7 @@ export class DemoNotifier implements Notifier {
 
 export function createDemoSkillAdapters(
   world: DemoWorld,
-  shared: { terminal: TerminalLauncher; urls: UrlOpener; notifier: Notifier },
+  shared: { terminal: TerminalLauncher; urls: UrlOpener; notifier: Notifier; translator: Translator },
 ): SkillAdapters {
   return {
     config: new DemoSkillsConfig(),
@@ -97,5 +98,6 @@ export function createDemoSkillAdapters(
     terminal: shared.terminal,
     urls: shared.urls,
     notifier: shared.notifier,
+    translator: shared.translator,
   };
 }

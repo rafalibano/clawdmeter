@@ -8,7 +8,10 @@ import { createFakeConnectionWorld } from '../../../application/testing/fake-con
 import { LoadAgenda, type AgendaSnapshot } from '../../../application/use-cases/calendar';
 import { createDefaultSettings } from '../../../domain/settings';
 import { ConnectionProblemError, type ConnectionProblem } from '../../../domain/connections';
-import { RETRY_ACTION, toFailureView } from './teams-failure-view';
+import { RETRY_ACTION, toFailureView as toFailureViewWith } from './teams-failure-view';
+
+const TEXTS = { errorText: (error: { error: string; problem?: string }) => (error.error === error.problem ? `texto:${error.problem}` : error.error) };
+const toFailureView = (update: Parameters<typeof toFailureViewWith>[0]) => toFailureViewWith(update, TEXTS);
 import { TEAMS_PAGE } from './teams-page-ref';
 
 const NOW = Date.parse('2026-11-05T15:00:00Z');
@@ -61,8 +64,8 @@ describe('toFailureView', () => {
   });
 
   it.each<[ConnectionProblem, string, string]>([
-    ['microsoft-expired', 'O login da Microsoft expirou.', 'Refazer login da Microsoft'],
-    ['microsoft-not-connected', 'A Microsoft ainda não está conectada.', 'Conectar'],
+    ['microsoft-expired', 'texto:microsoft-expired', 'relogin-microsoft'],
+    ['microsoft-not-connected', 'texto:microsoft-not-connected', 'connect'],
   ])('problema %s mostra texto legível e o botão certo, sem depender da linha da conexão', (problem, message, label) => {
     const view = toFailureView({ pageId: 'teams', status: 'error', error: message, problem, at: 0 });
     expect(view?.message).toBe(message);
@@ -80,10 +83,10 @@ describe('Agenda: 401 no boot com a página aberta depois', () => {
 
     const latest = lateSubscriber(scheduler);
     const view = toFailureView(latest());
-    expect(view?.message).toBe('O login da Microsoft expirou.');
-    expect(view?.message).not.toContain('microsoft-expired');
+    expect(view?.message).toBe('texto:microsoft-expired');
+    expect(view?.message).not.toBe('microsoft-expired');
     const fix = view?.actions.find((action) => action.kind === 'fix');
-    expect(fix?.label).toBe('Refazer login da Microsoft');
+    expect(fix?.label).toBe('relogin-microsoft');
 
     calendar.outcome = null;
     if (fix?.kind === 'fix') await connections.fix.execute('microsoft', fix.fix);
@@ -101,8 +104,8 @@ describe('Agenda: 401 no boot com a página aberta depois', () => {
 
     const latest = lateSubscriber(scheduler);
     const view = toFailureView(latest());
-    expect(view?.message).toBe('A Microsoft ainda não está conectada.');
-    expect(view?.actions.map((action) => action.label)).toEqual(['Conectar']);
+    expect(view?.message).toBe('texto:microsoft-not-connected');
+    expect(view?.actions.map((action) => action.label)).toEqual(['connect']);
     expect(connections.monitor.get('microsoft')).toEqual({ state: 'disconnected' });
 
     calendar.outcome = null;

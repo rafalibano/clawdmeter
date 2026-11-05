@@ -2,13 +2,13 @@
   <section class="card error" role="alert">
     <p class="error-message">{{ failure.message }}</p>
     @if (view()) {
-      <p class="stale">Mostrando os últimos dados carregados.</p>
+      <p class="stale">{{ i18n.t('usage.stale') }}</p>
     }
     @if (failure.actions.length > 0) {
       <div class="actions">
         @for (action of failure.actions; track action.kind) {
           <button type="button" class="btn" [class.primary]="action.kind !== 'recheck'" [attr.data-action]="action.kind" (click)="run(action)">
-            {{ action.label }}
+            {{ i18n.actionText(action) }}
           </button>
         }
       </div>
@@ -27,7 +27,7 @@
         <div class="track">
           <div class="fill" [attr.data-tone]="bar.tone" [style.width.%]="bar.fill"></div>
           @if (bar.projection; as projection) {
-            <div class="projection" [attr.data-tone]="projection.tone" [style.left.%]="projection.from" [style.width.%]="projection.to - projection.from"></div>
+            <div class="projection" [attr.data-tone]="projection.tone" [attr.data-exhausts]="projection.exhausts" [style.left.%]="projection.at"></div>
           }
         </div>
         <div class="bar-foot">
@@ -40,16 +40,18 @@
     }
   </section>
 
-  <div class="toolbar" role="group" aria-label="Período">
+  <div class="toolbar" role="group" [attr.aria-label]="i18n.t('usage.period')">
     @for (range of ranges; track range.id) {
       <button
         type="button"
         class="range"
         [class.active]="range.id === rangeId()"
         [attr.aria-pressed]="range.id === rangeId()"
+        [disabled]="range.cycle && !usage.cycleAvailable"
+        [attr.data-range]="range.id"
         (click)="select(range.id)"
       >
-        {{ range.label }}
+        {{ rangeLabel(range) }}
       </button>
     }
   </div>
@@ -63,5 +65,5 @@
     </div>
   </section>
 } @else if (!error()) {
-  <section class="card">Carregando…</section>
+  <section class="card">{{ i18n.t('common.loading') }}</section>
 }

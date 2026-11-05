@@ -1,4 +1,4 @@
-import { GITHUB_CLI_HINTS, errorStatus, evaluateGitHubAccount, type ConnectionStatus } from '../../../../domain/connections';
+import { GITHUB_CLI_NOTES, errorStatus, evaluateGitHubAccount, type ConnectionStatus } from '../../../../domain/connections';
 import type { GitHubTokenResolver } from '../../../connections/github-token-resolver';
 import type { StatusUseCase } from '../../../connections/connection-runner';
 import type { ConnectionPrefsStore, GitHubAccountGateway, GitHubCliTokenSource } from '../../../ports';
@@ -22,7 +22,7 @@ export class CheckGitHubConnection implements StatusUseCase {
   private async probeCli(): Promise<ConnectionStatus> {
     try {
       const result = await this.cli.token();
-      if ('missing' in result) return { state: 'disconnected', hint: GITHUB_CLI_HINTS[result.missing], cli: result.missing };
+      if ('missing' in result) return { state: 'disconnected', note: GITHUB_CLI_NOTES[result.missing], cli: result.missing };
     } catch {
       return { state: 'disconnected' };
     }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { buildAgenda, meetingsOfDay } from './agenda';
-import { formatCountdown } from './countdown';
 import { teamsJoinUrl } from './join-url';
 import type { Meeting } from './meeting';
 import {
@@ -158,19 +157,6 @@ describe('buildAgenda', () => {
     const late = meeting({ startsAt: at('2026-11-06T01:30:00Z'), endsAt: at('2026-11-06T03:30:00Z') });
     expect(buildAgenda([late], at('2026-11-06T03:10:00Z')).current).toEqual([late]);
     expect(buildAgenda([late], at('2026-11-06T03:30:00Z')).current).toEqual([]);
-  });
-});
-
-describe('formatCountdown', () => {
-  it.each([
-    [0, 'agora'],
-    [-3, 'agora'],
-    [1, 'em 1 min'],
-    [59, 'em 59 min'],
-    [60, 'em 1h'],
-    [80, 'em 1h 20min'],
-  ])('%i min vira "%s"', (minutes, label) => {
-    expect(formatCountdown(minutes)).toBe(label);
   });
 });
 
