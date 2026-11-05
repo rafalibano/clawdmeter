@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::process_policy::{claude_settings, is_protected_dir, strip_verbatim_prefix};
+use super::process_policy::{canonical_path, claude_settings, is_protected_dir};
 
 const SKILL_WORKDIR: &str = "skill-cwd";
 const CLAUDE_SETTINGS_FILE: &str = "claude-settings.json";
@@ -42,7 +42,7 @@ pub fn write_claude_settings(cache: &Path) -> CommandResult<PathBuf> {
     std::fs::write(&staging, body)?;
     // rename replaces a symlink planted at the target instead of writing through it.
     std::fs::rename(&staging, &target)?;
-    Ok(strip_verbatim_prefix(target.canonicalize()?))
+    Ok(canonical_path(&target)?)
 }
 
 pub fn skill_workdir(app: &AppHandle) -> CommandResult<PathBuf> {
@@ -72,9 +72,9 @@ pub fn prepare_workdir(
         }
     }
     std::fs::create_dir_all(&dir)?;
-    let resolved = strip_verbatim_prefix(dir.canonicalize()?);
+    let resolved = canonical_path(&dir)?;
     let home = home
-        .and_then(|value| value.canonicalize().ok())
+        .and_then(|value| canonical_path(value).ok())
         .ok_or_else(unsafe_workdir)?;
     if home.starts_with(&resolved) || is_protected_dir(&resolved, &home, protected) {
         return Err(unsafe_workdir());
@@ -138,7 +138,7 @@ mod tests {
         std::fs::create_dir_all(&config).unwrap();
         let workdir =
             prepare_workdir(&cache, home_dir().as_deref(), std::slice::from_ref(&config)).unwrap();
-        assert!(!workdir.starts_with(config.canonicalize().unwrap()));
+        assert!(!workdir.starts_with(canonical_path(&config).unwrap()));
         assert_ne!(Some(workdir), home_dir());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -154,12 +154,12 @@ mod tests {
         std::fs::create_dir_all(&cache).unwrap();
         std::os::unix::fs::symlink(&home, cache.join(SKILL_WORKDIR)).unwrap();
         let workdir = prepare_workdir(&cache, Some(&home), &[]).unwrap();
-        assert_ne!(workdir, home.canonicalize().unwrap());
+        assert_ne!(workdir, canonical_path(&home).unwrap());
         assert!(!std::fs::symlink_metadata(cache.join(SKILL_WORKDIR))
             .unwrap()
             .file_type()
             .is_symlink());
-        assert!(workdir.starts_with(cache.canonicalize().unwrap()));
+        assert!(workdir.starts_with(canonical_path(&cache).unwrap()));
         let _ = std::fs::remove_dir_all(&root);
     }
 

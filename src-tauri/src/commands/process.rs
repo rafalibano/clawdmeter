@@ -815,6 +815,7 @@ pub async fn process_is_alive(pid: u32) -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn unix_candidates_include_path_homebrew_and_home() {
         let paths = candidate_paths(
