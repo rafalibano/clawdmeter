@@ -2,7 +2,14 @@ import { ConnectionProblemError } from '../../../domain/connections';
 import { buildForecasts, recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageForecasts, UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
-import type { ClaudeCredentialSource, Clock, ConnectionPrefsStore, UsageGateway, UsageHistoryStore } from '../../ports';
+import type {
+  ClaudeCredentialSource,
+  Clock,
+  ConnectionPrefsStore,
+  UsageGateway,
+  UsageHistoryStore,
+  UsageIndicator,
+} from '../../ports';
 
 export interface UsageData {
   at: number;
@@ -21,11 +28,13 @@ export class LoadUsage {
     private readonly historyStore: UsageHistoryStore,
     private readonly clock: Clock,
     private readonly connections: UsageConnections,
+    private readonly indicator: UsageIndicator,
   ) {}
 
   async execute(): Promise<UsageData> {
     const now = this.clock.now();
     const snapshot = await this.fetchSnapshot(now);
+    this.indicate(snapshot, now);
     const stored = await this.historyStore.load();
     const history = retainHistory(recordSnapshot(stored, snapshot, now), now);
     await this.historyStore.save(history);
@@ -44,11 +53,17 @@ export class LoadUsage {
       }
       return await this.gateway.fetch(credential.accessToken);
     } catch (error) {
+      this.indicate(null, now);
       if (error instanceof ConnectionProblemError) {
         this.connections.report.execute('claude', error.problem, error.message === error.problem ? undefined : error.message);
       }
       throw error;
     }
+  }
+
+  private indicate(snapshot: UsageSnapshot | null, now: number): void {
+    // o ícone da bandeja é só um reflexo: falha dele nunca derruba a página de usage
+    this.indicator.update(snapshot, now).catch(() => undefined);
   }
 
   private async recoverConnection(): Promise<void> {

@@ -36,6 +36,7 @@ import {
   TauriSystemSettings,
   TauriTerminalLauncher,
   TauriUrlOpener,
+  TauriUsageIndicator,
   tauriFetch,
 } from './infrastructure/platform';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
@@ -110,6 +111,7 @@ export function createComposition(): Application {
           new JsonUsageHistoryStore(new TauriJsonFile('usage-history.json')),
           clock,
           connections,
+          new TauriUsageIndicator(commands),
         ),
       }),
       createSessionsPage({

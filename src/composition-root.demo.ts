@@ -12,6 +12,7 @@ import {
   DemoSessionDirectory,
   DemoUsageGateway,
   DemoUsageHistoryStore,
+  DemoUsageIndicator,
   DemoUsageModel,
   createDemoConnectionAdapters,
   createDemoSkillAdapters,
@@ -64,6 +65,7 @@ export function createComposition(): Application {
           new DemoUsageHistoryStore(usageModel.history(origin)),
           clock,
           connections,
+          new DemoUsageIndicator(),
         ),
       }),
       createSessionsPage({

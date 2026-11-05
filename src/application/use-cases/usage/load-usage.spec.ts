@@ -5,7 +5,7 @@ import { createEmptyHistory } from '../../../domain/usage';
 import { createConnections, type Connections } from '../../connections/create-connections';
 import { FakeClock } from '../../testing/fake-clock';
 import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
-import { FakeUsageGateway, FakeUsageHistoryStore } from '../../testing/fake-usage-adapters';
+import { FakeUsageGateway, FakeUsageHistoryStore, FakeUsageIndicator } from '../../testing/fake-usage-adapters';
 import { LoadUsage } from './load-usage';
 
 const START = 1_800_000_000_000;
@@ -15,6 +15,7 @@ let clock: FakeClock;
 let connections: Connections;
 let gateway: FakeUsageGateway;
 let history: FakeUsageHistoryStore;
+let indicator: FakeUsageIndicator;
 let loadUsage: LoadUsage;
 
 beforeEach(async () => {
@@ -24,7 +25,8 @@ beforeEach(async () => {
   connections = createConnections(world.adapters, clock);
   gateway = new FakeUsageGateway();
   history = new FakeUsageHistoryStore();
-  loadUsage = new LoadUsage(world.prefs, world.claude, gateway, history, clock, connections);
+  indicator = new FakeUsageIndicator();
+  loadUsage = new LoadUsage(world.prefs, world.claude, gateway, history, clock, connections, indicator);
 });
 
 describe('LoadUsage', () => {
@@ -117,5 +119,46 @@ describe('LoadUsage', () => {
 
   it('histórico vazio no primeiro uso', async () => {
     expect(await history.load()).toEqual(createEmptyHistory());
+  });
+});
+
+describe('LoadUsage e o indicador da bandeja', () => {
+  it('a cada leitura bem-sucedida entrega o snapshot e o horário ao indicador', async () => {
+    const data = await loadUsage.execute();
+    expect(indicator.updates).toEqual([{ snapshot: data.snapshot, now: START }]);
+    await clock.advance(MINUTE_MS);
+    await loadUsage.execute();
+    expect(indicator.updates.map((update) => update.now)).toEqual([START, START + MINUTE_MS]);
+  });
+
+  it('erro de rede, token vencido e Claude desconectado mandam null ao indicador', async () => {
+    gateway.outcome = new Error('Anthropic respondeu 500');
+    await expect(loadUsage.execute()).rejects.toThrow('500');
+    world.claude.outcome = { accessToken: 't', expiresAt: START - 1, subscriptionType: null };
+    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
+    await connections.disconnect.execute('claude');
+    await expect(loadUsage.execute()).rejects.toThrow('Claude desconectado');
+    expect(indicator.updates).toEqual([
+      { snapshot: null, now: START },
+      { snapshot: null, now: START },
+      { snapshot: null, now: START },
+    ]);
+  });
+
+  it('atualiza o indicador mesmo quando gravar o histórico falha depois', async () => {
+    history.save = async () => {
+      throw new Error('disco cheio');
+    };
+    await expect(loadUsage.execute()).rejects.toThrow('disco cheio');
+    expect(indicator.updates).toHaveLength(1);
+    expect(indicator.updates[0]?.snapshot).not.toBeNull();
+  });
+
+  it('falha do indicador não derruba a página de usage', async () => {
+    indicator.failure = new Error('tray indisponível');
+    const data = await loadUsage.execute();
+    expect(data.snapshot).toEqual(gateway.outcome);
+    gateway.outcome = new Error('500');
+    await expect(loadUsage.execute()).rejects.toThrow('500');
   });
 });

@@ -8,6 +8,7 @@ import { DAY_MS, MINUTE_MS } from '../../domain/time';
 import { TOTAL_RETENTION_MS } from '../../domain/usage';
 import { DemoProcessProbe, DemoSessionDirectory } from './demo-sessions';
 import { DemoUsageGateway, DemoUsageHistoryStore, DemoUsageModel } from './demo-usage';
+import { DemoUsageIndicator } from './demo-usage-indicator';
 
 const ORIGIN = new Date(2026, 10, 5, 14, 30).getTime();
 
@@ -57,6 +58,7 @@ describe('modelo de usage do demo', () => {
       new DemoUsageHistoryStore(model.history(ORIGIN)),
       clock,
       connections,
+      new DemoUsageIndicator(),
     );
     const data = await load.execute();
     expect(data.forecasts.fiveHour.status).toBe('ready');
