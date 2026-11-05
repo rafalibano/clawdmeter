@@ -179,6 +179,51 @@ fn expired(credential: &ClaudeCredential, now: u64) -> bool {
         .is_some_and(|expires_at| expires_at <= now)
 }
 
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let shifted_month = (month + 9) % 12;
+    let day_of_year = (153 * shifted_month + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+fn http_date_secs(value: &str) -> Option<i64> {
+    let (_, rest) = value.split_once(", ")?;
+    let mut parts = rest.split(' ');
+    let day: i64 = parts.next()?.parse().ok()?;
+    let month = parts.next()?;
+    let month = MONTHS.iter().position(|name| *name == month)? as i64 + 1;
+    let year: i64 = parts.next()?.parse().ok()?;
+    let mut clock = parts.next()?.split(':');
+    let mut field = |max: i64| {
+        clock
+            .next()
+            .and_then(|part| part.parse::<i64>().ok())
+            .filter(|value| (0..=max).contains(value))
+    };
+    let (hour, minute, second) = (field(23)?, field(59)?, field(60)?);
+    if parts.next()? != "GMT" || parts.next().is_some() || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+fn retry_after_secs(value: &str, now_secs: u64) -> Option<u64> {
+    let value = value.trim();
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(seconds);
+    }
+    let at = http_date_secs(value)?;
+    let now = i64::try_from(now_secs).ok()?;
+    Some(u64::try_from(at - now).unwrap_or(0))
+}
+
 fn claude_expired() -> CommandError {
     CommandError::new(ErrorKind::ClaudeExpired, "login do Claude expirado")
 }
@@ -226,6 +271,17 @@ async fn request_usage_limited(
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED {
         return Err(claude_expired());
+    }
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| retry_after_secs(value, now_ms() / 1000));
+        return Err(CommandError::rate_limited(
+            "Anthropic limitou as consultas a /api/oauth/usage (429)",
+            retry_after,
+        ));
     }
     if !status.is_success() {
         return Err(CommandError::new(
@@ -406,13 +462,85 @@ mod tests {
 
     #[test]
     fn usage_other_statuses_are_http_errors_without_the_token() {
-        let (url, server) = serve_once("429 Too Many Requests", "{}");
+        let (url, server) = serve_once("503 Service Unavailable", "{}");
         let error =
             tauri::async_runtime::block_on(request_usage(&url, "sk-ant-oat01-secret")).unwrap_err();
         server.join().unwrap();
         assert_eq!(error.kind, ErrorKind::Http);
-        assert_eq!(error.message, "Anthropic respondeu 429 em /api/oauth/usage");
+        assert_eq!(error.message, "Anthropic respondeu 503 em /api/oauth/usage");
+        assert_eq!(error.retry_after_secs, None);
         assert!(!error.message.contains("secret"));
+    }
+
+    fn rate_limited_with(headers: &str) -> CommandError {
+        let response = format!(
+            "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\n{headers}Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        );
+        let (url, server) = serve_raw(response.into_bytes());
+        let error =
+            tauri::async_runtime::block_on(request_usage(&url, "sk-ant-oat01-secret")).unwrap_err();
+        server.join().unwrap();
+        error
+    }
+
+    #[test]
+    fn usage_429_with_retry_after_seconds_is_rate_limited() {
+        let error = rate_limited_with("Retry-After: 120\r\n");
+        assert_eq!(error.kind, ErrorKind::RateLimited);
+        assert_eq!(error.retry_after_secs, Some(Some(120)));
+        assert!(!error.message.contains("secret"));
+        let json = serde_json::to_value(&error).unwrap();
+        assert_eq!(json["kind"], "rate_limited");
+        assert_eq!(json["retryAfterSecs"], 120);
+    }
+
+    #[test]
+    fn usage_429_without_retry_after_sends_null() {
+        let error = rate_limited_with("");
+        assert_eq!(error.kind, ErrorKind::RateLimited);
+        let json = serde_json::to_value(&error).unwrap();
+        assert!(json["retryAfterSecs"].is_null());
+        assert!(json.as_object().unwrap().contains_key("retryAfterSecs"));
+    }
+
+    #[test]
+    fn usage_429_with_an_http_date_counts_down_from_now() {
+        let error = rate_limited_with("Retry-After: Fri, 01 Jan 2100 00:00:00 GMT\r\n");
+        assert_eq!(error.kind, ErrorKind::RateLimited);
+        let expected = 4_102_444_800 - now_ms() / 1000;
+        let secs = error.retry_after_secs.flatten().unwrap();
+        assert!(secs.abs_diff(expected) <= 5);
+    }
+
+    #[test]
+    fn retry_after_accepts_seconds_and_http_dates() {
+        let now = 1_445_412_480;
+        assert_eq!(retry_after_secs("120", now), Some(120));
+        assert_eq!(retry_after_secs(" 0 ", now), Some(0));
+        assert_eq!(
+            retry_after_secs("Wed, 21 Oct 2015 07:28:30 GMT", now),
+            Some(30)
+        );
+        assert_eq!(
+            retry_after_secs("Wed, 21 Oct 2015 07:27:00 GMT", now),
+            Some(0)
+        );
+        assert_eq!(http_date_secs("Thu, 01 Jan 1970 00:00:00 GMT"), Some(0));
+        assert_eq!(
+            http_date_secs("Tue, 29 Feb 2028 12:00:00 GMT"),
+            Some(1_835_438_400)
+        );
+        for invalid in [
+            "",
+            "-5",
+            "amanhã",
+            "Wed, 21 Foo 2015 07:28:30 GMT",
+            "Wed, 21 Oct 2015 25:28:30 GMT",
+            "Wed, 21 Oct 2015 07:28:30 UTC",
+            "Wed, 32 Oct 2015 07:28:30 GMT",
+        ] {
+            assert_eq!(retry_after_secs(invalid, now), None, "{invalid}");
+        }
     }
 
     #[test]
