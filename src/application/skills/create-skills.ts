@@ -58,6 +58,6 @@ export function createSkills(
     ),
     cancel: new CancelSkillRun(board),
     continueInTerminal: new ContinueSkillInTerminal(board, adapters.terminal),
-    fix: new FixSkillProblem(adapters.terminal, adapters.urls),
+    fix: new FixSkillProblem(board, adapters.terminal, adapters.urls),
   };
 }

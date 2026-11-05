@@ -28,8 +28,8 @@ export class SkillsFacade {
     return this.attempt(() => this.skills.continueInTerminal.execute(runId));
   }
 
-  fix(fix: RunFix): Promise<void> {
-    return this.attempt(() => this.skills.fix.execute(fix));
+  fix(fix: RunFix, runId: string): Promise<void> {
+    return this.attempt(() => this.skills.fix.execute(fix, runId));
   }
 
   private async attempt(work: () => Promise<void>): Promise<void> {

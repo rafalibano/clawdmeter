@@ -5,6 +5,7 @@ import {
   formatCost,
   formatDuration,
   isResumableSession,
+  isRunning,
   runDurationMs,
   runProblemMessage,
   type RunFix,
@@ -59,13 +60,13 @@ export function toRunView(run: SkillRun, now: number): RunView {
     name: run.name,
     status: run.status,
     statusLabel: STATUS_LABELS[run.status],
-    running: run.status === 'running',
+    running: isRunning(run),
     duration: formatDuration(runDurationMs(run, now)),
     cost: formatCost(run.costUsd),
     recentLog: run.log.slice(-VISIBLE_LOG_ENTRIES),
     resultText: run.resultText,
     error: run.status === 'failed' ? run.error : null,
     problem,
-    canContinue: run.status !== 'running' && isResumableSession(run.sessionId),
+    canContinue: !isRunning(run) && isResumableSession(run.sessionId),
   };
 }

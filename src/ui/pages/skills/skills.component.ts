@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import type { RunFix, SkillDefinition } from '../../../domain/skills';
+import { isRunning, type RunFix, type SkillDefinition } from '../../../domain/skills';
 import { APPLICATION } from '../../shell/application.token';
 import { PageStateService } from '../../shell/page-state.service';
 import { PageErrorComponent } from '../shared/page-error.component';
@@ -181,7 +181,7 @@ const CLOCK_TICK_MS = 1_000;
             @if (run.problem; as problem) {
               <div class="problem" role="alert" [attr.data-problem]="problem.fix">
                 <p>{{ problem.message }}</p>
-                <button type="button" class="btn primary" data-action="fix" (click)="fix(problem.fix)">{{ problem.label }}</button>
+                <button type="button" class="btn primary" data-action="fix" (click)="fix(problem.fix, run.id)">{{ problem.label }}</button>
               </div>
             }
 
@@ -219,10 +219,10 @@ export class SkillsComponent {
   }
 
   protected isRunning(skill: SkillDefinition): boolean {
-    return this.facade.runs().some((run) => run.skillId === skill.id && run.status === 'running');
+    return this.facade.runs().some((run) => run.skillId === skill.id && isRunning(run));
   }
 
-  protected fix(fix: RunFix): void {
-    void this.facade.fix(fix);
+  protected fix(fix: RunFix, runId: string): void {
+    void this.facade.fix(fix, runId);
   }
 }

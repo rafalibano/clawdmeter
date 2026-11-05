@@ -93,6 +93,19 @@ describe('RunSkill', () => {
     expect(seen.at(-1)).toBe('succeeded');
   });
 
+  it('a run segue ocupada entre o result e o exit do processo', async () => {
+    const { run, finished } = await skills.run.execute('acabativa');
+    feed(SUCCESS_STREAM);
+    expect(skills.board.get(run.id)?.status).toBe('succeeded');
+    expect(skills.board.isSkillRunning('acabativa')).toBe(true);
+    await expect(skills.run.execute('acabativa')).rejects.toThrow('já está rodando');
+    expect(skills.board.finished()).toHaveLength(0);
+    runner.processes[0]?.exit(0);
+    await finished;
+    expect(skills.board.isSkillRunning('acabativa')).toBe(false);
+    expect(skills.board.finished()).toHaveLength(1);
+  });
+
   it('persiste o histórico sem o log', async () => {
     const { finished } = await skills.run.execute('acabativa');
     feed(SUCCESS_STREAM);
@@ -313,7 +326,13 @@ describe('Continuar no terminal', () => {
 describe('FixSkillProblem', () => {
   it('Reconectar MCP abre o terminal com claude /mcp', async () => {
     await skills.fix.execute('reconnect-mcp');
-    expect(terminal.commands).toEqual([{ program: 'claude', args: ['/mcp'] }]);
+    expect(terminal.commands).toEqual([{ program: 'claude', args: ['/mcp'], cwd: null }]);
+  });
+
+  it('Reconectar MCP usa o cwd da run', async () => {
+    const { run } = await skills.run.execute('acabativa');
+    await skills.fix.execute('reconnect-mcp', run.id);
+    expect(terminal.commands).toEqual([{ program: 'claude', args: ['/mcp'], cwd: run.cwd }]);
   });
 
   it('Instalar abre a página de instalação do Claude Code', async () => {

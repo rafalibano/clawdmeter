@@ -35,7 +35,7 @@ export const MCP_PROBLEM_STATUSES: readonly string[] = [NEEDS_AUTH_STATUS, 'pend
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export function isRunning(run: SkillRun): boolean {
-  return run.status === 'running';
+  return run.endedAt === null;
 }
 
 export function isResumableSession(sessionId: string | null): sessionId is string {
@@ -144,7 +144,7 @@ export interface RunNotice {
 const NOTICE_ERROR_CHARS = 140;
 
 export function runNotice(run: SkillRun): RunNotice | null {
-  if (run.status === 'running' || run.status === 'cancelled') return null;
+  if (isRunning(run) || run.status === 'cancelled') return null;
   const details = [formatCost(run.costUsd), formatDuration(runDurationMs(run, run.endedAt ?? run.startedAt))].filter(
     (part): part is string => part !== null,
   );
@@ -186,7 +186,7 @@ function parseStoredRun(raw: unknown): SkillRun | null {
     prompt,
     status: status as RunStatus,
     startedAt,
-    endedAt: typeof endedAt === 'number' ? endedAt : null,
+    endedAt: typeof endedAt === 'number' ? endedAt : startedAt,
     costUsd: typeof costUsd === 'number' ? costUsd : null,
     sessionId: optionalString(source['sessionId']),
     cwd: optionalString(source['cwd']),
