@@ -8,6 +8,9 @@
         (change)="togglePage(page.id, checkedOf($event))"
       />
       <span>{{ page.title }}</span>
+      @if (page.maintenance) {
+        <span class="badge">{{ i18n.t('maintenance.badge') }}</span>
+      }
     </label>
   }
 </section>

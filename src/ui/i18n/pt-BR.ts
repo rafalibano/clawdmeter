@@ -35,6 +35,9 @@ export const ptBR = {
   'page.teams': 'Agenda',
   'page.skills': 'Skills',
 
+  'maintenance.badge': 'Em manutenção',
+  'maintenance.title': 'Em manutenção',
+  'maintenance.description': 'Esta página volta em breve.',
   'settings.pages': 'Páginas',
   'settings.appearance': 'Aparência',
   'settings.accent': 'Cor de destaque',

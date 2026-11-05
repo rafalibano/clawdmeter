@@ -25,6 +25,9 @@ export const en: Record<MessageKey, string> = {
   'page.teams': 'Agenda',
   'page.skills': 'Skills',
 
+  'maintenance.badge': 'Under maintenance',
+  'maintenance.title': 'Under maintenance',
+  'maintenance.description': 'This page will be back soon.',
   'settings.pages': 'Pages',
   'settings.appearance': 'Appearance',
   'settings.accent': 'Accent color',

@@ -4,7 +4,7 @@ import { usageRange, type Forecast, type UsagePoint } from '../../../domain/usag
 import { chartPalette } from '../../theme/chart-palette';
 import { Localizer } from '../../i18n';
 import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
-import { buildChartOption as buildOption } from './usage-chart-option';
+import { buildChartOption as buildOption, tooltipFormatter } from './usage-chart-option';
 
 const PT = new Localizer('pt-BR');
 const THRESHOLDS = { warning: 70, critical: 90 };
@@ -377,27 +377,14 @@ describe('período Reset (ciclo semanal)', () => {
       expect(withRate(12).map((day) => day.tone)).toContain('base');
     });
 
-    it('o rótulo some quando dois pontos ficam apertados, mas o ponto continua', () => {
-      const reset = new Date(NOW);
-      reset.setHours(24 * 2, 30, 0, 0);
-      const close = buildChartModel(
-        cycleInputs().map((input) => ({ ...input, resetsAt: input.kind === 'sevenDay' ? reset.getTime() : input.resetsAt })),
-        usageRange('cycle'),
-        NOW,
-      ).windows[1]!.days;
-      expect(close.at(-1)!.labeled).toBe(true);
-      expect(close.at(-2)!.labeled).toBe(false);
-      expect(close.length).toBeGreaterThanOrEqual(3);
-    });
-
-    it('o eixo expande para a projeção do Reset e a série de pontos leva rótulo, cor e tooltip', () => {
+    it('o eixo expande para a projeção do Reset e a série de pontos leva cor e tooltip, sem rótulo', () => {
       const steep = steepCycle(4);
       const built = buildChartModel(steep, usageRange('cycle'), NOW);
       expect(built.yMax).toBeGreaterThan(100);
       const out = buildChartOption(built, palette, PT) as unknown as {
         series: {
           type: string;
-          data: { value: number[]; itemStyle: { color: string }; label: { show: boolean; formatter: string } }[];
+          data: { value: number[]; itemStyle: { color: string }; label?: unknown }[];
           tooltip?: { formatter: (params: { value: number[] }) => string };
         }[];
       };
@@ -405,8 +392,23 @@ describe('período Reset (ciclo semanal)', () => {
       expect(scatter.data).toHaveLength(built.windows[1]!.days.length);
       const last = scatter.data.at(-1)!;
       expect(last.itemStyle.color).toBe('#ff5449');
-      expect(last.label.formatter).toBe(`${Math.round(built.windows[1]!.days.at(-1)!.value)}%`);
-      expect(scatter.tooltip!.formatter({ value: last.value })).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2}<br\/>Projetado \d+%$/);
+      expect(last.label).toBeUndefined();
+      expect(scatter.tooltip!.formatter({ value: last.value })).toMatch(/^\S+ \d{2}\/\d{2} \d{2}:\d{2}<br\/>Projetado \d+%$/);
+    });
+
+    it('tooltip live: no futuro mostra só a projeção calculada no instante; no passado, os valores reais', () => {
+      const built = buildChartModel(steepCycle(4), usageRange('cycle'), NOW);
+      const format = tooltipFormatter(built, palette, PT);
+      const project = built.windows[1]!.projectAt!;
+      const mid = NOW + 30 * HOUR_MS + 17 * MINUTE_MS;
+      const future = format([{ axisValue: mid, seriesIndex: 0, marker: '', seriesName: '5h', value: [NOW, 5] }]);
+      expect(future).toBe(`${PT.weekday(mid)} ${PT.axisTick(mid, CYCLE_MS)} ${PT.clock(mid)}<br/><span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${palette.danger}"></span>Projetado ${Math.round(project(mid).value)}%`);
+      expect(future).not.toContain('5h');
+      expect(project(mid).value).toBeGreaterThan(project(NOW + HOUR_MS).value);
+      const past = NOW - 2 * HOUR_MS;
+      const text = format([{ axisValue: past, seriesIndex: 1, marker: '', seriesName: '7d', value: [past, 42.4] }]);
+      expect(text).toContain('7d 42%');
+      expect(text).not.toContain('Projetado');
     });
 
     it('fora do Reset não há série de pontos', () => {

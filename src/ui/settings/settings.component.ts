@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import {
   APP_LANGUAGES,
   THEME_MODES,
+  isMaintenancePage,
   isPageEnabled,
   isValidUsageThresholds,
   type AppLanguage,
@@ -44,6 +45,7 @@ export class SettingsComponent {
       id: page.id,
       title: this.i18n.pageTitle(page.id, page.title),
       enabled: isPageEnabled(this.settings(), page.id),
+      maintenance: isMaintenancePage(page.id),
     })),
   );
   protected readonly backgroundValue = computed(

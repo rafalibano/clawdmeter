@@ -2,6 +2,7 @@ import type { AppSettings, ThemeMode, UsageThresholds } from './app-settings';
 import { DEFAULT_LANGUAGE, DEFAULT_USAGE_THRESHOLDS, THEME_MODES, isAppLanguage, isValidUsageThresholds } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { isHexColor } from './hex-color';
+import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
 
 export type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
@@ -22,7 +23,17 @@ const addLanguageAndThresholds: Migration = (raw) => ({
   usageThresholds: raw['usageThresholds'] ?? { ...DEFAULT_USAGE_THRESHOLDS },
 });
 
-export const MIGRATIONS: readonly Migration[] = [(raw) => ({ ...raw }), adoptMottuAccent, addLanguageAndThresholds];
+const switchOffMaintenancePages: Migration = (raw) => {
+  const pages = raw['enabledPages'];
+  return { ...raw, enabledPages: { ...(isRecord(pages) ? pages : {}), ...maintenancePagesOff() } };
+};
+
+export const MIGRATIONS: readonly Migration[] = [
+  (raw) => ({ ...raw }),
+  adoptMottuAccent,
+  addLanguageAndThresholds,
+  switchOffMaintenancePages,
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

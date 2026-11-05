@@ -1,9 +1,9 @@
 import type { EChartsCoreOption } from 'echarts/core';
-import { DAY_MS } from '../../../domain/time';
+import { DAY_MS, HOUR_MS } from '../../../domain/time';
 import { EXHAUSTION_LEVEL } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
-import { BASE_AXIS_MAX, CYCLE_MS, type UsageChartModel, type WindowSeries } from './usage-chart-model';
+import { BASE_AXIS_MAX, CYCLE_MS, type ChartPoint, type ProjectedValue, type UsageChartModel, type WindowSeries } from './usage-chart-model';
 import type { UsageTone } from './usage-tone';
 
 const COMPACT_AXIS_MAX = 200;
@@ -86,7 +86,7 @@ function trendSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) 
 }
 
 function projectionDate(at: number, l: Localizer): string {
-  return `${l.axisTick(at, CYCLE_MS)} ${l.clock(at)}`;
+  return `${l.weekday(at)} ${l.axisTick(at, CYCLE_MS)} ${l.clock(at)}`;
 }
 
 function daysSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) {
@@ -96,21 +96,53 @@ function daysSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) {
     type: 'scatter',
     symbolSize: 6,
     z: 4,
-    data: window.days.map((day, index) => {
+    data: window.days.map((day) => {
       const color = toneColor(day.tone, colors, palette);
-      const edge = index === window.days.length - 1 ? { align: 'right', offset: [6, 0] } : {};
-      return {
-        value: [day.at, day.value],
-        itemStyle: { color },
-        label: { show: day.labeled, formatter: `${Math.round(day.value)}%`, color, ...edge },
-      };
+      return { value: [day.at, day.value], itemStyle: { color } };
     }),
-    label: { position: 'top', distance: 3, fontSize: 9, fontFamily: palette.fontFamily },
     tooltip: {
       trigger: 'item',
       formatter: (params: { value: [number, number] }) =>
         `${projectionDate(params.value[0], l)}<br/>${l.t('usage.projected', { value: Math.round(params.value[1]) })}`,
     },
+  };
+}
+
+const PROJECTION_STEP_MS = HOUR_MS;
+
+function projectionProbe(window: WindowSeries, model: UsageChartModel) {
+  const project = window.projectAt as (at: number) => ProjectedValue;
+  const data: ChartPoint[] = [];
+  for (let at = model.now; at < model.xMax; at += PROJECTION_STEP_MS) data.push([at, project(at).value]);
+  data.push([model.xMax, project(model.xMax).value]);
+  return { type: 'line', silent: true, symbol: 'none', lineStyle: { opacity: 0 }, data, z: 0 };
+}
+
+interface AxisParam {
+  axisValue: number | string;
+  seriesIndex: number;
+  marker: string;
+  seriesName: string;
+  value: unknown;
+}
+
+export function tooltipFormatter(model: UsageChartModel, palette: ChartPalette, l: Localizer) {
+  const projecting = model.windows.find((window) => window.projectAt !== null);
+  return (raw: unknown): string => {
+    const params = raw as AxisParam[];
+    if (!Array.isArray(params) || params.length === 0) return '';
+    const at = Number(params[0]!.axisValue);
+    const header = projectionDate(at, l);
+    if (at > model.now) {
+      if (!projecting?.projectAt) return '';
+      const { value, tone } = projecting.projectAt(at);
+      const dot = `<span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${toneColor(tone, palette.series[projecting.kind], palette)}"></span>`;
+      return `${header}<br/>${dot}${l.t('usage.projected', { value: Math.round(value) })}`;
+    }
+    const lines = params
+      .filter((param) => param.seriesIndex < model.windows.length)
+      .map((param) => `${param.marker}${param.seriesName} ${Math.round(Number((param.value as number[])[1]))}%`);
+    return [header, ...lines].join('<br/>');
   };
 }
 
@@ -164,13 +196,14 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
       padding: [6, 10],
       extraCssText: 'border-radius: 8px; box-shadow: none;',
       textStyle: { color: palette.text, fontSize: 11, fontFamily: palette.fontFamily },
-      valueFormatter: (value: unknown) => `${Math.round(Number(value))}%`,
+      formatter: tooltipFormatter(model, palette, l),
       axisPointer: { lineStyle: { color: palette.now, type: 'dashed' } },
     },
     series: [
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
       ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette, l)])),
       ...model.windows.flatMap((window) => (window.days.length === 0 ? [] : [daysSeries(window, palette, l)])),
+      ...model.windows.flatMap((window) => (window.projectAt === null ? [] : [projectionProbe(window, model)])),
     ],
   };
 }

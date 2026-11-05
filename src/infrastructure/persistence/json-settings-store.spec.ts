@@ -69,7 +69,7 @@ describe('JsonSettingsStore', () => {
   it('migra e regrava arquivo de versão antiga', async () => {
     const file = new MemoryFile(JSON.stringify({ enabledPages: { example: false } }));
     const settings = await new JsonSettingsStore(file).load();
-    expect(settings.enabledPages).toEqual({ example: false });
+    expect(settings.enabledPages).toMatchObject({ example: false });
     expect(JSON.parse(file.text ?? '').schemaVersion).toBe(SCHEMA_VERSION);
   });
 
@@ -125,7 +125,7 @@ describe('JsonSettingsStore', () => {
       SettingsWriteBlockedError,
     );
     expect((await store.load()).appearance.theme).toBe('dark');
-    expect((await store.load()).enabledPages).toEqual({ example: false });
+    expect((await store.load()).enabledPages).toMatchObject({ example: false });
     expect(file.text).toBe('{ quebrado');
   });
 
@@ -135,7 +135,7 @@ describe('JsonSettingsStore', () => {
     await store.load();
     file.text = JSON.stringify(createDefaultSettings());
     await store.save({ ...createDefaultSettings(), enabledPages: { example: false } });
-    expect(JSON.parse(file.text).enabledPages).toEqual({ example: false });
+    expect(JSON.parse(file.text).enabledPages).toMatchObject({ example: false });
   });
 
   it('JSON válido que não é objeto também não é sobrescrito', async () => {

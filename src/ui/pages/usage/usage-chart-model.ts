@@ -20,7 +20,6 @@ export const CYCLE_MS = 7 * DAY_MS;
 export const BASE_AXIS_MAX = 100;
 export const MAX_AXIS_MAX = 300;
 export const AXIS_STEP = 25;
-const DAY_LABEL_MIN_GAP_MS = 0.6 * DAY_MS;
 
 export type ChartPoint = [at: number, value: number];
 
@@ -36,7 +35,11 @@ export interface ProjectionMarker {
   at: number;
   value: number;
   tone: UsageTone;
-  labeled: boolean;
+}
+
+export interface ProjectedValue {
+  value: number;
+  tone: UsageTone;
 }
 
 export interface WindowSeries {
@@ -46,6 +49,7 @@ export interface WindowSeries {
   trend: ChartPoint[] | null;
   days: ProjectionMarker[];
   trendTone: UsageTone;
+  projectAt: ((at: number) => ProjectedValue) | null;
   resetsAt: number | null;
 }
 
@@ -80,16 +84,20 @@ export function axisMaxFor(values: readonly number[]): number {
 function projectionMarkers(forecast: Forecast, kind: UsageWindowKind, thresholds: UsageThresholds): ProjectionMarker[] {
   if (forecast.status !== 'ready') return [];
   const days = projectionDays(forecast.trend).filter((day) => day.value <= MAX_AXIS_MAX);
-  return days.map((day, index) => ({
-    at: day.at,
-    value: day.value,
-    tone: projectionTone(kind, day.value, thresholds),
-    labeled: index === days.length - 1 || days[index + 1]!.at - day.at >= DAY_LABEL_MIN_GAP_MS,
-  }));
+  return days.map((day) => ({ at: day.at, value: day.value, tone: projectionTone(kind, day.value, thresholds) }));
 }
 
 function trendToneOf(kind: UsageWindowKind, forecast: Forecast, thresholds: UsageThresholds): UsageTone {
   return forecast.status === 'ready' ? projectionTone(kind, forecast.valueAtReset, thresholds) : 'base';
+}
+
+export function projector(forecast: Forecast, kind: UsageWindowKind, thresholds: UsageThresholds): ((at: number) => ProjectedValue) | null {
+  if (forecast.status !== 'ready') return null;
+  const { trend } = forecast;
+  return (at) => {
+    const value = trendValueAt(trend, at);
+    return { value, tone: projectionTone(kind, value, thresholds) };
+  };
 }
 
 function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: number): number[] {
@@ -132,6 +140,7 @@ export function buildChartModel(
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       days: cycle && input.kind === 'sevenDay' ? projectionMarkers(forecast, input.kind, thresholds) : [],
       trendTone: trendToneOf(input.kind, forecast, thresholds),
+      projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast, input.kind, thresholds) : null,
       resetsAt: input.resetsAt,
     };
   });

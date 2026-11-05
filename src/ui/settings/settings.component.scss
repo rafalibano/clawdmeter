@@ -94,3 +94,11 @@
   color: var(--dp-danger-text);
   font-size: 12px;
 }
+
+.badge {
+  padding: 1px 6px;
+  border: 1px solid var(--dp-border);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--dp-muted);
+}

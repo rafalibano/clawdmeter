@@ -17,7 +17,7 @@ describe('settings use cases', () => {
       enabledPages: { example: false },
       appearance: { theme: 'dark' },
     });
-    expect(result.enabledPages).toEqual({ example: false });
+    expect(result.enabledPages).toMatchObject({ example: false });
     expect(result.appearance.theme).toBe('dark');
     expect(store.saved).toEqual([result]);
   });
@@ -27,7 +27,7 @@ describe('settings use cases', () => {
     const update = new UpdateSettings(store);
     await update.execute({ enabledPages: { a: false } });
     const result = await update.execute({ enabledPages: { b: false } });
-    expect(result.enabledPages).toEqual({ a: false, b: false });
+    expect(result.enabledPages).toMatchObject({ a: false, b: false });
   });
 
   it('WatchSettings repassa mudanças externas e permite cancelar', async () => {

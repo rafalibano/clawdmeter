@@ -59,7 +59,7 @@ describe('SettingsSession', () => {
     release[1]?.();
     await session.idle();
     expect(store.saved).toHaveLength(2);
-    expect(store.saved[1]?.enabledPages).toEqual({ a: true, b: false });
+    expect(store.saved[1]?.enabledPages).toMatchObject({ a: true, b: false });
     expect(store.saved[1]?.appearance.theme).toBe('light');
     expect(session.current.settings).toEqual(store.saved[1]);
   });
@@ -188,6 +188,6 @@ describe('SettingsSession', () => {
     await session.start();
     session.dispose();
     store.emitExternalChange({ ...createDefaultSettings(), enabledPages: { x: false } });
-    expect(session.current.settings.enabledPages).toEqual({});
+    expect(session.current.settings.enabledPages).toEqual({ teams: false, skills: false });
   });
 });

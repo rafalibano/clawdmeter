@@ -25,6 +25,9 @@ export const esMX: Record<MessageKey, string> = {
   'page.teams': 'Agenda',
   'page.skills': 'Skills',
 
+  'maintenance.badge': 'En mantenimiento',
+  'maintenance.title': 'En mantenimiento',
+  'maintenance.description': 'Esta página vuelve pronto.',
   'settings.pages': 'Páginas',
   'settings.appearance': 'Apariencia',
   'settings.accent': 'Color de énfasis',

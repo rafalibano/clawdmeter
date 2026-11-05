@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultSettings } from './defaults';
 import { migrateSettings, type Migration } from './migrate-settings';
+import { isPageEnabled } from './page-enabled';
 import { SCHEMA_VERSION } from './schema-version';
 
 describe('defaults', () => {
   it('nasce na versão atual, com tema do sistema e sem páginas explícitas', () => {
     const defaults = createDefaultSettings();
     expect(defaults.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(defaults.enabledPages).toEqual({});
+    expect(defaults.enabledPages).toEqual({ teams: false, skills: false });
     expect(defaults.appearance.theme).toBe('system');
     expect(defaults.appearance.popoverBackground).toBeNull();
   });
@@ -27,7 +28,7 @@ describe('migrateSettings', () => {
   it('adota o formato atual em arquivo sem versão', () => {
     const migrated = migrateSettings({ enabledPages: { example: false }, appearance: { theme: 'dark' } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(migrated.enabledPages).toEqual({ example: false });
+    expect(migrated.enabledPages).toMatchObject({ example: false });
     expect(migrated.appearance.theme).toBe('dark');
     expect(migrated.appearance.accentColor).toBe(createDefaultSettings().appearance.accentColor);
   });
@@ -52,7 +53,7 @@ describe('migrateSettings', () => {
       enabledPages: { a: 'sim', b: true },
       appearance: { accentColor: 'vermelho', popoverBackground: '#12', theme: 'neon' },
     });
-    expect(migrated.enabledPages).toEqual({ b: true });
+    expect(migrated.enabledPages).toMatchObject({ b: true });
     expect(migrated.appearance).toEqual(createDefaultSettings().appearance);
   });
 
@@ -60,7 +61,7 @@ describe('migrateSettings', () => {
     const toOne: Migration = (raw) => ({ ...raw, enabledPages: raw['pages'] });
     const toTwo: Migration = (raw) => ({ ...raw, appearance: { theme: 'dark' } });
     const migrated = migrateSettings({ pages: { example: false } }, [toOne, toTwo], 2);
-    expect(migrated.enabledPages).toEqual({ example: false });
+    expect(migrated.enabledPages).toMatchObject({ example: false });
     expect(migrated.appearance.theme).toBe('dark');
   });
 
@@ -84,7 +85,7 @@ describe('migrateSettings', () => {
 
   it('arquivo da versão 2 sem idioma nem faixas ganha pt-BR e 70/90', () => {
     const migrated = migrateSettings({ schemaVersion: 2, enabledPages: { usage: true }, appearance: { theme: 'dark' } });
-    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.language).toBe('pt-BR');
     expect(migrated.usageThresholds).toEqual({ warning: 70, critical: 90 });
     expect(migrated.appearance.theme).toBe('dark');
@@ -124,6 +125,29 @@ describe('migrateSettings', () => {
 
   it('não altera arquivo de versão futura além de normalizar', () => {
     const migrated = migrateSettings({ schemaVersion: SCHEMA_VERSION + 5, enabledPages: { example: false } });
-    expect(migrated.enabledPages).toEqual({ example: false });
+    expect(migrated.enabledPages).toMatchObject({ example: false });
+  });
+});
+
+describe('migração 3 -> 4 (páginas em manutenção)', () => {
+  it('desliga Skills e Agenda de quem já tinha ligadas ou sem preferência', () => {
+    expect(migrateSettings({ schemaVersion: 3, enabledPages: { teams: true, usage: false } }).enabledPages).toEqual({
+      teams: false,
+      skills: false,
+      usage: false,
+    });
+    expect(migrateSettings({ schemaVersion: 3 }).enabledPages).toEqual({ teams: false, skills: false });
+  });
+
+  it('só atua uma vez: religar depois é respeitado', () => {
+    const current = migrateSettings({ schemaVersion: 4, enabledPages: { teams: true, skills: false } });
+    expect(current.enabledPages).toEqual({ teams: true, skills: false });
+    expect(current.schemaVersion).toBe(4);
+  });
+
+  it('o padrão de settings novos já vem com as duas desligadas', () => {
+    expect(createDefaultSettings().enabledPages).toEqual({ teams: false, skills: false });
+    expect(isPageEnabled(createDefaultSettings(), 'teams')).toBe(false);
+    expect(isPageEnabled(createDefaultSettings(), 'usage')).toBe(true);
   });
 });

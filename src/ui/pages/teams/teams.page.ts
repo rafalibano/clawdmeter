@@ -1,6 +1,9 @@
 import type { PageModule } from '../../../application/pages';
 import { LoadAgenda, type AgendaSnapshot, type ConnectionProblemReporter } from '../../../application/use-cases/calendar';
 import type { CalendarGateway, Clock } from '../../../application/ports';
+import { isMaintenancePage } from '../../../domain/settings';
+import { underMaintenance } from '../../../application/pages';
+import { MaintenanceComponent } from '../maintenance/maintenance.component';
 import { TeamsComponent } from './teams.component';
 import { TEAMS_PAGE } from './teams-page-ref';
 
@@ -12,7 +15,7 @@ export function createTeamsPage(deps: {
   reporter: ConnectionProblemReporter;
 }): PageModule<AgendaSnapshot> {
   const loadAgenda = new LoadAgenda(deps.calendar, deps.clock, deps.reporter);
-  return {
+  const page: PageModule<AgendaSnapshot> = {
     id: TEAMS_PAGE.id,
     title: 'Agenda',
     requiredConnections: ['microsoft'],
@@ -20,4 +23,5 @@ export function createTeamsPage(deps: {
     load: () => loadAgenda.execute(),
     component: TeamsComponent,
   };
+  return isMaintenancePage(page.id) ? underMaintenance(page, MaintenanceComponent) : page;
 }

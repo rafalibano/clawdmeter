@@ -78,7 +78,7 @@ describe('Agenda: 401 no boot com a página aberta depois', () => {
   it('mostra o texto legível e "Refazer login da Microsoft", e o conserto recarrega a agenda', async () => {
     const { world, connections, calendar, scheduler } = boot();
     calendar.outcome = new ConnectionProblemError('microsoft-expired');
-    scheduler.sync(createDefaultSettings());
+    scheduler.sync({ ...createDefaultSettings(), enabledPages: { teams: true } });
     await flushPromises();
 
     const latest = lateSubscriber(scheduler);
@@ -99,7 +99,7 @@ describe('Agenda: 401 no boot com a página aberta depois', () => {
   it('nunca conectou: o botão é "Conectar" e conectar recarrega a agenda', async () => {
     const { world, connections, calendar, scheduler } = boot();
     calendar.outcome = new ConnectionProblemError('microsoft-not-connected');
-    scheduler.sync(createDefaultSettings());
+    scheduler.sync({ ...createDefaultSettings(), enabledPages: { teams: true } });
     await flushPromises();
 
     const latest = lateSubscriber(scheduler);
