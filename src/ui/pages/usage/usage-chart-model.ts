@@ -60,15 +60,15 @@ export interface UsageChartModel {
   windows: WindowSeries[];
 }
 
-function trendPoints(forecast: Forecast, xMax: number): ChartPoint[] | null {
+function trendPoints(forecast: Forecast, xMax: number, cap: number): ChartPoint[] | null {
   if (forecast.status !== 'ready') return null;
   const { trend } = forecast;
   const edgeAt = Math.min(trend.toAt, xMax);
   const edgeValue = trendValueAt(trend, edgeAt);
   const start: ChartPoint = [trend.fromAt, trend.fromValue];
-  if (edgeValue <= MAX_AXIS_MAX) return [start, [edgeAt, edgeValue]];
-  const crossAt = trend.fromAt + ((MAX_AXIS_MAX - trend.fromValue) * (trend.toAt - trend.fromAt)) / (trend.toValue - trend.fromValue);
-  return [start, [Math.min(edgeAt, crossAt), MAX_AXIS_MAX]];
+  if (edgeValue <= cap) return [start, [edgeAt, edgeValue]];
+  const crossAt = trend.fromAt + ((cap - trend.fromValue) * (trend.toAt - trend.fromAt)) / (trend.toValue - trend.fromValue);
+  return [start, [Math.min(edgeAt, crossAt), cap]];
 }
 
 export function axisMaxFor(values: readonly number[]): number {
@@ -129,7 +129,7 @@ export function buildChartModel(
         ? input.points.filter((point) => point.at >= xMin && point.at <= now)
         : pointsInRange(input.points, effective, now)
       ).map((point): ChartPoint => [point.at, point.utilization]),
-      trend: trendPoints(forecast, xMax),
+      trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       days: cycle && input.kind === 'sevenDay' ? projectionMarkers(forecast, input.kind, thresholds) : [],
       trendTone: trendToneOf(input.kind, forecast, thresholds),
       resetsAt: input.resetsAt,
@@ -141,7 +141,7 @@ export function buildChartModel(
     xMax,
     rangeMs: cycle ? CYCLE_MS : effective.durationMs,
     cycle,
-    yMax: axisMaxFor(windows.flatMap((window) => window.trend?.map((point) => point[1]) ?? [])),
+    yMax: !cycle ? BASE_AXIS_MAX : axisMaxFor(windows.flatMap((window) => window.trend?.map((point) => point[1]) ?? [])),
     fiveHourResets: cycle ? [...new Set([...pastFiveHourResets(fiveHour?.points ?? [], xMin, now), ...ahead])] : [],
     windows,
   };

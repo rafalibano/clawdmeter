@@ -30,6 +30,26 @@ const ready = (toValue: number, exhaustsAt: number | null = null): Forecast => (
   exhaustsLeadMs: exhaustsAt === null ? null : NOW + 4 * HOUR_MS - exhaustsAt,
 });
 
+const WEEKLY_RESET = NOW + 3 * 24 * HOUR_MS;
+const cycleInputs = (): WindowInput[] => {
+  const history: UsagePoint[] = [
+    { at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS },
+    { at: NOW - 3 * 24 * HOUR_MS, utilization: 5, resetsAt: NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS },
+    { at: NOW - 2 * 24 * HOUR_MS, utilization: 20, resetsAt: NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS },
+    { at: NOW - HOUR_MS, utilization: 30, resetsAt: NOW + 4 * HOUR_MS },
+  ];
+  return [
+    { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
+    { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
+  ];
+};
+const steepCycle = (factor: number): WindowInput[] =>
+  cycleInputs().map((input) =>
+    input.kind === 'sevenDay'
+      ? { ...input, points: input.points.map((point) => ({ ...point, utilization: point.at < NOW - 4 * DAY_MS ? 0 : point.utilization * factor })) }
+      : input,
+  );
+
 function inputs(forecast: Forecast, weekly: Forecast = { status: 'collecting' }): WindowInput[] {
   return [
     { kind: 'fiveHour', label: '5h', points, forecast, resetsAt: NOW + 4 * HOUR_MS },
@@ -60,19 +80,20 @@ describe('buildChartModel', () => {
     expect(trend?.[1]?.[1]).toBeCloseTo(29 + (40 * HOUR_MS * FUTURE_SHARE) / (4 * HOUR_MS), 5);
   });
 
-  it('tendência que passa de 100% continua inteira, sem corte em 100%', () => {
-    const exhaustsAt = NOW + 10 * MINUTE_MS;
-    const model = buildChartModel(inputs(ready(600, exhaustsAt)), usageRange('6h'), NOW);
-    const end = model.windows[0]!.trend![1]!;
-    expect(end[0]).toBe(model.xMax);
-    expect(end[1]).toBeCloseTo(29 + (571 * 0.9) / 4, 5);
+  it('fora do Ciclo a tendência termina onde cruza 100%', () => {
+    for (const id of ['1h', '6h', '1d', '7d', '30d'] as const) {
+      const model = buildChartModel(inputs(ready(5000)), usageRange(id), NOW);
+      const end = model.windows[0]!.trend![1]!;
+      expect(end[1]).toBe(100);
+      expect(end[0]).toBeLessThan(model.xMax);
+      expect(model.yMax).toBe(100);
+    }
   });
 
-  it('tendência acima do teto de 300% termina onde cruza 300%', () => {
-    const model = buildChartModel(inputs(ready(5000)), usageRange('6h'), NOW);
-    const end = model.windows[0]!.trend![1]!;
+  it('no Ciclo a tendência passa de 100% e termina onde cruza 300%', () => {
+    const model = buildChartModel(steepCycle(40), usageRange('cycle'), NOW);
+    const end = model.windows[1]!.trend![1]!;
     expect(end[1]).toBe(300);
-    expect(end[0]).toBeLessThan(model.xMax);
     expect(model.yMax).toBe(300);
   });
 
@@ -102,9 +123,9 @@ describe('escala do eixo y', () => {
     expect(axisMaxFor([900])).toBe(300);
   });
 
-  it('o máximo vem do trecho desenhado da tendência', () => {
-    expect(buildChartModel(inputs(ready(600)), usageRange('6h'), NOW).yMax).toBe(175);
-    expect(buildChartModel(inputs(ready(600)), usageRange('1h'), NOW).yMax).toBe(100);
+  it('o máximo vem do trecho desenhado da tendência, só no Ciclo', () => {
+    expect(buildChartModel(steepCycle(4), usageRange('cycle'), NOW).yMax).toBeGreaterThan(100);
+    expect(buildChartModel(inputs(ready(600)), usageRange('6h'), NOW).yMax).toBe(100);
   });
 });
 
@@ -173,23 +194,17 @@ describe('buildChartOption', () => {
     expect(resets.map((mark) => mark.xAxis)).toEqual([NOW + 4 * HOUR_MS, NOW + 3 * 24 * HOUR_MS]);
   });
 
-  describe('eixo expandido', () => {
-    const expanded = buildChartOption(buildChartModel(inputs(ready(600)), usageRange('6h'), NOW), palette) as unknown as typeof option & {
-      yAxis: { axisLabel: { formatter: (value: number) => string; rich: { reference: { color: string } } } };
-    };
+  describe('eixo expandido (só no Ciclo)', () => {
+    const cycleOption = (factor: number) =>
+      buildChartOption(buildChartModel(steepCycle(factor), usageRange('cycle'), NOW), palette) as unknown as typeof option & {
+        yAxis: { max: number; interval: number; axisLabel: { formatter: (value: number) => string } };
+      };
+    const expanded = cycleOption(4);
 
-    it('o eixo y vai até o máximo projetado, de 25 em 25', () => {
-      expect(expanded.yAxis).toMatchObject({ min: 0, max: 175, interval: 25 });
-      expect([0, 25, 50, 75, 100, 125, 150, 175].map(expanded.yAxis.axisLabel.formatter)).toEqual([
-        '0%',
-        '25%',
-        '50%',
-        '75%',
-        '{reference|100%}',
-        '125%',
-        '150%',
-        '175%',
-      ]);
+    it('o eixo y passa de 100% e o rótulo de 100% ganha destaque', () => {
+      expect(expanded.yAxis.max).toBeGreaterThan(100);
+      expect(expanded.yAxis.axisLabel.formatter(100)).toBe('{reference|100%}');
+      expect(expanded.yAxis.axisLabel.formatter(50)).toBe('50%');
     });
 
     it('linha de referência sólida e sutil em 100%', () => {
@@ -199,13 +214,16 @@ describe('buildChartOption', () => {
     });
 
     it('com teto de 300% o passo do eixo é de 50 em 50', () => {
-      const tall = buildChartOption(buildChartModel(inputs(ready(5000)), usageRange('6h'), NOW), palette) as unknown as typeof option;
-      expect(tall.yAxis).toMatchObject({ max: 300, interval: 50 });
+      expect(cycleOption(40).yAxis).toMatchObject({ max: 300, interval: 50 });
     });
 
-    it('o rótulo de 100% só ganha destaque quando o eixo expande', () => {
-      const plain = option as unknown as typeof expanded;
-      expect(plain.yAxis.axisLabel.formatter(100)).toBe('100%');
+    it('fora do Ciclo o eixo é 0–100, sem linha nem rótulo destacado', () => {
+      for (const id of ['1h', '6h', '1d', '7d', '30d'] as const) {
+        const plain = buildChartOption(buildChartModel(inputs(ready(600)), usageRange(id), NOW), palette) as unknown as typeof expanded;
+        expect(plain.yAxis).toMatchObject({ min: 0, max: 100, interval: 25 });
+        expect(plain.yAxis.axisLabel.formatter(100)).toBe('100%');
+        expect(plain.series[0]!.markLine!.data.some((mark) => mark.yAxis !== undefined)).toBe(false);
+      }
     });
   });
 
@@ -281,20 +299,6 @@ describe('buildChartOption', () => {
 });
 
 describe('período Reset (ciclo semanal)', () => {
-  const WEEKLY_RESET = NOW + 3 * 24 * HOUR_MS;
-  const cycleInputs = (): WindowInput[] => {
-    const history: UsagePoint[] = [
-      { at: NOW - 3 * 24 * HOUR_MS, utilization: 5, resetsAt: NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS },
-      { at: NOW - 2 * 24 * HOUR_MS, utilization: 20, resetsAt: NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS },
-      { at: NOW - HOUR_MS, utilization: 30, resetsAt: NOW + 4 * HOUR_MS },
-    ];
-    history.unshift({ at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS });
-    return [
-      { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
-      { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
-    ];
-  };
-
   it('eixo vai de (reset semanal - 7d) até o reset semanal e só traz pontos desse ciclo', () => {
     const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
     expect(model).toMatchObject({ cycle: true, xMin: WEEKLY_RESET - CYCLE_MS, xMax: WEEKLY_RESET, rangeMs: CYCLE_MS });
@@ -387,9 +391,7 @@ describe('período Reset (ciclo semanal)', () => {
     });
 
     it('o eixo expande para a projeção do Reset e a série de pontos leva rótulo, cor e tooltip', () => {
-      const steep = cycleInputs().map((input) =>
-        input.kind === 'sevenDay' ? { ...input, points: input.points.map((point) => ({ ...point, utilization: point.at < NOW - 4 * DAY_MS ? 0 : point.utilization * 4 })) } : input,
-      );
+      const steep = steepCycle(4);
       const built = buildChartModel(steep, usageRange('cycle'), NOW);
       expect(built.yMax).toBeGreaterThan(100);
       const out = buildChartOption(built, palette, PT) as unknown as {
