@@ -1,4 +1,4 @@
-import type { ConnectionProblem } from './connection-problem';
+import type { ConnectionProblem, ConnectionProblemError } from './connection-problem';
 
 export type FixAction =
   | 'retry-permission'
@@ -8,6 +8,7 @@ export type FixAction =
   | 'regrant-scopes'
   | 'authorize-org'
   | 'relogin-microsoft'
+  | 'connect-microsoft'
   | 'open-system-settings'
   | 'retry';
 
@@ -19,6 +20,7 @@ export const FIX_FOR: Record<ConnectionProblem, FixAction> = {
   'github-missing-scope': 'regrant-scopes',
   'github-org-access': 'authorize-org',
   'microsoft-expired': 'relogin-microsoft',
+  'microsoft-not-connected': 'connect-microsoft',
   'notifications-blocked': 'open-system-settings',
   unexpected: 'retry',
 };
@@ -31,6 +33,7 @@ export const FIX_LABELS: Record<FixAction, string> = {
   'regrant-scopes': 'Refazer permissões',
   'authorize-org': 'Autorizar na org',
   'relogin-microsoft': 'Refazer login da Microsoft',
+  'connect-microsoft': 'Conectar',
   'open-system-settings': 'Abrir ajustes do sistema',
   retry: 'Tentar de novo',
 };
@@ -43,6 +46,11 @@ export const PROBLEM_MESSAGES: Record<ConnectionProblem, string> = {
   'github-missing-scope': 'O token do GitHub não tem os escopos necessários.',
   'github-org-access': 'Sem acesso à org Mottu-ops (SSO pendente).',
   'microsoft-expired': 'O login da Microsoft expirou.',
+  'microsoft-not-connected': 'A Microsoft ainda não está conectada.',
   'notifications-blocked': 'Notificações bloqueadas pelo sistema.',
   unexpected: 'Não foi possível verificar a conexão.',
 };
+
+export function problemMessage(error: ConnectionProblemError): string {
+  return error.message === error.problem ? PROBLEM_MESSAGES[error.problem] : error.message;
+}

@@ -63,3 +63,7 @@ export function toAgendaView(snapshot: AgendaSnapshot, now: number): AgendaView 
     isEmpty: snapshot.meetings.length === 0,
   };
 }
+
+export function isStale(snapshot: AgendaSnapshot, now: number): boolean {
+  return now > snapshot.day.endsAt;
+}

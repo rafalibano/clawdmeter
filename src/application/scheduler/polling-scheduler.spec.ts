@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConnectionProblemError } from '../../domain/connections';
 import { createDefaultSettings, type AppSettings } from '../../domain/settings';
 import { PageRegistry } from '../pages/page-registry';
 import { FakeClock, flushPromises } from '../testing/fake-clock';
@@ -132,6 +133,59 @@ describe('PollingScheduler', () => {
     await flushPromises();
     await clock.advance(1_000);
     expect(hanging).toHaveBeenCalledTimes(2);
+  });
+
+  it('refresh durante uma carga em andamento roda de novo ao terminar', async () => {
+    const releases: Array<(value: string) => void> = [];
+    const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
+    const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    const refreshed = scheduler.refresh('hang');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(1);
+    releases[0]?.('antiga');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(2);
+    releases[1]?.('nova');
+    await refreshed;
+    expect(updates.map((update) => (update.status === 'ok' ? update.data : update.error))).toEqual(['antiga', 'nova']);
+  });
+
+  it('vários refreshes durante a carga viram uma única recarga', async () => {
+    const releases: Array<(value: string) => void> = [];
+    const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
+    const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.sync(createDefaultSettings());
+    void scheduler.refresh('hang');
+    void scheduler.refresh('hang');
+    releases[0]?.('a');
+    await flushPromises();
+    releases[1]?.('b');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(2);
+  });
+
+  it('problema de conexão vira mensagem legível e carrega o problema', async () => {
+    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired'));
+    const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(updates[0]).toMatchObject({ status: 'error', error: 'O login da Microsoft expirou.', problem: 'microsoft-expired' });
+  });
+
+  it('problema com mensagem específica mantém a mensagem', async () => {
+    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired', 'Sem permissão'));
+    const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(updates[0]).toMatchObject({ error: 'Sem permissão', problem: 'microsoft-expired' });
   });
 
   it('descarta o resultado de uma carga que terminou depois de a página ser desligada', async () => {

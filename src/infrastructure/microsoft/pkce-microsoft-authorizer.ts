@@ -65,7 +65,7 @@ export class PkceMicrosoftAuthorizer implements MicrosoftAuthorizer {
   async accessToken(): Promise<string> {
     if (this.cached && this.cached.expiresAt > this.deps.now()) return this.cached.token;
     const refreshToken = await this.deps.secrets.get(SECRET_KEYS.microsoftRefreshToken);
-    if (refreshToken === null) throw new ConnectionProblemError('microsoft-expired');
+    if (refreshToken === null) throw new ConnectionProblemError('microsoft-not-connected');
     const tokens = await this.requestTokens({
       client_id: requireClientId(this.config.clientId, 'Microsoft Entra ID'),
       grant_type: 'refresh_token',

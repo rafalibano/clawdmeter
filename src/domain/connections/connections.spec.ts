@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionsFor } from './connection-actions';
+import { actionsFor, actionsForProblem } from './connection-actions';
 import { CONNECTIONS } from './connection';
 import { createDefaultConnectionPrefs, parseConnectionPrefs } from './connection-prefs';
 import { CONNECTION_PROBLEMS } from './connection-problem';
@@ -24,6 +24,7 @@ describe('tabela de consertos', () => {
     ['github-missing-scope', 'Refazer permissões'],
     ['github-org-access', 'Autorizar na org'],
     ['microsoft-expired', 'Refazer login da Microsoft'],
+    ['microsoft-not-connected', 'Conectar'],
     ['notifications-blocked', 'Abrir ajustes do sistema'],
   ] as const)('%s mostra o botão "%s"', (problem, label) => {
     expect(FIX_LABELS[FIX_FOR[problem]]).toBe(label);
@@ -106,5 +107,19 @@ describe('parseConnectionPrefs', () => {
       microsoft: { account: 'a@b.c' },
     });
     expect(prefs).toEqual({ claude: { enabled: false }, github: { method: 'pat' }, microsoft: { account: 'a@b.c' } });
+  });
+});
+
+describe('actionsForProblem', () => {
+  it('nunca oferece Desconectar e sempre tem um botão de conserto', () => {
+    for (const problem of CONNECTION_PROBLEMS) {
+      const actions = actionsForProblem('microsoft', problem);
+      expect(actions.length).toBeGreaterThan(0);
+      expect(actions.map((action) => action.kind)).not.toContain('disconnect');
+    }
+  });
+
+  it('Microsoft nunca conectada oferece só Conectar', () => {
+    expect(actionsForProblem('microsoft', 'microsoft-not-connected')).toEqual([{ kind: 'connect', label: 'Conectar' }]);
   });
 });

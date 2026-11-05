@@ -1,5 +1,6 @@
 import { connectionDefinition, type ConnectionId } from './connection';
-import type { ConnectionStatus } from './connection-status';
+import type { ConnectionProblem } from './connection-problem';
+import { statusForProblem, type ConnectionStatus } from './connection-status';
 import { FIX_FOR, FIX_LABELS, type FixAction } from './fix-action';
 
 export type ConnectionAction =
@@ -30,4 +31,8 @@ export function actionsFor(id: ConnectionId, status: ConnectionStatus): Connecti
       return actions;
     }
   }
+}
+
+export function actionsForProblem(id: ConnectionId, problem: ConnectionProblem): ConnectionAction[] {
+  return actionsFor(id, statusForProblem(problem)).filter((action) => action.kind !== 'disconnect');
 }

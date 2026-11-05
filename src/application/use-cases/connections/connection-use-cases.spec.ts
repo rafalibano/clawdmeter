@@ -206,6 +206,15 @@ describe('Microsoft', () => {
     expect(world.microsoft.signedIn).toBe(2);
   });
 
+  it('conta salva mas sem refresh token vira desconectada, com Conectar', async () => {
+    await connections.connect.execute('microsoft');
+    world.microsoft.tokenOutcome = new ConnectionProblemError('microsoft-not-connected');
+    const status = await connections.check.execute('microsoft');
+    expect(status).toEqual({ state: 'disconnected' });
+    expect(actionsFor('microsoft', status)).toEqual([{ kind: 'connect', label: 'Conectar' }]);
+    expect(await runFix('microsoft', 'connect-microsoft')).toMatchObject({ state: 'connected' });
+  });
+
   it('falha de login vira estado de erro, não exceção', async () => {
     world.microsoft.signInOutcome = new ConnectionProblemError('microsoft-expired', 'Login cancelado');
     expect(await connections.connect.execute('microsoft')).toMatchObject({

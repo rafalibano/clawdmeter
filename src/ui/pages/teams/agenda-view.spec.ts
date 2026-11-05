@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgendaSnapshot } from '../../../application/use-cases/calendar';
 import { dayBounds, type Meeting } from '../../../domain/calendar';
-import { toAgendaView } from './agenda-view';
+import { isStale, toAgendaView } from './agenda-view';
 
 const ZONE = 'America/Sao_Paulo';
 const NOW = Date.parse('2026-11-05T13:00:00Z');
@@ -61,5 +61,14 @@ describe('toAgendaView', () => {
   it('dia sem reuniões fica vazio', () => {
     const view = toAgendaView(snapshot([]), NOW);
     expect(view).toEqual({ headline: null, allDay: [], rows: [], isEmpty: true });
+  });
+});
+
+describe('isStale', () => {
+  const day = dayBounds(NOW, ZONE);
+
+  it('o dia vale até o último segundo e vence no seguinte', () => {
+    expect(isStale(snapshot([]), day.endsAt)).toBe(false);
+    expect(isStale(snapshot([]), day.endsAt + 1_000)).toBe(true);
   });
 });

@@ -1,14 +1,14 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import type { ConnectionAction } from '../../../domain/connections';
 import { APPLICATION } from '../../shell/application.token';
 import { ConnectionsFacade } from '../../shell/connections.facade';
 import { PageStateService } from '../../shell/page-state.service';
-import { toAgendaView, type MeetingRowView } from './agenda-view';
+import { isStale, toAgendaView, type MeetingRowView } from './agenda-view';
+import { RETRY_ACTION, toFailureView } from './teams-failure-view';
 import { TEAMS_PAGE } from './teams-page-ref';
 
 const CLOCK_TICK_MS = 1_000;
-const RETRY_ACTION: ConnectionAction = { kind: 'recheck', label: 'Tentar de novo' };
 
 @Component({
   selector: 'dp-teams-page',
@@ -179,15 +179,17 @@ export class TeamsComponent {
     return update?.status === 'ok' ? toAgendaView(update.data, this.now()) : null;
   });
 
-  protected readonly failure = computed(() => {
+  protected readonly failure = computed(() => toFailureView(this.update()));
+
+  private readonly stale = computed(() => {
     const update = this.update();
-    if (update?.status !== 'error') return null;
-    const row = this.connections.rows().find((candidate) => candidate.id === 'microsoft');
-    const fixes = (row?.actions ?? []).filter((action) => action.kind !== 'disconnect');
-    return { message: update.error, actions: fixes.length > 0 ? fixes : [RETRY_ACTION] };
+    return update?.status === 'ok' && isStale(update.data, this.now());
   });
 
   constructor() {
+    effect(() => {
+      if (this.stale()) void this.application.scheduler.refresh(TEAMS_PAGE.id);
+    });
     const stop = this.application.clock.every(CLOCK_TICK_MS, () => this.now.set(this.application.clock.now()));
     inject(DestroyRef).onDestroy(stop);
   }
