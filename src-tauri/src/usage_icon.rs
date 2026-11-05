@@ -498,8 +498,8 @@ mod tests {
         let on_edge: Vec<u8> = (bar_x(0.1, SCALE)..bar_x(0.9, SCALE))
             .map(|x| column(&icon, x, top_edge))
             .collect();
-        assert!(on_edge.iter().any(|alpha| *alpha >= 140), "sem traço");
-        assert!(on_edge.contains(&0), "sem intervalo entre os traços");
+        assert!(on_edge.iter().any(|alpha| *alpha >= 140), "no stroke");
+        assert!(on_edge.contains(&0), "no gap between the strokes");
         let zero = render_usage_icon(Some(0.0), Some(0.0), SCALE);
         assert_ne!(icon.rgba, zero.rgba);
     }
@@ -755,7 +755,7 @@ mod tests {
             assert!(holes.len() as u32 > cell && (holes.len() as u32) < 3 * cell * cell / 2);
             assert!(
                 holes.contains(&(margin - 1, margin - 1)),
-                "o X passa dos cantos do olho"
+                "the X crosses the eye corners"
             );
             assert!(holes.contains(&(margin + 1, margin + 1)));
             assert!(holes.contains(&(margin + 2, margin + 2)));

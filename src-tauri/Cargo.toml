@@ -1,7 +1,7 @@
 [package]
 name = "clawdmeter"
 version = "0.1.0"
-description = "App de bandeja com Claude usage, PRs, sessões, agenda e skills"
+description = "Tray app with Claude usage, PRs, sessions, agenda and skills"
 edition = "2021"
 publish = false
 rust-version = "1.77"

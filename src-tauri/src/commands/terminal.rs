@@ -25,7 +25,7 @@ pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
     } else {
         Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "argumento não permitido no terminal",
+            "argument not allowed in the terminal",
         ))
     }
 }
@@ -50,7 +50,7 @@ pub fn validate_terminal_path(path: &Path) -> CommandResult<()> {
     if has_forbidden_path_char(&path.to_string_lossy(), cfg!(target_os = "macos")) {
         return Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "caminho não permitido no terminal",
+            "path not allowed in the terminal",
         ));
     }
     Ok(())
@@ -124,7 +124,7 @@ fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<
 fn launch(_program: &Path, _args: &[String], _cwd: Option<&Path>) -> CommandResult<()> {
     Err(CommandError::new(
         ErrorKind::SpawnFailed,
-        "terminal não suportado neste sistema",
+        "terminal not supported on this system",
     ))
 }
 
@@ -263,11 +263,11 @@ mod tests {
         let home = root.join("home");
         let quoted = home.join("it's");
         std::fs::create_dir_all(&quoted).unwrap();
-        std::fs::create_dir_all(home.join("com espaço")).unwrap();
+        std::fs::create_dir_all(home.join("with space")).unwrap();
         std::fs::create_dir_all(root.join("fora")).unwrap();
         assert!(validate_terminal_cwd(quoted.to_str(), Some(&home), &[]).is_err());
         assert!(
-            validate_terminal_cwd(home.join("com espaço").to_str(), Some(&home), &[])
+            validate_terminal_cwd(home.join("with space").to_str(), Some(&home), &[])
                 .unwrap()
                 .is_some()
         );

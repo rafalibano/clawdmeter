@@ -27,7 +27,7 @@ pub fn skill_workdir(app: &AppHandle) -> CommandResult<PathBuf> {
 fn unsafe_workdir() -> CommandError {
     CommandError::new(
         ErrorKind::InvalidArgument,
-        "pasta de trabalho das skills insegura",
+        "unsafe skills working directory",
     )
 }
 

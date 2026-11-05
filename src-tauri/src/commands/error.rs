@@ -121,22 +121,22 @@ mod tests {
 
     #[test]
     fn serializes_kind_in_snake_case() {
-        let error = CommandError::new(ErrorKind::KeychainDenied, "negado");
+        let error = CommandError::new(ErrorKind::KeychainDenied, "denied");
         assert_eq!(
             serde_json::to_string(&error).unwrap(),
-            r#"{"kind":"keychain_denied","message":"negado"}"#
+            r#"{"kind":"keychain_denied","message":"denied"}"#
         );
     }
 
     #[test]
     fn rate_limited_always_carries_retry_after_secs_even_when_unknown() {
         assert_eq!(
-            serde_json::to_string(&CommandError::rate_limited("devagar", Some(30))).unwrap(),
-            r#"{"kind":"rate_limited","message":"devagar","retryAfterSecs":30}"#
+            serde_json::to_string(&CommandError::rate_limited("slow-down", Some(30))).unwrap(),
+            r#"{"kind":"rate_limited","message":"slow-down","retryAfterSecs":30}"#
         );
         assert_eq!(
-            serde_json::to_string(&CommandError::rate_limited("devagar", None)).unwrap(),
-            r#"{"kind":"rate_limited","message":"devagar","retryAfterSecs":null}"#
+            serde_json::to_string(&CommandError::rate_limited("slow-down", None)).unwrap(),
+            r#"{"kind":"rate_limited","message":"slow-down","retryAfterSecs":null}"#
         );
     }
 
@@ -162,7 +162,7 @@ mod tests {
     fn keyring_failures_are_split_between_denied_and_keychain() {
         let kind = |error: keyring::Error| CommandError::from(error).kind;
         assert_eq!(
-            kind(keyring::Error::NoStorageAccess("bloqueado".into())),
+            kind(keyring::Error::NoStorageAccess("blocked".into())),
             ErrorKind::KeychainDenied
         );
         assert_eq!(
@@ -184,8 +184,8 @@ mod tests {
     #[test]
     fn display_shows_only_the_message() {
         assert_eq!(
-            CommandError::new(ErrorKind::Io, "falhou").to_string(),
-            "falhou"
+            CommandError::new(ErrorKind::Io, "failed").to_string(),
+            "failed"
         );
     }
 }

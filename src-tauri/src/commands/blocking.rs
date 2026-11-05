@@ -7,7 +7,5 @@ where
 {
     tauri::async_runtime::spawn_blocking(work)
         .await
-        .map_err(|error| {
-            CommandError::new(ErrorKind::Io, format!("tarefa interrompida: {error}"))
-        })?
+        .map_err(|error| CommandError::new(ErrorKind::Io, format!("task interrupted: {error}")))?
 }

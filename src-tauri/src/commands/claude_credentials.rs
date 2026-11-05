@@ -68,14 +68,14 @@ pub fn parse_credentials(raw: &str) -> CommandResult<ClaudeCredential> {
     let malformed =
         |detail: &str| CommandError::new(ErrorKind::CredentialMalformed, detail.to_string());
     let stored: StoredCredentials = serde_json::from_str(raw.trim())
-        .map_err(|_| malformed("credencial do Claude Code não é um JSON válido"))?;
+        .map_err(|_| malformed("Claude Code credential is not valid JSON"))?;
     let oauth = stored
         .claude_ai_oauth
-        .ok_or_else(|| malformed("credencial sem claudeAiOauth"))?;
+        .ok_or_else(|| malformed("credential without claudeAiOauth"))?;
     let access_token = oauth
         .access_token
         .filter(|token| !token.is_empty())
-        .ok_or_else(|| malformed("credencial sem accessToken"))?;
+        .ok_or_else(|| malformed("credential without accessToken"))?;
     Ok(ClaudeCredential {
         access_token,
         expires_at: oauth
@@ -137,7 +137,7 @@ fn read_keychain() -> CommandResult<Option<String>> {
         KeychainOutcome::Missing => Ok(None),
         KeychainOutcome::Denied => Err(CommandError::new(
             ErrorKind::KeychainDenied,
-            "acesso ao Keychain do Claude Code negado",
+            "access to the Claude Code Keychain denied",
         )),
         KeychainOutcome::Failed => Err(CommandError::new(
             ErrorKind::Keychain,
@@ -160,7 +160,7 @@ fn read_credential() -> CommandResult<ClaudeCredential> {
         Some(raw) => parse_credentials(&raw),
         None => Err(CommandError::new(
             ErrorKind::ClaudeCodeMissing,
-            "credencial do Claude Code não encontrada",
+            "Claude Code credential not found",
         )),
     }
 }
@@ -225,11 +225,11 @@ fn retry_after_secs(value: &str, now_secs: u64) -> Option<u64> {
 }
 
 fn claude_expired() -> CommandError {
-    CommandError::new(ErrorKind::ClaudeExpired, "login do Claude expirado")
+    CommandError::new(ErrorKind::ClaudeExpired, "Claude login expired")
 }
 
 fn usage_too_large() -> CommandError {
-    CommandError::new(ErrorKind::Http, "resposta de usage grande demais")
+    CommandError::new(ErrorKind::Http, "usage response too large")
 }
 
 async fn read_limited(mut response: reqwest::Response, limit: usize) -> CommandResult<Vec<u8>> {
@@ -279,7 +279,7 @@ async fn request_usage_limited(
             .and_then(|value| value.to_str().ok())
             .and_then(|value| retry_after_secs(value, now_ms() / 1000));
         return Err(CommandError::rate_limited(
-            "Anthropic limitou as consultas a /api/oauth/usage (429)",
+            "Anthropic rate-limited /api/oauth/usage (429)",
             retry_after,
         ));
     }
@@ -294,7 +294,7 @@ async fn request_usage_limited(
     }
     let body = read_limited(response, limit).await?;
     serde_json::from_slice(&body)
-        .map_err(|_| CommandError::new(ErrorKind::Http, "resposta de usage não é um JSON válido"))
+        .map_err(|_| CommandError::new(ErrorKind::Http, "usage response is not valid JSON"))
 }
 
 async fn fetch_usage(url: &str) -> CommandResult<serde_json::Value> {
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn rejects_invalid_json() {
         assert_eq!(
-            parse_credentials("nao-json").unwrap_err().kind,
+            parse_credentials("not-json").unwrap_err().kind,
             ErrorKind::CredentialMalformed
         );
     }
@@ -533,7 +533,7 @@ mod tests {
         for invalid in [
             "",
             "-5",
-            "amanhã",
+            "tomorrow",
             "Wed, 21 Foo 2015 07:28:30 GMT",
             "Wed, 21 Oct 2015 25:28:30 GMT",
             "Wed, 21 Oct 2015 07:28:30 UTC",
@@ -575,7 +575,7 @@ mod tests {
             tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap_err();
         server.join().unwrap();
         assert_eq!(error.kind, ErrorKind::Http);
-        assert_eq!(error.message, "resposta de usage grande demais");
+        assert_eq!(error.message, "usage response too large");
     }
 
     #[test]
@@ -592,7 +592,7 @@ mod tests {
         let error =
             tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap_err();
         server.join().unwrap();
-        assert_eq!(error.message, "resposta de usage grande demais");
+        assert_eq!(error.message, "usage response too large");
     }
 
     #[test]

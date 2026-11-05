@@ -8,13 +8,13 @@ use super::process::CREATE_NO_WINDOW;
 
 pub fn validate_https_url(raw: &str) -> CommandResult<Url> {
     let url = Url::parse(raw)
-        .map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "URL inválida"))?;
+        .map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "invalid URL"))?;
     if url.scheme() == "https" && url.host_str().is_some_and(|host| !host.is_empty()) {
         Ok(url)
     } else {
         Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "só URLs https são abertas",
+            "only https URLs are opened",
         ))
     }
 }
@@ -27,7 +27,7 @@ pub fn settings_target(pane: &str) -> CommandResult<&'static str> {
         ("notifications", true) => Ok("ms-settings:notifications"),
         _ => Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "painel de ajustes desconhecido",
+            "unknown settings pane",
         )),
     }
 }
@@ -92,7 +92,7 @@ mod tests {
             "file:///etc/passwd",
             "javascript:alert(1)",
             "ms-settings:privacy",
-            "nao é url",
+            "not a url",
             "https://",
         ] {
             assert!(

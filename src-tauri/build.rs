@@ -23,5 +23,5 @@ fn main() {
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
     )
-    .expect("falha ao gerar as permissões dos commands")
+    .expect("failed to generate the command permissions")
 }

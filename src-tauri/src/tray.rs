@@ -101,7 +101,7 @@ pub fn prepare_popover(app: &AppHandle) {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, QUIT_ID, "Sair do ClawdMeter", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, QUIT_ID, "Quit ClawdMeter", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&quit])?;
 
     let icon = if platform::TRAY_ICON_IS_TEMPLATE {
@@ -109,7 +109,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     } else {
         app.default_window_icon()
             .cloned()
-            .expect("ícone padrão ausente")
+            .expect("default icon missing")
     };
 
     TrayIconBuilder::with_id(TRAY_ID)

@@ -57,7 +57,7 @@ pub fn validate_program(program: &str) -> CommandResult<&'static str> {
         .ok_or_else(|| {
             CommandError::new(
                 ErrorKind::ProgramNotAllowed,
-                format!("programa não permitido: {program}"),
+                format!("program not allowed: {program}"),
             )
         })
 }
@@ -68,7 +68,7 @@ pub fn validate_args(args: &[String]) -> CommandResult<()> {
             .iter()
             .any(|arg| arg.len() > MAX_ARG_BYTES || arg.contains('\0'))
     {
-        return Err(invalid("argumentos inválidos"));
+        return Err(invalid("invalid arguments"));
     }
     Ok(())
 }
@@ -111,7 +111,7 @@ pub fn validate_terminal_invocation(program: &str, args: &[String]) -> CommandRe
         _ => match args.as_slice() {
             ["/login"] | ["/mcp"] => Ok(()),
             ["--resume", id] if is_uuid(id) => Ok(()),
-            _ => Err(invalid("argumentos do claude não permitidos")),
+            _ => Err(invalid("claude arguments not allowed")),
         },
     }
 }
@@ -125,7 +125,7 @@ fn validate_gh_process(args: &[String]) -> CommandResult<()> {
     match args.as_slice() {
         ["auth", "token"] => Ok(()),
         ["auth", "token", flag, GH_HOST] if is_host_flag(flag) => Ok(()),
-        _ => Err(invalid("argumentos do gh não permitidos")),
+        _ => Err(invalid("gh arguments not allowed")),
     }
 }
 
@@ -149,7 +149,7 @@ fn validate_gh_terminal(args: &[&str]) -> CommandResult<()> {
         {
             Ok(())
         }
-        _ => Err(invalid("argumentos do gh não permitidos")),
+        _ => Err(invalid("gh arguments not allowed")),
     }
 }
 
@@ -184,29 +184,29 @@ fn is_tool_list(value: &str) -> bool {
 
 fn validate_claude_print(prompt: &str, options: &[String]) -> CommandResult<()> {
     if prompt.trim().is_empty() || prompt.starts_with('-') {
-        return Err(invalid("prompt inválido"));
+        return Err(invalid("invalid prompt"));
     }
     let (mut format, mut budget, mut tools, mut verbose) = (false, false, false, false);
     let mut rest = options.iter().map(String::as_str);
     while let Some(flag) = rest.next() {
         if flag == "--verbose" {
             if verbose {
-                return Err(invalid("valor inválido ou repetido em --verbose"));
+                return Err(invalid("invalid or repeated value in --verbose"));
             }
             verbose = true;
             continue;
         }
         let Some(value) = rest.next() else {
-            return Err(invalid("flag do claude sem valor"));
+            return Err(invalid("claude flag without a value"));
         };
         let (seen, valid) = match flag {
             "--output-format" => (&mut format, value == "stream-json"),
             "--max-budget-usd" => (&mut budget, is_budget(value)),
             "--allowedTools" => (&mut tools, is_tool_list(value)),
-            _ => return Err(invalid(format!("flag do claude não permitida: {flag}"))),
+            _ => return Err(invalid(format!("claude flag not allowed: {flag}"))),
         };
         if *seen || !valid {
-            return Err(invalid(format!("valor inválido ou repetido em {flag}")));
+            return Err(invalid(format!("invalid or repeated value in {flag}")));
         }
         *seen = true;
     }
@@ -224,13 +224,13 @@ fn validate_claude(args: &[String]) -> CommandResult<()> {
     for (index, arg) in args.iter().enumerate() {
         let name = arg.split('=').next().unwrap_or(arg);
         if Some(index) != prompt_index && DENIED_CLAUDE_FLAGS.contains(&name) {
-            return Err(invalid(format!("flag do claude negada: {name}")));
+            return Err(invalid(format!("claude flag denied: {name}")));
         }
     }
     let view: Vec<&str> = args.iter().map(String::as_str).collect();
     match view.as_slice() {
         ["-p", prompt, ..] => validate_claude_print(prompt, &args[2..]),
-        _ => Err(invalid("argumentos do claude não permitidos")),
+        _ => Err(invalid("claude arguments not allowed")),
     }
 }
 
@@ -281,25 +281,23 @@ fn validate_cwd_in(
     };
     let path = Path::new(raw);
     if !path.is_absolute() || path.components().any(|part| part == Component::ParentDir) {
-        return Err(invalid("diretório de trabalho inválido"));
+        return Err(invalid("invalid working directory"));
     }
     let home = home
         .and_then(|dir| dir.canonicalize().ok())
-        .ok_or_else(|| invalid("pasta do usuário não encontrada"))?;
+        .ok_or_else(|| invalid("user folder not found"))?;
     let resolved = path
         .canonicalize()
-        .map_err(|_| invalid("diretório de trabalho inexistente"))?;
+        .map_err(|_| invalid("working directory does not exist"))?;
     if !resolved.starts_with(&home) {
-        return Err(invalid("diretório de trabalho fora da pasta do usuário"));
+        return Err(invalid("working directory outside the user folder"));
     }
     if !allow_home && resolved == home {
-        return Err(invalid(
-            "diretório de trabalho não pode ser a pasta do usuário",
-        ));
+        return Err(invalid("working directory cannot be the user folder"));
     }
     if is_protected_dir(&resolved, &home, protected) {
         return Err(invalid(
-            "diretório de trabalho dentro da configuração do app ou de ~/.claude",
+            "working directory inside the app config or ~/.claude",
         ));
     }
     Ok(Some(strip_verbatim_prefix(resolved)))
@@ -794,7 +792,7 @@ mod tests {
     #[test]
     fn claude_rejects_unknown_shapes() {
         for bad in [
-            vec!["--resume", "nao-e-uuid"],
+            vec!["--resume", "not-a-uuid"],
             vec!["--resume", SESSION, "--add-dir", "/"],
             vec!["/login", "extra"],
             vec!["--version"],
@@ -967,7 +965,7 @@ mod tests {
         assert!(validate_cwd(Some(""), Some(&home), &[]).is_err());
         let escaping = home.join("work").join("..").join("..").join("outside");
         assert!(validate_cwd(escaping.to_str(), Some(&home), &[]).is_err());
-        assert!(validate_cwd(home.join("nao-existe").to_str(), Some(&home), &[]).is_err());
+        assert!(validate_cwd(home.join("does-not-exist").to_str(), Some(&home), &[]).is_err());
         assert!(validate_cwd(home.to_str(), None, &[]).is_err());
     }
 
@@ -1014,7 +1012,7 @@ mod tests {
     fn a_missing_protected_dir_does_not_block_anything() {
         let tree = TempTree::new("cwd-missing-config");
         let home = tree.home();
-        let protected = [home.join("nao-existe")];
+        let protected = [home.join("does-not-exist")];
         let inside = home.join("work");
         assert!(validate_cwd(inside.to_str(), Some(&home), &protected)
             .unwrap()

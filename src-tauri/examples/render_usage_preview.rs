@@ -102,13 +102,13 @@ fn composite(
 
 fn write(dir: &Path, name: &str, icon: &UsageIcon) {
     let path = dir.join(name);
-    fs::write(&path, encode_png(icon)).expect("falha ao gravar o PNG");
+    fs::write(&path, encode_png(icon)).expect("failed to write the PNG");
     println!("{}", path.display());
 }
 
 fn main() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/tray-preview");
-    fs::create_dir_all(&dir).expect("falha ao criar docs/tray-preview");
+    fs::create_dir_all(&dir).expect("failed to create docs/tray-preview");
 
     const DARK_BAR: [u8; 3] = [38, 38, 40];
     const LIGHT_BAR: [u8; 3] = [236, 236, 238];
@@ -121,7 +121,7 @@ fn main() {
         ("50-50", Some(50.0), Some(50.0)),
         ("100-60", Some(100.0), Some(60.0)),
         ("40-100", Some(40.0), Some(100.0)),
-        ("sem-dado", None, None),
+        ("no-data", None, None),
     ];
     for (name, five_hour, seven_day) in mac_cases {
         let icon = render_usage_icon(five_hour, seven_day, 2);
@@ -145,7 +145,7 @@ fn main() {
         ("50-50", Some(50.0), Some(50.0)),
         ("100-60", Some(100.0), Some(60.0)),
         ("40-100", Some(40.0), Some(100.0)),
-        ("sem-dado", None, None),
+        ("no-data", None, None),
     ];
     for (name, five_hour, seven_day) in win_cases {
         let icon = render_usage_icon_square(five_hour, seven_day, 2);

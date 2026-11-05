@@ -100,7 +100,7 @@ pub fn request_target(head: &str) -> CommandResult<String> {
         (Some("GET"), Some(target)) if target.starts_with('/') => Ok(target.to_string()),
         _ => Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "requisição de callback inválida",
+            "invalid callback request",
         )),
     }
 }
@@ -120,7 +120,7 @@ pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<Ca
     let base = Url::parse("http://127.0.0.1")?;
     let url = base
         .join(target)
-        .map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "callback com URL inválida"))?;
+        .map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "callback with invalid URL"))?;
     if url.path() != CALLBACK_PATH {
         return Ok(CallbackOutcome::NotCallback);
     }
@@ -132,7 +132,7 @@ pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<Ca
     if !state_ok {
         return Err(CommandError::new(
             ErrorKind::StateMismatch,
-            "state do callback não confere",
+            "callback state does not match",
         ));
     }
     if let Some(error) = query.get("error") {
@@ -149,14 +149,14 @@ pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<Ca
         Some(code) => Ok(CallbackOutcome::Code(code.clone())),
         None => Err(CommandError::new(
             ErrorKind::ProviderError,
-            "callback sem code",
+            "callback without code",
         )),
     }
 }
 
 fn page(status: &str, title: &str) -> String {
     let body = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>ClawdMeter</title><body style=\"font-family:-apple-system,Segoe UI,sans-serif;text-align:center;margin-top:20vh\"><h2>{title}</h2><p>Você já pode fechar esta janela.</p></body>"
+        "<!doctype html><meta charset=\"utf-8\"><title>ClawdMeter</title><body style=\"font-family:-apple-system,Segoe UI,sans-serif;text-align:center;margin-top:20vh\"><h2>{title}</h2><p>You can close this window now.</p></body>"
     );
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{body}",
@@ -214,12 +214,12 @@ fn serve_until_callback(
     let started = Instant::now();
     loop {
         if listener.cancelled.load(Ordering::SeqCst) {
-            return Err(CommandError::new(ErrorKind::Cancelled, "login cancelado"));
+            return Err(CommandError::new(ErrorKind::Cancelled, "sign-in cancelled"));
         }
         if started.elapsed() >= limit {
             return Err(CommandError::new(
                 ErrorKind::Timeout,
-                "tempo esgotado aguardando o login",
+                "timed out waiting for sign-in",
             ));
         }
         let mut stream = match listener.socket.accept() {
@@ -237,11 +237,11 @@ fn serve_until_callback(
             request_target(&head).and_then(|target| evaluate_callback(&target, expected_state));
         match outcome {
             Ok(CallbackOutcome::Code(code)) => {
-                reply(&mut stream, &page("200 OK", "Login concluído"));
+                reply(&mut stream, &page("200 OK", "Sign-in complete"));
                 return Ok(code);
             }
             Ok(CallbackOutcome::NotCallback) => {
-                reply(&mut stream, &page("404 Not Found", "Não encontrado"))
+                reply(&mut stream, &page("404 Not Found", "Not found"))
             }
             Err(error)
                 if matches!(
@@ -249,10 +249,13 @@ fn serve_until_callback(
                     ErrorKind::InvalidArgument | ErrorKind::StateMismatch
                 ) =>
             {
-                reply(&mut stream, &page("400 Bad Request", "Requisição inválida"));
+                reply(&mut stream, &page("400 Bad Request", "Invalid request"));
             }
             Err(error) => {
-                reply(&mut stream, &page("400 Bad Request", "Login não concluído"));
+                reply(
+                    &mut stream,
+                    &page("400 Bad Request", "Sign-in not completed"),
+                );
                 return Err(error);
             }
         }
@@ -279,7 +282,7 @@ pub async fn oauth_loopback_wait(
 ) -> CommandResult<CallbackResult> {
     let listener = registry
         .get(&id)
-        .ok_or_else(|| CommandError::new(ErrorKind::InvalidArgument, "listener desconhecido"))?;
+        .ok_or_else(|| CommandError::new(ErrorKind::InvalidArgument, "unknown listener"))?;
     let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
     let result =
         run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
@@ -334,13 +337,13 @@ mod tests {
     #[test]
     fn surfaces_provider_errors_after_validating_state() {
         let error = evaluate_callback(
-            "/callback?error=access_denied&error_description=usu%C3%A1rio%20negou&state=s-1",
+            "/callback?error=access_denied&error_description=user%20denied&state=s-1",
             "s-1",
         )
         .unwrap_err();
         assert_eq!(error.kind, ErrorKind::ProviderError);
         assert!(error.message.contains("access_denied"));
-        assert!(error.message.contains("usuário negou"));
+        assert!(error.message.contains("user denied"));
     }
 
     #[test]
@@ -448,7 +451,7 @@ mod tests {
     fn a_wrong_state_gets_a_400_and_the_login_keeps_waiting() {
         let (listener, port) = listener_on_free_port();
         let client = thread::spawn(move || {
-            let rejected = send_get(port, "/callback?code=x&state=forjado");
+            let rejected = send_get(port, "/callback?code=x&state=forged");
             let missing = send_get(port, "/callback?code=x");
             let accepted = send_get(port, "/callback?code=the-code&state=s-1");
             (rejected, missing, accepted)
@@ -465,7 +468,7 @@ mod tests {
     fn a_provider_error_with_a_valid_state_still_ends_the_wait() {
         let (listener, port) = listener_on_free_port();
         let client = thread::spawn(move || {
-            let forged = send_get(port, "/callback?error=access_denied&state=forjado");
+            let forged = send_get(port, "/callback?error=access_denied&state=forged");
             let real = send_get(port, "/callback?error=access_denied&state=s-1");
             (forged, real)
         });

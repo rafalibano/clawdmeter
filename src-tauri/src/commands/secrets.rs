@@ -17,7 +17,7 @@ fn ensure_known_key(key: &str) -> CommandResult<()> {
     } else {
         Err(CommandError::new(
             ErrorKind::Policy,
-            "chave de segredo não permitida",
+            "secret key not allowed",
         ))
     }
 }
@@ -97,12 +97,12 @@ fn tail_key(key: &str, index: usize) -> String {
 
 fn check_key(key: &str) -> CommandResult<()> {
     if key.trim().is_empty() {
-        return Err(CommandError::new(ErrorKind::InvalidArgument, "chave vazia"));
+        return Err(CommandError::new(ErrorKind::InvalidArgument, "empty key"));
     }
     if key.contains('#') {
         return Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "chave com caractere reservado",
+            "key with reserved character",
         ));
     }
     Ok(())
@@ -169,7 +169,7 @@ pub fn set_secret(backend: &dyn SecretBackend, key: &str, value: &str) -> Comman
     if pieces.len() > MAX_CHUNKS {
         return Err(CommandError::new(
             ErrorKind::InvalidArgument,
-            "segredo grande demais",
+            "secret too large",
         ));
     }
     let previous = stored_pieces(backend, key)?;
@@ -299,13 +299,12 @@ mod tests {
 
     #[test]
     fn commands_refuse_unknown_keys_before_touching_the_keychain() {
-        let denied = tauri::async_runtime::block_on(secret_get("outra.chave".into())).unwrap_err();
-        assert_eq!(denied.kind, ErrorKind::Policy);
-        let denied = tauri::async_runtime::block_on(secret_set("outra.chave".into(), "v".into()))
-            .unwrap_err();
+        let denied = tauri::async_runtime::block_on(secret_get("other.key".into())).unwrap_err();
         assert_eq!(denied.kind, ErrorKind::Policy);
         let denied =
-            tauri::async_runtime::block_on(secret_delete("outra.chave".into())).unwrap_err();
+            tauri::async_runtime::block_on(secret_set("other.key".into(), "v".into())).unwrap_err();
+        assert_eq!(denied.kind, ErrorKind::Policy);
+        let denied = tauri::async_runtime::block_on(secret_delete("other.key".into())).unwrap_err();
         assert_eq!(denied.kind, ErrorKind::Policy);
     }
 
@@ -334,7 +333,7 @@ mod tests {
             if value.encode_utf16().count() * 2 > WINDOWS_BLOB_LIMIT {
                 return Err(CommandError::new(
                     ErrorKind::Io,
-                    "blob acima do limite do Credential Manager",
+                    "blob above the Credential Manager limit",
                 ));
             }
             self.entries
@@ -499,7 +498,7 @@ mod tests {
         let refresh = big_secret(5_000);
         set_secret(&legacy, "github.token", "gho_old").unwrap();
         set_secret(&legacy, "microsoft.refresh-token", &refresh).unwrap();
-        set_secret(&legacy, "claude.token", "nao-e-nosso").unwrap();
+        set_secret(&legacy, "claude.token", "not-ours").unwrap();
 
         assert_eq!(
             migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap(),

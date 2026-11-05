@@ -5,6 +5,6 @@
   <key>LSUIElement</key>
   <true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>O ClawdMeter usa o Terminal para você refazer o login do Claude e do GitHub.</string>
+  <string>ClawdMeter uses Terminal so you can sign in again to Claude and GitHub.</string>
 </dict>
 </plist>

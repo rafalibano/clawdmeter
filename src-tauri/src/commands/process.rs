@@ -22,8 +22,8 @@ const MAX_CONCURRENT_PROCESSES: usize = 4;
 const MAX_CAPTURE_BYTES: usize = 1_048_576;
 const MAX_STDOUT_LINE_BYTES: usize = 4_194_304;
 const MAX_STDERR_LINE_BYTES: usize = 65_536;
-const CAPTURE_TRUNCATED_MARK: &str = "\n[saída truncada]";
-const LINE_TRUNCATED_MARK: &str = " …[linha truncada]";
+const CAPTURE_TRUNCATED_MARK: &str = "\n[output truncated]";
+const LINE_TRUNCATED_MARK: &str = " …[line truncated]";
 pub const OUTPUT_EVENT: &str = "process-output";
 pub const EXIT_EVENT: &str = "process-exit";
 
@@ -122,7 +122,7 @@ impl ProcessRegistry {
 fn too_many_processes() -> CommandError {
     CommandError::new(
         ErrorKind::TooManyProcesses,
-        format!("limite de {MAX_CONCURRENT_PROCESSES} processos simultâneos atingido"),
+        format!("limit of {MAX_CONCURRENT_PROCESSES} concurrent processes reached"),
     )
 }
 
@@ -199,10 +199,7 @@ pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
         .into_iter()
         .find(|candidate| candidate.is_file())
         .ok_or_else(|| {
-            CommandError::new(
-                ErrorKind::ProgramNotFound,
-                format!("{program} não encontrado"),
-            )
+            CommandError::new(ErrorKind::ProgramNotFound, format!("{program} not found"))
         })
 }
 
@@ -313,7 +310,7 @@ fn run_to_completion(
     if validate_program(program)? != "gh" {
         return Err(CommandError::new(
             ErrorKind::ProgramNotAllowed,
-            "process_run só executa o gh",
+            "process_run only runs gh",
         ));
     }
     let mut child = build_command(program, args, None, &[], None)?
@@ -339,7 +336,7 @@ fn run_to_completion(
                 }
                 return Err(CommandError::new(
                     ErrorKind::Timeout,
-                    format!("{program} excedeu o tempo limite"),
+                    format!("{program} exceeded the time limit"),
                 ));
             }
             None => thread::sleep(Duration::from_millis(POLL_INTERVAL_MS)),
@@ -549,7 +546,7 @@ fn terminate(pid: u32, _force: bool) -> CommandResult<()> {
     if status.success() {
         Ok(())
     } else {
-        Err(CommandError::new(ErrorKind::Io, "taskkill falhou"))
+        Err(CommandError::new(ErrorKind::Io, "taskkill failed"))
     }
 }
 
@@ -870,7 +867,7 @@ mod tests {
         );
         assert!(lines[0].ends_with(LINE_TRUNCATED_MARK));
         assert_eq!(lines[1], "ok");
-        assert_eq!(LINE_TRUNCATED_MARK, " …[linha truncada]");
+        assert_eq!(LINE_TRUNCATED_MARK, " …[line truncated]");
     }
 
     #[test]
@@ -973,7 +970,7 @@ mod tests {
                     for _ in 0..200 {
                         registry
                             .signal_if_running(pid, || {
-                                assert!(is_alive(pid), "sinal enviado a um pid já liberado");
+                                assert!(is_alive(pid), "signal sent to an already released pid");
                                 Ok(())
                             })
                             .unwrap();
