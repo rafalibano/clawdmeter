@@ -42,6 +42,14 @@ describe('modelo de usage do demo', () => {
     expect(early.sevenDay!.resetsAt).toBeGreaterThan(ORIGIN + DAY_MS);
   });
 
+  it('cenário high: 7d acima de 90% e 5h por volta de 60%', () => {
+    const snapshot = new DemoUsageModel(ORIGIN, true).snapshotAt(ORIGIN);
+    expect(snapshot.sevenDay!.utilization).toBeGreaterThan(90);
+    expect(snapshot.sevenDay!.utilization).toBeLessThan(100);
+    expect(snapshot.fiveHour!.utilization).toBeGreaterThan(50);
+    expect(snapshot.fiveHour!.utilization).toBeLessThan(70);
+  });
+
   it('é determinístico', () => {
     expect(model.snapshotAt(ORIGIN - 2 * DAY_MS)).toEqual(new DemoUsageModel(ORIGIN).snapshotAt(ORIGIN - 2 * DAY_MS));
   });

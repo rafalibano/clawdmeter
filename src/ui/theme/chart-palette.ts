@@ -5,6 +5,8 @@ import { readableTextOn } from './color';
 import { MOTTU } from './mottu-tokens';
 import { SOFT_SURFACES } from './soft-surfaces';
 
+const WEEKLY_NEUTRAL = { dark: '#a9a9a9', light: '#767676' } as const;
+
 export const CHART_FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
 export interface SeriesColors {
@@ -21,7 +23,7 @@ export interface ChartPalette {
   grid: string;
   now: string;
   danger: string;
-  dangerLine: string;
+  attention: string;
   tooltipBackground: string;
   tooltipBorder: string;
   fontFamily: string;
@@ -43,14 +45,14 @@ export function chartPalette(accent: string, popoverBackground: string | null, t
   return {
     series: {
       fiveHour: seriesColors(fiveHour),
-      sevenDay: seriesColors(dark ? MOTTU.info.alt : MOTTU.info.base),
+      sevenDay: seriesColors(dark ? WEEKLY_NEUTRAL.dark : WEEKLY_NEUTRAL.light),
     },
     text,
     muted: withAlpha(text, 0.62),
     grid: withAlpha(text, 0.06),
     now: withAlpha(text, 0.3),
     danger: MOTTU.alert.base,
-    dangerLine: withAlpha(MOTTU.alert.base, 0.5),
+    attention: MOTTU.amarelo1,
     tooltipBackground: popoverBackground ?? SOFT_SURFACES[theme].card,
     tooltipBorder: withAlpha(text, 0.12),
     fontFamily: CHART_FONT_FAMILY,

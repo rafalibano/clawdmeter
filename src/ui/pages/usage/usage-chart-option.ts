@@ -3,6 +3,7 @@ import { DAY_MS } from '../../../domain/time';
 import { formatAxisTick } from '../../format/time';
 import type { ChartPalette, SeriesColors } from '../../theme/chart-palette';
 import type { UsageChartModel, WindowSeries } from './usage-chart-model';
+import { WEEKLY_ATTENTION_AT, WEEKLY_DANGER_AT } from './usage-tone';
 
 const AXIS_MAX = 100;
 
@@ -31,10 +32,15 @@ function markers(model: UsageChartModel, palette: ChartPalette) {
       label: { show: false },
     }));
   return [
-    { yAxis: AXIS_MAX, lineStyle: { color: palette.dangerLine, type: 'dashed', width: 1 }, label: { show: false } },
     { xAxis: model.now, lineStyle: { color: palette.now, type: 'dashed', width: 1 }, label: { show: false } },
     ...resets,
   ];
+}
+
+function strokeColor(window: WindowSeries, colors: SeriesColors, width: number, type?: string) {
+  const lineStyle = type === undefined ? { width } : { width, type };
+  if (window.kind === 'sevenDay') return { lineStyle };
+  return { lineStyle: { ...lineStyle, color: colors.line }, itemStyle: { color: colors.line } };
 }
 
 function realSeries(window: WindowSeries, palette: ChartPalette, width: number, withMarkers: unknown) {
@@ -46,8 +52,7 @@ function realSeries(window: WindowSeries, palette: ChartPalette, width: number, 
     showSymbol: false,
     sampling: 'lttb',
     data: window.points,
-    lineStyle: { width, color: colors.line },
-    itemStyle: { color: colors.line },
+    ...strokeColor(window, colors, width),
     areaStyle: fade(colors),
     ...(withMarkers === null ? {} : { markLine: { silent: true, symbol: 'none', animation: false, data: withMarkers } }),
   };
@@ -61,10 +66,30 @@ function trendSeries(window: WindowSeries, palette: ChartPalette) {
     showSymbol: false,
     silent: true,
     data: window.trend,
-    lineStyle: { width: 1.2, type: 'dashed', color: colors.line },
-    itemStyle: { color: colors.line },
+    ...strokeColor(window, colors, 1.2, 'dashed'),
     tooltip: { show: false },
     z: 3,
+  };
+}
+
+function weeklyVisualMap(model: UsageChartModel, palette: ChartPalette) {
+  const trended = model.windows.filter((window) => window.trend !== null);
+  const seriesIndex = model.windows.flatMap((window, index) => (window.kind === 'sevenDay' ? [index] : []));
+  trended.forEach((window, index) => {
+    if (window.kind === 'sevenDay') seriesIndex.push(model.windows.length + index);
+  });
+  const neutral = palette.series.sevenDay.line;
+  return {
+    type: 'piecewise',
+    show: false,
+    dimension: 1,
+    seriesIndex,
+    pieces: [
+      { lt: WEEKLY_ATTENTION_AT, color: neutral },
+      { gte: WEEKLY_ATTENTION_AT, lt: WEEKLY_DANGER_AT, color: palette.attention },
+      { gte: WEEKLY_DANGER_AT, color: palette.danger },
+    ],
+    outOfRange: { color: neutral },
   };
 }
 
@@ -111,6 +136,7 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette):
       valueFormatter: (value: unknown) => `${Math.round(Number(value))}%`,
       axisPointer: { lineStyle: { color: palette.now, type: 'dashed' } },
     },
+    visualMap: weeklyVisualMap(model, palette),
     series: [
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
       ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette)])),

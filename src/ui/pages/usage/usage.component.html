@@ -25,13 +25,17 @@
           <span class="bar-percent">{{ bar.percent }}</span>
         </div>
         <div class="track">
-          <div class="fill" [style.width.%]="bar.fill"></div>
+          <div class="fill" [attr.data-tone]="bar.tone" [style.width.%]="bar.fill"></div>
           @if (bar.projection; as projection) {
-            <div class="projection" [class.danger]="projection.exhausts" [style.left.%]="projection.from" [style.width.%]="projection.to - projection.from"></div>
-            <div class="tick" [class.danger]="projection.exhausts" [style.left.%]="projection.to"></div>
+            <div class="projection" [attr.data-tone]="projection.tone" [style.left.%]="projection.from" [style.width.%]="projection.to - projection.from"></div>
           }
         </div>
-        <p class="reset">{{ bar.reset }}</p>
+        <div class="bar-foot">
+          <span class="reset">{{ bar.reset }}</span>
+          @if (bar.projection; as projection) {
+            <span class="projected" [attr.data-tone]="projection.tone">{{ projection.label }}</span>
+          }
+        </div>
       </div>
     }
   </section>

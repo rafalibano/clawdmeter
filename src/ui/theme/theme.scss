@@ -24,7 +24,8 @@
   --dp-danger: var(--me-alert-base);
   --dp-danger-text: var(--me-alert-40);
   --dp-series-five: var(--me-primary-base);
-  --dp-series-seven: var(--me-info-base);
+  --dp-series-seven: #767676;
+  --dp-series-attention: #ffc700;
   --dp-info: var(--me-info-base);
   --dp-info-text: var(--me-info-50);
   --dp-sla-attention: #ffc700;
@@ -42,7 +43,7 @@
 :root[data-theme='dark'] {
   --dp-accent-text: var(--me-primary-alt);
   --dp-series-five: var(--me-primary-alt);
-  --dp-series-seven: var(--me-info-70);
+  --dp-series-seven: #a9a9a9;
   --dp-bg: #1a1a1a;
   --dp-fg: var(--me-neutral-95);
   --dp-muted: var(--me-neutral-70);

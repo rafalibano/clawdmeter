@@ -4,11 +4,14 @@ import type { UsageData } from '../../../application/use-cases';
 import { formatSpan } from '../../format/time';
 import type { ConnectionRowView } from '../../settings/connections/connection-view';
 import { buildChartModel, type UsageChartModel } from './usage-chart-model';
+import { usageTone, type UsageTone } from './usage-tone';
 
 export interface UsageProjectionView {
   from: number;
   to: number;
   exhausts: boolean;
+  tone: UsageTone;
+  label: string;
 }
 
 export interface UsageBarView {
@@ -16,6 +19,7 @@ export interface UsageBarView {
   label: string;
   percent: string;
   fill: number;
+  tone: UsageTone;
   reset: string;
   projection: UsageProjectionView | null;
 }
@@ -32,11 +36,13 @@ export interface UsageErrorView {
 
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
-export function projectionOf(forecast: Forecast, current: number): UsageProjectionView | null {
+export function projectionOf(kind: UsageWindowKind, forecast: Forecast, current: number): UsageProjectionView | null {
   if (forecast.status !== 'ready') return null;
   const exhausts = forecast.valueAtReset >= EXHAUSTION_LEVEL;
   const from = clampPercent(current);
-  return { from, to: exhausts ? EXHAUSTION_LEVEL : Math.max(from, clampPercent(forecast.valueAtReset)), exhausts };
+  const to = exhausts ? EXHAUSTION_LEVEL : Math.max(from, clampPercent(forecast.valueAtReset));
+  const label = forecast.valueAtReset > EXHAUSTION_LEVEL ? 'Projetado >100%' : `Projetado ${Math.round(to)}%`;
+  return { from, to, exhausts, tone: exhausts ? 'danger' : usageTone(kind, to), label };
 }
 
 export function resetText(resetsAt: number | null, now: number): string {
@@ -48,14 +54,15 @@ export function resetText(resetsAt: number | null, now: number): string {
 export function toUsageView(data: UsageData, rangeId: string): UsageView {
   const bars = USAGE_WINDOWS.map(({ kind, label }): UsageBarView => {
     const reading = data.snapshot[kind];
-    if (reading === null) return { kind, label, percent: '—', fill: 0, reset: '', projection: null };
+    if (reading === null) return { kind, label, percent: '—', fill: 0, tone: 'base', reset: '', projection: null };
     return {
       kind,
       label,
       percent: `${Math.round(reading.utilization)}%`,
       fill: clampPercent(reading.utilization),
+      tone: usageTone(kind, reading.utilization),
       reset: resetText(reading.resetsAt, data.at),
-      projection: projectionOf(data.forecasts[kind], reading.utilization),
+      projection: projectionOf(kind, data.forecasts[kind], reading.utilization),
     };
   });
   const chart = buildChartModel(

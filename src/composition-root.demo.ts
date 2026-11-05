@@ -34,7 +34,7 @@ export function createComposition(): Application {
   const world = createDemoWorld(window.location.search);
   const connectionAdapters = createDemoConnectionAdapters(world);
   const origin = clock.now();
-  const usageModel = new DemoUsageModel(origin);
+  const usageModel = new DemoUsageModel(origin, world.usage.high);
   const pullRequests = createPullRequests(
     {
       prefs: connectionAdapters.prefs,

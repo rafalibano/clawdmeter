@@ -4,6 +4,7 @@ import { PROBLEM_MESSAGES, actionsFor, errorStatus } from '../../../domain/conne
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
 import { buildForecasts, createEmptyHistory, type Forecast, type UsageHistory } from '../../../domain/usage';
 import { toRowView } from '../../settings/connections/connection-view';
+import { usageTone } from './usage-tone';
 import { projectionOf, resetText, toUsageErrorView, toUsageView } from './usage-view';
 
 const NOW = new Date(2026, 10, 5, 14, 0).getTime();
@@ -49,21 +50,64 @@ describe('resetText', () => {
 
 describe('projectionOf', () => {
   it('sem previsão pronta não há trecho', () => {
-    expect(projectionOf({ status: 'collecting' }, 40)).toBeNull();
-    expect(projectionOf({ status: 'unavailable' }, 40)).toBeNull();
+    expect(projectionOf('fiveHour', { status: 'collecting' }, 40)).toBeNull();
+    expect(projectionOf('fiveHour', { status: 'unavailable' }, 40)).toBeNull();
   });
 
   it('abaixo de 100%: do percentual atual até o previsto no reset', () => {
-    expect(projectionOf(ready(78.4), 40)).toEqual({ from: 40, to: 78.4, exhausts: false });
+    expect(projectionOf('fiveHour', ready(78.4), 40)).toEqual({
+      from: 40,
+      to: 78.4,
+      exhausts: false,
+      tone: 'base',
+      label: 'Projetado 78%',
+    });
   });
 
   it('estoura: o trecho vai até o fim da barra em alerta', () => {
-    expect(projectionOf(ready(160), 40)).toEqual({ from: 40, to: 100, exhausts: true });
-    expect(projectionOf(ready(100), 100)).toEqual({ from: 100, to: 100, exhausts: true });
+    expect(projectionOf('fiveHour', ready(160), 40)).toEqual({
+      from: 40,
+      to: 100,
+      exhausts: true,
+      tone: 'danger',
+      label: 'Projetado >100%',
+    });
+    expect(projectionOf('sevenDay', ready(100), 100)).toMatchObject({ from: 100, to: 100, exhausts: true, tone: 'danger', label: 'Projetado 100%' });
   });
 
   it('nunca recua abaixo do valor atual', () => {
-    expect(projectionOf(ready(30), 40)).toEqual({ from: 40, to: 40, exhausts: false });
+    expect(projectionOf('fiveHour', ready(30), 40)).toMatchObject({ from: 40, to: 40, exhausts: false, label: 'Projetado 40%' });
+  });
+});
+
+describe('cor do 7d por faixa', () => {
+  it.each([
+    [69.9, 'base'],
+    [70, 'attention'],
+    [89.9, 'attention'],
+    [90, 'danger'],
+  ])('7d a %s%% fica %s e a 5h sempre base', (value, tone) => {
+    expect(usageTone('sevenDay', value)).toBe(tone);
+    expect(usageTone('fiveHour', value)).toBe('base');
+  });
+
+  it('projetado do 7d segue a faixa do valor projetado; 5h projetada fica verde; estouro fica vermelho', () => {
+    expect(projectionOf('sevenDay', ready(69.9), 10)!.tone).toBe('base');
+    expect(projectionOf('sevenDay', ready(75), 10)!.tone).toBe('attention');
+    expect(projectionOf('sevenDay', ready(95), 10)!.tone).toBe('danger');
+    expect(projectionOf('fiveHour', ready(95), 10)!.tone).toBe('base');
+    expect(projectionOf('fiveHour', ready(132), 10)).toMatchObject({ tone: 'danger', label: 'Projetado >100%' });
+  });
+
+  it('a barra do 7d usa a faixa do percentual atual', () => {
+    const data = dataWith(createEmptyHistory());
+    const high = { ...data, snapshot: { ...data.snapshot, sevenDay: { utilization: 93, resetsAt: RESET } } };
+    expect(toUsageView(high, '1d').bars.map((bar) => bar.tone)).toEqual(['base', 'danger']);
+  });
+
+  it('sem projeção a barra não traz legenda', () => {
+    const { bars } = toUsageView(dataWith(createEmptyHistory()), '1d');
+    expect(bars.every((bar) => bar.projection === null)).toBe(true);
   });
 });
 
@@ -95,7 +139,7 @@ describe('toUsageView', () => {
   it('janela ausente na resposta: barra vazia, sem texto', () => {
     const data = dataWith(createEmptyHistory());
     const { bars } = toUsageView({ ...data, snapshot: { fiveHour: null, sevenDay: null } }, '1d');
-    expect(bars[0]).toEqual({ kind: 'fiveHour', label: '5h', percent: '—', fill: 0, reset: '', projection: null });
+    expect(bars[0]).toEqual({ kind: 'fiveHour', label: '5h', percent: '—', fill: 0, tone: 'base', reset: '', projection: null });
   });
 
   it('percentual acima de 100 enche a barra sem passar do trilho', () => {

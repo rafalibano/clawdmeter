@@ -56,6 +56,15 @@
 
 .bar {
   --series: var(--dp-series-five);
+  --tone: var(--series);
+}
+
+[data-tone='attention'] {
+  --tone: var(--dp-series-attention);
+}
+
+[data-tone='danger'] {
+  --tone: var(--dp-danger);
 }
 
 .bar[data-window='sevenDay'] {
@@ -92,37 +101,38 @@
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: var(--dp-radius-pill);
-  background: var(--series);
+  background: var(--tone);
 }
 
 .projection {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  background: color-mix(in srgb, var(--series) 35%, transparent);
+  top: calc(50% - 1px);
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--tone) 0 2px, transparent 2px 4px);
 }
 
-.projection.danger {
-  background: color-mix(in srgb, var(--dp-danger) 40%, transparent);
-}
-
-.tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -2px;
-  background: color-mix(in srgb, var(--series) 70%, transparent);
-}
-
-.tick.danger {
-  background: var(--dp-danger);
-}
-
-.reset {
-  margin: 5px 0 0;
+.bar-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 5px;
   font-size: 11px;
   color: var(--dp-muted);
+}
+
+.projected {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.projected::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
 }
 
 .chart-card {

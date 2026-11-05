@@ -18,6 +18,8 @@ const FIVE_HOUR_MS = 5 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
 const WEEKLY_SHARE = 0.12;
 const CURRENT_WINDOW_TOTAL = 80;
+const HIGH_WEEKLY_SHARE = 0.21;
+const HIGH_CURRENT_WINDOW_TOTAL = 195;
 const IDLE_BELOW = 8;
 const SAMPLE_STEP_MS = MINUTE_MS;
 
@@ -45,7 +47,10 @@ export class DemoUsageModel {
   private readonly fiveHourAnchor: number;
   private readonly weekAnchor: number;
 
-  constructor(readonly origin: number) {
+  constructor(
+    readonly origin: number,
+    private readonly high = false,
+  ) {
     this.fiveHourAnchor = origin - 1.5 * HOUR_MS;
     this.weekAnchor = origin - 3 * DAY_MS - 5 * HOUR_MS;
   }
@@ -80,7 +85,7 @@ export class DemoUsageModel {
   }
 
   private windowTotal(index: number): number {
-    if (index === 0) return CURRENT_WINDOW_TOTAL;
+    if (index === 0) return this.high ? HIGH_CURRENT_WINDOW_TOTAL : CURRENT_WINDOW_TOTAL;
     const middle = new Date(this.windowStart(index) + FIVE_HOUR_MS / 2);
     const total = 110 * hash(index, 1) * weekdayFactor(middle.getDay()) * hourFactor(middle.getHours());
     return total < IDLE_BELOW ? 0 : total;
@@ -96,7 +101,7 @@ export class DemoUsageModel {
     const first = this.windowIndexAt(weekStart) + 1;
     const last = this.windowIndexAt(at);
     let total = 0;
-    for (let index = first; index <= last; index++) total += this.windowValue(index, at) * WEEKLY_SHARE;
+    for (let index = first; index <= last; index++) total += this.windowValue(index, at) * (this.high ? HIGH_WEEKLY_SHARE : WEEKLY_SHARE);
     return Math.min(100, total);
   }
 }

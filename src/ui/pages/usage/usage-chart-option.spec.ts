@@ -78,6 +78,13 @@ describe('buildChartOption', () => {
       splitLine: { lineStyle: { color: string; type: string } };
     };
     tooltip: { backgroundColor: string };
+    visualMap: {
+      type: string;
+      show: boolean;
+      dimension: number;
+      seriesIndex: number[];
+      pieces: { lt?: number; gte?: number; color: string }[];
+    };
     textStyle: { fontFamily: string };
     series: {
       name: string;
@@ -104,9 +111,10 @@ describe('buildChartOption', () => {
     expect(option.series[2]!.data[0]).toEqual([NOW, 29]);
   });
 
-  it('5h em verde Mottu e 7d em azul do DS, com área muito leve', () => {
+  it('5h em verde Mottu e 7d em cinza neutro, com área muito leve', () => {
     expect(option.series[0]!.lineStyle.color).toBe('#00b131');
-    expect(option.series[1]!.lineStyle.color).toBe('#0063f7');
+    expect(option.series[1]!.lineStyle.color).toBeUndefined();
+    expect(option.visualMap.pieces[0]!.color).toBe('#767676');
     expect(option.series[2]!.lineStyle.color).toBe('#00b131');
     expect(option.series[0]!.areaStyle?.color.colorStops).toEqual([
       { offset: 0, color: 'rgba(0, 177, 49, 0.1)' },
@@ -114,17 +122,38 @@ describe('buildChartOption', () => {
     ]);
     const dark = buildChartOption(model, chartPalette('#00b131', null, 'dark')) as unknown as typeof option;
     expect(dark.series[0]!.lineStyle.color).toBe('#1bd60b');
-    expect(dark.series[1]!.lineStyle.color).toBe('#5c9dff');
+    expect(dark.visualMap.pieces[0]!.color).toBe('#a9a9a9');
   });
 
-  it('marcas: 100% em alert tracejado e translúcido, "agora" e os resets dentro do eixo', () => {
+  it('marcas: sem linha de 100%, só "agora" e os resets dentro do eixo', () => {
     const marks = option.series[0]!.markLine!.data;
-    expect(marks.find((mark) => mark.yAxis === 100)!.lineStyle).toEqual({ color: 'rgba(255, 84, 73, 0.5)', type: 'dashed', width: 1 });
+    expect(marks.some((mark) => mark.yAxis !== undefined)).toBe(false);
     expect(marks.some((mark) => mark.xAxis === NOW)).toBe(true);
     expect(marks.filter((mark) => mark.xAxis !== undefined && mark.xAxis > NOW)).toHaveLength(0);
     const wide = buildChartOption(buildChartModel(inputs(ready(60)), usageRange('30d'), NOW), palette) as unknown as typeof option;
     const resets = wide.series[0]!.markLine!.data.filter((mark) => mark.xAxis !== undefined && mark.xAxis > NOW);
     expect(resets.map((mark) => mark.xAxis)).toEqual([NOW + 4 * HOUR_MS, NOW + 3 * 24 * HOUR_MS]);
+  });
+
+  it('a grade de 100% é a mesma linha suave dos outros níveis', () => {
+    expect(JSON.stringify(option)).not.toContain('rgba(255, 84, 73, 0.5)');
+    expect(option.yAxis.splitLine.lineStyle).toMatchObject({ color: 'rgba(18, 18, 18, 0.06)', type: 'dashed' });
+  });
+
+  it('visualMap por faixa só na série 7d e na tendência 7d: cinza < 70, amarelo >= 70, vermelho >= 90', () => {
+    expect(option.visualMap).toMatchObject({ type: 'piecewise', show: false, dimension: 1, seriesIndex: [1, 3] });
+    expect(option.visualMap.pieces).toEqual([
+      { lt: 70, color: '#767676' },
+      { gte: 70, lt: 90, color: '#ffc700' },
+      { gte: 90, color: '#ff5449' },
+    ]);
+  });
+
+  it('visualMap sem tendência 7d aponta só a série 7d, e a 5h segue verde', () => {
+    const only = buildChartOption(buildChartModel(inputs(ready(60)), usageRange('1h'), NOW), palette) as unknown as typeof option;
+    expect(only.visualMap.seriesIndex).toEqual([1]);
+    expect(only.series[0]!.lineStyle.color).toBe('#00b131');
+    expect(only.series[2]!.lineStyle.color).toBe('#00b131');
   });
 
   it('em períodos longos a linha real afina, e a tendência continua mais fina que ela', () => {

@@ -13,6 +13,7 @@ export interface DemoWorld {
   github: { cli: 'logged-in' | GitHubCliMissing; unauthorized: boolean; missingScope: boolean; orgAccess: GitHubOrgAccess };
   microsoft: { expired: boolean };
   skills: { claudeMissing: boolean; mcpNeedsAuth: boolean };
+  usage: { high: boolean };
   notifications: NotificationPermissionState;
   failOnce: Set<ConnectionId>;
   prefs: ConnectionPrefs;
@@ -48,6 +49,7 @@ export function createDemoWorld(search: string): DemoWorld {
     github: { cli: 'not-logged-in', unauthorized: false, missingScope: false, orgAccess: 'ok' },
     microsoft: { expired: false },
     skills: { claudeMissing: false, mcpNeedsAuth: false },
+    usage: { high: false },
     notifications: 'granted',
     failOnce: new Set(),
     prefs: createDefaultConnectionPrefs(),
@@ -84,6 +86,7 @@ export function createDemoWorld(search: string): DemoWorld {
   const skills = parseDemoEntries(search).get('skills');
   world.skills.claudeMissing = skills === 'claude-code-missing';
   world.skills.mcpNeedsAuth = skills === 'mcp-needs-auth';
+  world.usage.high = parseDemoEntries(search).get('usage') === 'high';
 
   for (const [id, value] of scenario) if (value === 'unexpected') world.failOnce.add(id);
   return world;
