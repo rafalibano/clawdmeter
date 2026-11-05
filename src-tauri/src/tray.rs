@@ -8,9 +8,11 @@ use tauri::{AppHandle, Manager, Window, WindowEvent};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 use crate::platform::{self, ClickAction};
+use crate::usage_icon;
 
 const MAIN_WINDOW: &str = "main";
 const QUIT_ID: &str = "quit";
+const TRAY_ID: &str = "main";
 
 static LAST_BLUR_HIDE_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -64,7 +66,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             .expect("ícone padrão ausente")
     };
 
-    TrayIconBuilder::with_id("main")
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(platform::TRAY_ICON_IS_TEMPLATE)
         .tooltip("Dev Pulse")
@@ -88,4 +90,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+pub fn set_usage(app: &AppHandle, five_hour: Option<f64>, seven_day: Option<f64>, tooltip: &str) -> tauri::Result<()> {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return Ok(());
+    };
+    let icon = platform::usage_icon(five_hour, seven_day);
+    tray.set_icon(Some(Image::new_owned(icon.rgba, icon.width, icon.height)))?;
+    tray.set_icon_as_template(platform::TRAY_ICON_IS_TEMPLATE)?;
+    tray.set_tooltip(Some(usage_icon::sanitize_tooltip(tooltip)))
 }

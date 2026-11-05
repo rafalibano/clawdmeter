@@ -69,6 +69,7 @@
     "allow-terminal-run",
     "allow-open-url",
     "allow-open-system-settings",
-    "allow-notification-permission-state"
+    "allow-notification-permission-state",
+    "allow-tray-set-usage"
   ]
 }
