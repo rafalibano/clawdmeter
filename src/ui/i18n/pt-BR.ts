@@ -28,7 +28,7 @@ export const ptBR = {
   'shell.error.invalid': 'settings.json inválido — ajustes não estão sendo salvos.',
   'shell.error.future': 'settings.json de versão mais nova — ajustes não estão sendo salvos.',
 
-  'page.usage': 'Usage',
+  'page.usage': 'Uso',
   'page.sessions': 'Sessões',
   'page.prs': 'PRs',
   'page.reviews': 'Reviews',
@@ -43,7 +43,7 @@ export const ptBR = {
   'settings.theme': 'Tema',
   'settings.language': 'Idioma',
   'settings.hexAria': '{label} em hexadecimal',
-  'settings.thresholds': 'Faixas de alerta do Usage',
+  'settings.thresholds': 'Faixas de alerta do Uso',
   'settings.thresholds.warning': 'Alerta (amarelo) %',
   'settings.thresholds.critical': 'Crítico (vermelho) %',
   'settings.thresholds.invalid': 'Use 0 < alerta < crítico ≤ 100.',

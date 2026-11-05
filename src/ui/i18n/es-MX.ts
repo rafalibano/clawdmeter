@@ -18,7 +18,7 @@ export const esMX: Record<MessageKey, string> = {
   'shell.error.invalid': 'settings.json inválido — los ajustes no se están guardando.',
   'shell.error.future': 'settings.json de una versión más nueva — los ajustes no se están guardando.',
 
-  'page.usage': 'Usage',
+  'page.usage': 'Uso',
   'page.sessions': 'Sesiones',
   'page.prs': 'PRs',
   'page.reviews': 'Reviews',
@@ -33,7 +33,7 @@ export const esMX: Record<MessageKey, string> = {
   'settings.theme': 'Tema',
   'settings.language': 'Idioma',
   'settings.hexAria': '{label} en hexadecimal',
-  'settings.thresholds': 'Franjas de alerta del Usage',
+  'settings.thresholds': 'Franjas de alerta del Uso',
   'settings.thresholds.warning': 'Alerta (amarillo) %',
   'settings.thresholds.critical': 'Crítico (rojo) %',
   'settings.thresholds.invalid': 'Usa 0 < alerta < crítico ≤ 100.',
