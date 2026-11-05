@@ -44,6 +44,12 @@ export class PollingScheduler {
     }
   }
 
+  refresh(pageId: PageId): Promise<void> {
+    const page = this.registry.get(pageId);
+    const run = this.runs.get(pageId);
+    return page && run ? this.poll(page, run) : Promise.resolve();
+  }
+
   stopAll(): void {
     for (const run of this.runs.values()) run.cancel();
     this.runs.clear();

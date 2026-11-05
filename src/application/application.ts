@@ -5,12 +5,14 @@ import { PageRegistry } from './pages/page-registry';
 import type { Clock, SettingsStore } from './ports';
 import { PollingScheduler } from './scheduler/polling-scheduler';
 import { GetSettings, GetSettingsStatus, UpdateSettings, WatchSettings } from './use-cases';
+import { JoinMeeting } from './use-cases/calendar';
 
 export interface Application {
   clock: Clock;
   registry: PageRegistry;
   scheduler: PollingScheduler;
   connections: Connections;
+  joinMeeting: JoinMeeting;
   getSettings: GetSettings;
   getSettingsStatus: GetSettingsStatus;
   updateSettings: UpdateSettings;
@@ -31,6 +33,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     registry,
     scheduler: new PollingScheduler(registry, deps.clock),
     connections: createConnections(deps.connectionAdapters, deps.clock),
+    joinMeeting: new JoinMeeting(deps.connectionAdapters.urlOpener),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),
     updateSettings: new UpdateSettings(deps.settingsStore),

@@ -195,4 +195,15 @@ describe('PollingScheduler', () => {
     await flushPromises();
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it('refresh recarrega uma página ligada na hora e ignora página desligada', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ fast: false, slow: false }));
+    await flushPromises();
+    await scheduler.refresh('once');
+    expect(once).toHaveBeenCalledTimes(2);
+    await scheduler.refresh('fast');
+    await scheduler.refresh('inexistente');
+    expect(fast).not.toHaveBeenCalled();
+  });
 });
