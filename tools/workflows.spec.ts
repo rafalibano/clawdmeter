@@ -52,6 +52,16 @@ describe('GitHub Actions workflows', () => {
     expect(supplyChain).toContain('cargo audit');
   });
 
+  it('the release signs the updater artifacts, publishes latest.json and is not a draft', () => {
+    const text = read('release.yml');
+    expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}');
+    expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}');
+    expect(text).toContain('includeUpdaterJson: true');
+    expect(text).toContain('releaseDraft: false');
+    expect(text).toContain('--bundles app,dmg');
+    expect(text).toContain('--bundles msi,nsis');
+  });
+
   it('dependabot covers actions, cargo and npm every week', () => {
     const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8').replace(/\r\n/g, '\n');
     for (const ecosystem of ['github-actions', 'cargo', 'npm']) {
