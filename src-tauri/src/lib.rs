@@ -29,6 +29,7 @@ pub fn run() {
             commands::terminal::terminal_run,
             commands::open_external::open_url,
             commands::open_external::open_system_settings,
+            commands::notification_permission::notification_permission_state,
         ])
         .setup(|app| {
             platform::configure_app(app);

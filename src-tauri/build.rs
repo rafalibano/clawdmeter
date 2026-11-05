@@ -13,6 +13,7 @@ const APP_COMMANDS: &[&str] = &[
     "terminal_run",
     "open_url",
     "open_system_settings",
+    "notification_permission_state",
 ];
 
 fn main() {
