@@ -29,6 +29,7 @@ const DASH_PERIOD: u32 = 5;
 const TEMPLATE_INK: [u8; 3] = [0, 0, 0];
 const SQUARE_FILL: [u8; 3] = [59, 130, 246];
 const SQUARE_EMPTY: [u8; 3] = [128, 128, 128];
+const LIGHT_INK: [u8; 3] = [235, 235, 235];
 
 const MASCOT: [&str; MASCOT_ROWS as usize] = [
     "..XXXXXXXX..",
@@ -380,6 +381,25 @@ pub fn render_usage_icon_square(
     seven_day: Option<f64>,
     scale: u32,
 ) -> UsageIcon {
+    render_square(five_hour, seven_day, scale, SQUARE_FILL, SQUARE_EMPTY)
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn render_usage_icon_square_light(
+    five_hour: Option<f64>,
+    seven_day: Option<f64>,
+    scale: u32,
+) -> UsageIcon {
+    render_square(five_hour, seven_day, scale, LIGHT_INK, LIGHT_INK)
+}
+
+fn render_square(
+    five_hour: Option<f64>,
+    seven_day: Option<f64>,
+    scale: u32,
+    fill: [u8; 3],
+    empty: [u8; 3],
+) -> UsageIcon {
     let scale = scale.max(1);
     let side = SQUARE_SIDE * scale;
     let mut canvas = Canvas::new(side, side);
@@ -393,8 +413,8 @@ pub fn render_usage_icon_square(
         cross_shift: cell / 4.0,
     };
     let style = MascotStyle {
-        fill: SQUARE_FILL,
-        empty: SQUARE_EMPTY,
+        fill,
+        empty,
         crossed_eyes: is_exhausted(five_hour, seven_day),
     };
     paint_mascot(&mut canvas, mascot, seven_day, &style);
@@ -587,6 +607,23 @@ mod tests {
         assert_eq!(empty[..3], SQUARE_EMPTY);
         assert!((85..=95).contains(&empty[3]), "{empty:?}");
         assert!((0..32).all(|x| column(&icon, x, 3) == 0 && column(&icon, x, 29) == 0));
+    }
+
+    #[test]
+    fn light_square_icon_is_monochrome_and_follows_the_square_shape() {
+        let colored = render_usage_icon_square(Some(10.0), Some(50.0), 2);
+        let light = render_usage_icon_square_light(Some(10.0), Some(50.0), 2);
+        assert_eq!((light.width, light.height), (32, 32));
+        let opaque: Vec<&[u8]> = light.rgba.chunks(4).filter(|pixel| pixel[3] > 0).collect();
+        assert!(!opaque.is_empty());
+        assert!(opaque.iter().all(|pixel| pixel[..3] == LIGHT_INK));
+        let shape = |icon: &UsageIcon| {
+            icon.rgba
+                .chunks(4)
+                .map(|pixel| pixel[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape(&light), shape(&colored));
     }
 
     #[test]

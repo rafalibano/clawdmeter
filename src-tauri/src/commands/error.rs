@@ -6,6 +6,7 @@ use thiserror::Error;
 pub enum ErrorKind {
     KeychainDenied,
     Keychain,
+    KeyringUnavailable,
     ClaudeCodeMissing,
     ClaudeExpired,
     CredentialMalformed,
@@ -89,15 +90,43 @@ impl From<tauri_plugin_http::reqwest::Error> for CommandError {
 
 impl From<keyring::Error> for CommandError {
     fn from(error: keyring::Error) -> Self {
-        let kind = match &error {
-            keyring::Error::NoStorageAccess(_) => ErrorKind::KeychainDenied,
-            keyring::Error::PlatformFailure(inner) if is_denial(&inner.to_string()) => {
-                ErrorKind::KeychainDenied
-            }
-            _ => ErrorKind::Keychain,
-        };
-        Self::new(kind, error.to_string())
+        Self::new(
+            keyring_kind(&error, cfg!(target_os = "linux")),
+            error.to_string(),
+        )
     }
+}
+
+fn keyring_kind(error: &keyring::Error, linux: bool) -> ErrorKind {
+    match error {
+        keyring::Error::NoStorageAccess(inner) | keyring::Error::PlatformFailure(inner)
+            if linux && is_secret_service_unavailable(&inner.to_string()) =>
+        {
+            ErrorKind::KeyringUnavailable
+        }
+        keyring::Error::NoStorageAccess(_) => ErrorKind::KeychainDenied,
+        keyring::Error::PlatformFailure(inner) if is_denial(&inner.to_string()) => {
+            ErrorKind::KeychainDenied
+        }
+        _ => ErrorKind::Keychain,
+    }
+}
+
+fn is_secret_service_unavailable(text: &str) -> bool {
+    let text = text.to_lowercase();
+    [
+        "no dbus session or secret service provider",
+        "no result found",
+        "org.freedesktop.secrets",
+        "serviceunknown",
+        "namehasnoowner",
+        "noserver",
+        "failed to connect",
+        "autolaunch",
+        "dbus error",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
 }
 
 fn is_denial(text: &str) -> bool {
@@ -178,6 +207,48 @@ mod tests {
         assert_eq!(
             kind(keyring::Error::TooLong("x".into(), 1)),
             ErrorKind::Keychain
+        );
+    }
+
+    #[test]
+    fn a_missing_secret_service_is_its_own_kind_only_on_linux() {
+        let platform = |text: &str| keyring::Error::PlatformFailure(text.into());
+        for text in [
+            "No DBus session or Secret Service provider found",
+            "DBus error: Unable to autolaunch a dbus-daemon without a $DISPLAY for X11",
+            "DBus error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.secrets was not provided by any .service files",
+            "DBus error: Failed to connect to socket /run/user/1000/bus: No such file or directory",
+            "DBus error: org.freedesktop.DBus.Error.NoServer",
+        ] {
+            assert_eq!(keyring_kind(&platform(text), true), ErrorKind::KeyringUnavailable);
+            assert_eq!(keyring_kind(&platform(text), false), ErrorKind::Keychain);
+        }
+        let no_default_collection =
+            keyring::Error::NoStorageAccess("Secret Service: no result found".into());
+        assert_eq!(
+            keyring_kind(&no_default_collection, true),
+            ErrorKind::KeyringUnavailable
+        );
+    }
+
+    #[test]
+    fn a_locked_or_dismissed_keyring_stays_a_denial_on_linux() {
+        for text in [
+            "Secret Service: object locked",
+            "Secret Service: unlock prompt was dismissed",
+        ] {
+            let error = keyring::Error::NoStorageAccess(text.into());
+            assert_eq!(keyring_kind(&error, true), ErrorKind::KeychainDenied);
+        }
+        let other = keyring::Error::PlatformFailure("Crypto error: bad padding".into());
+        assert_eq!(keyring_kind(&other, true), ErrorKind::Keychain);
+    }
+
+    #[test]
+    fn keyring_unavailable_keeps_the_snake_case_name_the_frontend_reads() {
+        assert_eq!(
+            serde_json::to_string(&ErrorKind::KeyringUnavailable).unwrap(),
+            r#""keyring_unavailable""#
         );
     }
 

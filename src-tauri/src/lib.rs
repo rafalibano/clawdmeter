@@ -1,15 +1,20 @@
 mod commands;
 mod legacy_migration;
 mod platform;
+#[cfg(any(target_os = "linux", test))]
+mod popover_cursor;
 mod popover_dismiss;
 #[cfg(any(target_os = "macos", test))]
 mod popover_geometry;
 mod popover_log;
 mod tray;
+mod tray_host;
 pub mod usage_icon;
 
 use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
+use std::path::PathBuf;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,6 +49,7 @@ pub fn run() {
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
             commands::tray_usage::tray_set_usage,
+            commands::startup_notice::startup_notice,
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir();
@@ -60,6 +66,10 @@ pub fn run() {
                     let marker = state.join(legacy_migration::CONFIG_MARKER);
                     Some(legacy_migration::migrate_config_dir(dir, &legacy, &marker))
                 });
+            let notice = tray_host::resolve(
+                state_dir.as_ref().ok().map(PathBuf::as_path),
+                tray_host::status_notifier_watcher_has_owner(),
+            );
             if let Ok(dir) = app.path().app_log_dir() {
                 popover_log::init(dir);
             }
@@ -77,6 +87,11 @@ pub fn run() {
             tray::create(app.handle())?;
             tray::prepare_popover(app.handle());
             tray::register_shortcut(app.handle());
+            app.manage(notice);
+            if notice.0.is_some() {
+                popover_log::write("tray-missing opening the window");
+                tray::open_popover(app.handle());
+            }
             Ok(())
         })
         .on_window_event(tray::on_window_event)

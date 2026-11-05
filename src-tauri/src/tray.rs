@@ -15,6 +15,7 @@ use crate::usage_icon;
 
 const MAIN_WINDOW: &str = "main";
 const QUIT_ID: &str = "quit";
+const OPEN_ID: &str = "open";
 const TRAY_ID: &str = "main";
 
 static LAST_AUTO_HIDE_MS: AtomicU64 = AtomicU64::new(NEVER);
@@ -96,6 +97,10 @@ pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     }
 }
 
+pub fn open_popover(app: &AppHandle) {
+    toggle_popover(app, None);
+}
+
 pub fn prepare_popover(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         platform::prepare_popover(&window);
@@ -104,9 +109,16 @@ pub fn prepare_popover(app: &AppHandle) {
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, QUIT_ID, "Quit ClawdMeter", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit])?;
+    let open = MenuItem::with_id(app, OPEN_ID, "Open ClawdMeter", true, None::<&str>)?;
+    let menu = if platform::TRAY_REPORTS_CLICKS {
+        Menu::with_items(app, &[&quit])?
+    } else {
+        Menu::with_items(app, &[&open, &quit])?
+    };
 
-    let icon = if platform::TRAY_ICON_IS_TEMPLATE {
+    let icon = if let Some(drawn) = platform::initial_tray_icon() {
+        Image::new_owned(drawn.rgba, drawn.width, drawn.height)
+    } else if platform::TRAY_ICON_IS_TEMPLATE {
         Image::from_bytes(include_bytes!("../icons/tray-template.png"))?
     } else {
         app.default_window_icon()
@@ -120,10 +132,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("ClawdMeter")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            if event.id().as_ref() == QUIT_ID {
-                app.exit(0);
-            }
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            QUIT_ID => app.exit(0),
+            OPEN_ID => toggle_popover(app, None),
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);

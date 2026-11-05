@@ -154,9 +154,16 @@ fn read_keychain() -> CommandResult<Option<String>> {
 }
 
 fn read_credential() -> CommandResult<ClaudeCredential> {
-    let raw = match read_keychain()? {
+    credential_from(read_keychain(), read_credentials_file)
+}
+
+fn credential_from(
+    keychain: CommandResult<Option<String>>,
+    file: impl FnOnce() -> CommandResult<Option<String>>,
+) -> CommandResult<ClaudeCredential> {
+    let raw = match keychain? {
         Some(raw) => Some(raw),
-        None => read_credentials_file()?,
+        None => file()?,
     };
     match raw {
         Some(raw) => parse_credentials(&raw),
@@ -644,6 +651,58 @@ mod tests {
             tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap();
         server.join().unwrap();
         assert_eq!(usage["k"].as_str().unwrap().len(), 1_016);
+    }
+
+    const FILE_CREDENTIAL: &str = r#"{"claudeAiOauth":{"accessToken":"from-file","expiresAt":4102444800000,"subscriptionType":"max"}}"#;
+
+    #[test]
+    fn without_a_keychain_the_credentials_file_is_used() {
+        let credential =
+            credential_from(Ok(None), || Ok(Some(FILE_CREDENTIAL.to_string()))).unwrap();
+        assert_eq!(credential.access_token, "from-file");
+        assert_eq!(credential.subscription_type.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn the_keychain_wins_over_the_credentials_file() {
+        let keychain = FILE_CREDENTIAL.replace("from-file", "from-keychain");
+        let credential = credential_from(Ok(Some(keychain)), || {
+            panic!("the file must not be read when the keychain answered")
+        })
+        .unwrap();
+        assert_eq!(credential.access_token, "from-keychain");
+    }
+
+    #[test]
+    fn no_keychain_and_no_file_means_claude_code_is_missing() {
+        let error = credential_from(Ok(None), || Ok(None)).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ClaudeCodeMissing);
+    }
+
+    #[test]
+    fn a_keychain_failure_is_not_hidden_by_the_file() {
+        let denied = CommandError::new(ErrorKind::KeychainDenied, "denied");
+        let error =
+            credential_from(Err(denied), || Ok(Some(FILE_CREDENTIAL.to_string()))).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::KeychainDenied);
+    }
+
+    #[test]
+    fn a_broken_credentials_file_is_reported_as_malformed() {
+        let error = credential_from(Ok(None), || Ok(Some("{".to_string()))).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::CredentialMalformed);
+    }
+
+    #[test]
+    fn the_credentials_file_lives_in_the_dot_claude_dir_of_a_linux_home() {
+        assert_eq!(
+            credentials_file_path(Some(PathBuf::from("/home/dev"))),
+            Some(
+                PathBuf::from("/home/dev")
+                    .join(".claude")
+                    .join(".credentials.json")
+            )
+        );
     }
 
     #[test]

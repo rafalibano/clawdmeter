@@ -1283,6 +1283,30 @@ mod tests {
     }
 
     #[test]
+    fn xdg_app_folders_of_a_linux_home_are_never_project_folders() {
+        let home = Path::new("/home/dev");
+        let app_dirs = [
+            "/home/dev/.config/com.mottu.clawdmeter",
+            "/home/dev/.local/share/com.mottu.clawdmeter",
+            "/home/dev/.cache/com.mottu.clawdmeter",
+        ]
+        .map(PathBuf::from);
+        for dir in &app_dirs {
+            assert!(is_sensitive_dir(&dir.join("skill-cwd"), home, &app_dirs));
+        }
+        assert!(is_sensitive_dir(
+            Path::new("/home/dev/.config/gh"),
+            home,
+            &[]
+        ));
+        assert!(!is_sensitive_dir(
+            Path::new("/home/dev/src/app"),
+            home,
+            &app_dirs
+        ));
+    }
+
+    #[test]
     fn an_explicit_cwd_equal_to_the_home_is_rejected() {
         let tree = TempTree::new("workdir-home-explicit");
         let home = tree.home();

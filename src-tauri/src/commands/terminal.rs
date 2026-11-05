@@ -6,7 +6,7 @@ use tauri::AppHandle;
 
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::home::{home_dir, protected_dirs, skill_workdir};
-use super::process::resolve_program;
+use super::process::{candidate_paths, resolve_program};
 use super::process_policy::{
     validate_args, validate_cwd, validate_program, validate_terminal_invocation,
 };
@@ -116,6 +116,59 @@ pub fn windows_terminal_args(program: &Path, args: &[String]) -> Vec<String> {
         .collect()
 }
 
+pub const LINUX_TERMINALS: &[&str] = &["x-terminal-emulator", "gnome-terminal", "konsole"];
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn pick_terminal(
+    is_file: impl Fn(&Path) -> bool,
+    path_var: Option<&str>,
+    home: Option<&Path>,
+) -> Option<(&'static str, PathBuf)> {
+    LINUX_TERMINALS.iter().find_map(|name| {
+        candidate_paths(name, path_var, home, false)
+            .into_iter()
+            .find(|candidate| is_file(candidate))
+            .map(|path| (*name, path))
+    })
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn linux_terminal_args(
+    terminal: &str,
+    program: &Path,
+    args: &[String],
+    cwd: Option<&Path>,
+) -> Vec<String> {
+    let session = [
+        "sh".to_string(),
+        "-c".to_string(),
+        "\"$@\"; exec \"${SHELL:-/bin/sh}\"".to_string(),
+        "clawdmeter".to_string(),
+        program.to_string_lossy().into_owned(),
+    ]
+    .into_iter()
+    .chain(args.iter().cloned());
+    let dir = cwd.map(|dir| dir.to_string_lossy().into_owned());
+    let mut built = Vec::new();
+    match terminal {
+        "gnome-terminal" => {
+            if let Some(dir) = dir {
+                built.push(format!("--working-directory={dir}"));
+            }
+            built.push("--".to_string());
+        }
+        "konsole" => {
+            if let Some(dir) = dir {
+                built.extend(["--workdir".to_string(), dir]);
+            }
+            built.push("-e".to_string());
+        }
+        _ => built.push("-e".to_string()),
+    }
+    built.extend(session);
+    built
+}
+
 #[cfg(target_os = "macos")]
 fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
     Command::new("/usr/bin/osascript")
@@ -141,7 +194,30 @@ fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
+fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
+    let path_var = std::env::var("PATH").ok();
+    let (terminal, executable) =
+        pick_terminal(Path::is_file, path_var.as_deref(), home_dir().as_deref()).ok_or_else(
+            || {
+                CommandError::new(
+                    ErrorKind::ProgramNotFound,
+                    "no terminal emulator found (x-terminal-emulator, gnome-terminal or konsole)",
+                )
+            },
+        )?;
+    let mut command = Command::new(executable);
+    command.args(linux_terminal_args(terminal, program, args, cwd));
+    if let Some(dir) = cwd {
+        command.current_dir(dir);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn launch(_program: &Path, _args: &[String], _cwd: Option<&Path>) -> CommandResult<()> {
     Err(CommandError::new(
         ErrorKind::SpawnFailed,
@@ -351,6 +427,91 @@ mod tests {
             built,
             args(&["/C", "start", "", "cmd", "/K", "claude.cmd", "/login"])
         );
+    }
+
+    #[test]
+    fn the_first_available_linux_terminal_wins_in_the_documented_order() {
+        let installed = |names: &'static [&'static str]| {
+            move |path: &Path| names.iter().any(|name| path.ends_with(name))
+        };
+        let path_var = Some("/usr/bin");
+        assert_eq!(
+            pick_terminal(installed(&["konsole", "gnome-terminal"]), path_var, None)
+                .map(|(name, _)| name),
+            Some("gnome-terminal")
+        );
+        assert_eq!(
+            pick_terminal(
+                installed(&["konsole", "x-terminal-emulator"]),
+                path_var,
+                None
+            ),
+            Some((
+                "x-terminal-emulator",
+                PathBuf::from("/usr/bin/x-terminal-emulator")
+            ))
+        );
+        assert_eq!(
+            pick_terminal(installed(&["konsole"]), path_var, None).map(|(name, _)| name),
+            Some("konsole")
+        );
+        assert_eq!(pick_terminal(installed(&[]), path_var, None), None);
+    }
+
+    #[test]
+    fn linux_terminals_run_the_program_as_argv_and_keep_the_session_open() {
+        let claude = Path::new("/home/dev/.local/bin/claude");
+        let login = args(&["/login"]);
+        let keep_open = args(&[
+            "sh",
+            "-c",
+            "\"$@\"; exec \"${SHELL:-/bin/sh}\"",
+            "clawdmeter",
+        ]);
+        let tail = |mut head: Vec<String>| {
+            head.extend(keep_open.clone());
+            head.push("/home/dev/.local/bin/claude".into());
+            head.push("/login".into());
+            head
+        };
+        assert_eq!(
+            linux_terminal_args("x-terminal-emulator", claude, &login, None),
+            tail(args(&["-e"]))
+        );
+        assert_eq!(
+            linux_terminal_args("gnome-terminal", claude, &login, None),
+            tail(args(&["--"]))
+        );
+        assert_eq!(
+            linux_terminal_args("konsole", claude, &login, None),
+            tail(args(&["-e"]))
+        );
+    }
+
+    #[test]
+    fn linux_terminals_open_in_the_working_directory_when_there_is_one() {
+        let gh = Path::new("/usr/bin/gh");
+        let dir = Some(Path::new("/home/dev/My Projects/app"));
+        assert_eq!(
+            linux_terminal_args("gnome-terminal", gh, &[], dir)[..2],
+            args(&["--working-directory=/home/dev/My Projects/app", "--"])[..]
+        );
+        assert_eq!(
+            linux_terminal_args("konsole", gh, &[], dir)[..3],
+            args(&["--workdir", "/home/dev/My Projects/app", "-e"])[..]
+        );
+        assert_eq!(
+            linux_terminal_args("x-terminal-emulator", gh, &[], dir)[0],
+            "-e"
+        );
+    }
+
+    #[test]
+    fn linux_terminal_arguments_never_pass_through_a_shell_line() {
+        let hostile = Path::new("/home/dev/$(touch x)/claude");
+        let built = linux_terminal_args("konsole", hostile, &args(&["--resume", "abc"]), None);
+        assert_eq!(built[3], "\"$@\"; exec \"${SHELL:-/bin/sh}\"");
+        assert_eq!(built[5], "/home/dev/$(touch x)/claude");
     }
 
     #[test]

@@ -469,7 +469,7 @@ pub fn position_popover(window: &tauri::WebviewWindow, icon: Option<tauri::Rect>
     });
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkArea {
     pub left: i32,
@@ -478,7 +478,7 @@ pub struct WorkArea {
     pub bottom: i32,
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 pub fn clamp_to_work_area(x: i32, y: i32, width: i32, height: i32, area: WorkArea) -> (i32, i32) {
     let fit = |position: i32, size: i32, start: i32, end: i32| {
         let last = end.saturating_sub(size);
@@ -535,7 +535,36 @@ fn keep_in_work_area(window: &tauri::WebviewWindow) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
+    use tauri_plugin_positioner::{Position, WindowExt};
+
+    let cursor = window.cursor_position().ok();
+    let monitor = cursor
+        .and_then(|point| window.monitor_from_point(point.x, point.y).ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let (Some(monitor), Ok(size)) = (monitor, window.outer_size()) else {
+        let _ = window.move_window_constrained(Position::TopRight);
+        return;
+    };
+    let work = monitor.work_area();
+    let extent = |value: u32| i32::try_from(value).unwrap_or(i32::MAX);
+    let area = WorkArea {
+        left: work.position.x,
+        top: work.position.y,
+        right: work.position.x.saturating_add(extent(work.size.width)),
+        bottom: work.position.y.saturating_add(extent(work.size.height)),
+    };
+    let (x, y) = crate::popover_cursor::popover_position(
+        cursor.map(|point| (point.x as i32, point.y as i32)),
+        area,
+        extent(size.width),
+        extent(size.height),
+    );
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
     use tauri_plugin_positioner::{Position, WindowExt};
 
@@ -607,9 +636,20 @@ pub fn usage_icon(five_hour: Option<f64>, seven_day: Option<f64>) -> UsageIcon {
     usage_icon::render_usage_icon(five_hour, seven_day, 2)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub fn usage_icon(five_hour: Option<f64>, seven_day: Option<f64>) -> UsageIcon {
+    usage_icon::render_usage_icon_square_light(five_hour, seven_day, 2)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn usage_icon(five_hour: Option<f64>, seven_day: Option<f64>) -> UsageIcon {
     usage_icon::render_usage_icon_square(five_hour, seven_day, 2)
+}
+
+pub const TRAY_REPORTS_CLICKS: bool = cfg!(not(target_os = "linux"));
+
+pub fn initial_tray_icon() -> Option<UsageIcon> {
+    cfg!(target_os = "linux").then(|| usage_icon(None, None))
 }
 
 #[cfg(test)]
@@ -624,6 +664,24 @@ mod tests {
         } else {
             assert_eq!((icon.width, icon.height), (32, 32));
         }
+    }
+
+    #[test]
+    fn linux_draws_its_own_light_tray_icon_from_the_start() {
+        assert_eq!(initial_tray_icon().is_some(), cfg!(target_os = "linux"));
+        if cfg!(target_os = "linux") {
+            let icon = usage_icon(Some(24.0), Some(51.0));
+            assert!(icon
+                .rgba
+                .chunks(4)
+                .filter(|pixel| pixel[3] > 0)
+                .all(|pixel| pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 200));
+        }
+    }
+
+    #[test]
+    fn only_linux_trays_do_not_report_clicks() {
+        assert_eq!(TRAY_REPORTS_CLICKS, !cfg!(target_os = "linux"));
     }
 
     #[cfg(target_os = "macos")]

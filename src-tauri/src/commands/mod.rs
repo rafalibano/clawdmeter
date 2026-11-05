@@ -8,5 +8,6 @@ pub mod open_external;
 pub mod process;
 pub mod process_policy;
 pub mod secrets;
+pub mod startup_notice;
 pub mod terminal;
 pub mod tray_usage;

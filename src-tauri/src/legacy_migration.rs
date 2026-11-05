@@ -154,6 +154,15 @@ mod tests {
     }
 
     #[test]
+    fn the_legacy_dir_is_a_sibling_under_the_xdg_config_home_too() {
+        let target = Path::new("/home/x/.config/com.mottu.clawdmeter");
+        assert_eq!(
+            legacy_dir_for(target).unwrap(),
+            Path::new("/home/x/.config/com.mottu.devpulse")
+        );
+    }
+
+    #[test]
     fn copies_the_user_files_once_and_keeps_the_legacy_dir() {
         let sandbox = Sandbox::new("copy");
         sandbox.seed_legacy();

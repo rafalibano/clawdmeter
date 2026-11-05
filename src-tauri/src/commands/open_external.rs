@@ -19,6 +19,7 @@ pub fn validate_https_url(raw: &str) -> CommandResult<Url> {
     }
 }
 
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub fn settings_target(pane: &str) -> CommandResult<&'static str> {
     match (pane, cfg!(windows)) {
         ("notifications", false) => {
@@ -71,9 +72,57 @@ pub fn open_url(url: String) -> CommandResult<()> {
     launch(url.as_str(), true)
 }
 
+type SettingsCommand = (&'static str, &'static [&'static str]);
+
+const LINUX_NOTIFICATION_SETTINGS: &[SettingsCommand] = &[
+    ("gnome-control-center", &["notifications"]),
+    ("systemsettings", &["kcm_notifications"]),
+];
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn linux_settings_command(
+    pane: &str,
+    is_installed: impl Fn(&str) -> bool,
+) -> CommandResult<SettingsCommand> {
+    if pane != "notifications" {
+        return Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "unknown settings pane",
+        ));
+    }
+    LINUX_NOTIFICATION_SETTINGS
+        .iter()
+        .find(|(program, _)| is_installed(program))
+        .copied()
+        .ok_or_else(|| {
+            CommandError::new(
+                ErrorKind::ProgramNotFound,
+                "no system settings app found for notifications",
+            )
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn launch_settings(pane: &str) -> CommandResult<()> {
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    let is_installed =
+        |program: &str| std::env::split_paths(&path_var).any(|dir| dir.join(program).is_file());
+    let (program, args) = linux_settings_command(pane, is_installed)?;
+    Command::new(program)
+        .args(args)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn launch_settings(pane: &str) -> CommandResult<()> {
+    launch(settings_target(pane)?, false)
+}
+
 #[tauri::command(async)]
 pub fn open_system_settings(pane: String) -> CommandResult<()> {
-    launch(settings_target(&pane)?, false)
+    launch_settings(&pane)
 }
 
 #[cfg(test)]
@@ -100,6 +149,37 @@ mod tests {
                 "{bad:?} deveria ser barrado"
             );
         }
+    }
+
+    #[test]
+    fn linux_opens_the_first_installed_settings_app_for_notifications() {
+        let both = |_: &str| true;
+        assert_eq!(
+            linux_settings_command("notifications", both).unwrap(),
+            ("gnome-control-center", &["notifications"][..])
+        );
+        let kde = |program: &str| program == "systemsettings";
+        assert_eq!(
+            linux_settings_command("notifications", kde).unwrap(),
+            ("systemsettings", &["kcm_notifications"][..])
+        );
+    }
+
+    #[test]
+    fn linux_settings_fail_cleanly_without_an_app_or_for_unknown_panes() {
+        let none = |_: &str| false;
+        assert_eq!(
+            linux_settings_command("notifications", none)
+                .unwrap_err()
+                .kind,
+            ErrorKind::ProgramNotFound
+        );
+        assert_eq!(
+            linux_settings_command("privacy", |_: &str| true)
+                .unwrap_err()
+                .kind,
+            ErrorKind::InvalidArgument
+        );
     }
 
     #[test]
