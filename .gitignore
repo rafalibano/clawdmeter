@@ -47,3 +47,12 @@ Thumbs.db
 
 # Lint fixtures output
 /.eslintcache
+
+# Vitest
+.vitest/
+
+# Ícones gerados que não usamos
+/src-tauri/icons/android/
+/src-tauri/icons/ios/
+/src-tauri/icons/Square*.png
+/src-tauri/icons/StoreLogo.png
