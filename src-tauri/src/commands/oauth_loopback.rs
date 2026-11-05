@@ -60,7 +60,10 @@ impl LoopbackRegistry {
     }
 
     fn get(&self, id: &str) -> Option<Arc<LoopbackListener>> {
-        self.listeners.lock().ok().and_then(|listeners| listeners.get(id).cloned())
+        self.listeners
+            .lock()
+            .ok()
+            .and_then(|listeners| listeners.get(id).cloned())
     }
 
     fn remove(&self, id: &str) {
@@ -93,7 +96,10 @@ pub fn request_target(head: &str) -> CommandResult<String> {
     let mut parts = line.split_whitespace();
     match (parts.next(), parts.next()) {
         (Some("GET"), Some(target)) if target.starts_with('/') => Ok(target.to_string()),
-        _ => Err(CommandError::new(ErrorKind::InvalidArgument, "requisição de callback inválida")),
+        _ => Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "requisição de callback inválida",
+        )),
     }
 }
 
@@ -122,15 +128,27 @@ pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<Ca
         .map(|received| !expected_state.is_empty() && same_state(expected_state, received))
         .unwrap_or(false);
     if !state_ok {
-        return Err(CommandError::new(ErrorKind::StateMismatch, "state do callback não confere"));
+        return Err(CommandError::new(
+            ErrorKind::StateMismatch,
+            "state do callback não confere",
+        ));
     }
     if let Some(error) = query.get("error") {
-        let detail = query.get("error_description").map(String::as_str).unwrap_or(error.as_str());
-        return Err(CommandError::new(ErrorKind::ProviderError, format!("{error}: {detail}")));
+        let detail = query
+            .get("error_description")
+            .map(String::as_str)
+            .unwrap_or(error.as_str());
+        return Err(CommandError::new(
+            ErrorKind::ProviderError,
+            format!("{error}: {detail}"),
+        ));
     }
     match query.get("code").filter(|code| !code.is_empty()) {
         Some(code) => Ok(CallbackOutcome::Code(code.clone())),
-        None => Err(CommandError::new(ErrorKind::ProviderError, "callback sem code")),
+        None => Err(CommandError::new(
+            ErrorKind::ProviderError,
+            "callback sem code",
+        )),
     }
 }
 
@@ -146,10 +164,13 @@ fn page(status: &str, title: &str) -> String {
 
 fn read_head(stream: &mut TcpStream) -> Option<String> {
     stream.set_nonblocking(false).ok()?;
-    stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS))).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)))
+        .ok()?;
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 1024];
-    while buffer.len() < MAX_REQUEST_BYTES && !buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+    while buffer.len() < MAX_REQUEST_BYTES && !buffer.windows(4).any(|window| window == b"\r\n\r\n")
+    {
         match stream.read(&mut chunk) {
             Ok(0) => break,
             Ok(read) => buffer.extend_from_slice(&chunk[..read]),
@@ -164,15 +185,25 @@ fn reply(stream: &mut TcpStream, response: &str) {
     let _ = stream.flush();
 }
 
-fn serve_until_callback(listener: &LoopbackListener, expected_state: &str, limit: Duration) -> CommandResult<String> {
-    listener.socket.set_nonblocking(true).map_err(CommandError::io)?;
+fn serve_until_callback(
+    listener: &LoopbackListener,
+    expected_state: &str,
+    limit: Duration,
+) -> CommandResult<String> {
+    listener
+        .socket
+        .set_nonblocking(true)
+        .map_err(CommandError::io)?;
     let started = Instant::now();
     loop {
         if listener.cancelled.load(Ordering::SeqCst) {
             return Err(CommandError::new(ErrorKind::Cancelled, "login cancelado"));
         }
         if started.elapsed() >= limit {
-            return Err(CommandError::new(ErrorKind::Timeout, "tempo esgotado aguardando o login"));
+            return Err(CommandError::new(
+                ErrorKind::Timeout,
+                "tempo esgotado aguardando o login",
+            ));
         }
         let mut stream = match listener.socket.accept() {
             Ok((stream, _)) => stream,
@@ -185,13 +216,16 @@ fn serve_until_callback(listener: &LoopbackListener, expected_state: &str, limit
         let Some(head) = read_head(&mut stream) else {
             continue;
         };
-        let outcome = request_target(&head).and_then(|target| evaluate_callback(&target, expected_state));
+        let outcome =
+            request_target(&head).and_then(|target| evaluate_callback(&target, expected_state));
         match outcome {
             Ok(CallbackOutcome::Code(code)) => {
                 reply(&mut stream, &page("200 OK", "Login concluído"));
                 return Ok(code);
             }
-            Ok(CallbackOutcome::NotCallback) => reply(&mut stream, &page("404 Not Found", "Não encontrado")),
+            Ok(CallbackOutcome::NotCallback) => {
+                reply(&mut stream, &page("404 Not Found", "Não encontrado"))
+            }
             Err(error) if error.kind == ErrorKind::InvalidArgument => {
                 reply(&mut stream, &page("400 Bad Request", "Requisição inválida"));
             }
@@ -245,7 +279,10 @@ mod tests {
     #[test]
     fn extracts_the_target_from_a_get_request() {
         let head = "GET /callback?code=abc&state=xyz HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
-        assert_eq!(request_target(head).unwrap(), "/callback?code=abc&state=xyz");
+        assert_eq!(
+            request_target(head).unwrap(),
+            "/callback?code=abc&state=xyz"
+        );
     }
 
     #[test]
@@ -291,7 +328,10 @@ mod tests {
 
     #[test]
     fn other_paths_are_not_callbacks() {
-        assert_eq!(evaluate_callback("/favicon.ico", "s-1").unwrap(), CallbackOutcome::NotCallback);
+        assert_eq!(
+            evaluate_callback("/favicon.ico", "s-1").unwrap(),
+            CallbackOutcome::NotCallback
+        );
     }
 
     #[test]

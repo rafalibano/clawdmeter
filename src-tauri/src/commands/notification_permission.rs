@@ -37,7 +37,8 @@ fn platform_state(_app: &AppHandle) -> &'static str {
     use objc2_user_notifications::{UNNotificationSettings, UNUserNotificationCenter};
 
     let bundle = NSBundle::mainBundle();
-    let packaged = bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app");
+    let packaged =
+        bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app");
     if !packaged {
         return UNKNOWN;
     }
@@ -46,7 +47,8 @@ fn platform_state(_app: &AppHandle) -> &'static str {
         let status = unsafe { settings.as_ref() }.authorizationStatus().0;
         let _ = sender.send(status);
     });
-    UNUserNotificationCenter::currentNotificationCenter().getNotificationSettingsWithCompletionHandler(&handler);
+    UNUserNotificationCenter::currentNotificationCenter()
+        .getNotificationSettingsWithCompletionHandler(&handler);
     receiver
         .recv_timeout(Duration::from_secs(2))
         .map(state_from_authorization_status)

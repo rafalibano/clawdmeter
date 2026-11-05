@@ -3,20 +3,26 @@ use std::process::Command;
 use super::error::{CommandError, CommandResult, ErrorKind};
 use std::path::{Path, PathBuf};
 
-use super::process_policy::{home_dir, validate_args, validate_cwd, validate_program, validate_terminal_invocation};
+use super::process_policy::{
+    home_dir, validate_args, validate_cwd, validate_program, validate_terminal_invocation,
+};
 
 pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
     validate_args(args)?;
     let safe = |arg: &String| {
         !arg.is_empty()
-            && arg
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '=' | ',' | '@'))
+            && arg.chars().all(|c| {
+                c.is_ascii_alphanumeric()
+                    || matches!(c, '-' | '_' | '.' | '/' | ':' | '=' | ',' | '@')
+            })
     };
     if args.iter().all(safe) {
         Ok(())
     } else {
-        Err(CommandError::new(ErrorKind::InvalidArgument, "argumento não permitido no terminal"))
+        Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "argumento não permitido no terminal",
+        ))
     }
 }
 
@@ -28,15 +34,22 @@ pub fn shell_line(program: &str, args: &[String]) -> String {
 }
 
 fn has_forbidden_cwd_char(text: &str, backslash_forbidden: bool) -> bool {
-    text.chars().any(|c| matches!(c, '\'' | '"' | '\n' | '\r' | '\0') || (backslash_forbidden && c == '\\'))
+    text.chars()
+        .any(|c| matches!(c, '\'' | '"' | '\n' | '\r' | '\0') || (backslash_forbidden && c == '\\'))
 }
 
-pub fn validate_terminal_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Option<PathBuf>> {
+pub fn validate_terminal_cwd(
+    cwd: Option<&str>,
+    home: Option<&Path>,
+) -> CommandResult<Option<PathBuf>> {
     let resolved = validate_cwd(cwd, home)?;
     if let Some(dir) = &resolved {
         let text = dir.to_string_lossy();
         if has_forbidden_cwd_char(&text, cfg!(target_os = "macos")) {
-            return Err(CommandError::new(ErrorKind::InvalidArgument, "diretório de trabalho não permitido no terminal"));
+            return Err(CommandError::new(
+                ErrorKind::InvalidArgument,
+                "diretório de trabalho não permitido no terminal",
+            ));
         }
     }
     Ok(resolved)
@@ -81,7 +94,9 @@ fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<(
 fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
     use std::os::windows::process::CommandExt;
     let mut command = Command::new("cmd");
-    command.args(windows_terminal_args(program, args)).creation_flags(super::process::CREATE_NO_WINDOW);
+    command
+        .args(windows_terminal_args(program, args))
+        .creation_flags(super::process::CREATE_NO_WINDOW);
     if let Some(dir) = cwd.map(Path::to_path_buf).or_else(home_dir) {
         command.current_dir(dir);
     }
@@ -93,7 +108,10 @@ fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<(
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn launch(_program: &str, _args: &[String], _cwd: Option<&Path>) -> CommandResult<()> {
-    Err(CommandError::new(ErrorKind::SpawnFailed, "terminal não suportado neste sistema"))
+    Err(CommandError::new(
+        ErrorKind::SpawnFailed,
+        "terminal não suportado neste sistema",
+    ))
 }
 
 #[tauri::command(async)]
@@ -126,14 +144,23 @@ mod tests {
     fn accepts_login_and_resume_arguments() {
         assert!(validate_terminal_args(&args(&["/login"])).is_ok());
         assert!(validate_terminal_args(&args(&["/mcp"])).is_ok());
-        assert!(validate_terminal_args(&args(&["--resume", "3f2a9c1e-0000-4000-8000-123456789abc"])).is_ok());
+        assert!(validate_terminal_args(&args(&[
+            "--resume",
+            "3f2a9c1e-0000-4000-8000-123456789abc"
+        ]))
+        .is_ok());
         assert!(validate_terminal_args(&args(&["auth", "refresh", "-s", "repo,read:org"])).is_ok());
     }
 
     #[test]
     fn rejects_shell_metacharacters() {
-        for bad in ["a;b", "a b", "$(x)", "a\"b", "a`b", "a&b", "a|b", "", "a\nb"] {
-            assert!(validate_terminal_args(&args(&[bad])).is_err(), "{bad:?} deveria ser barrado");
+        for bad in [
+            "a;b", "a b", "$(x)", "a\"b", "a`b", "a&b", "a|b", "", "a\nb",
+        ] {
+            assert!(
+                validate_terminal_args(&args(&[bad])).is_err(),
+                "{bad:?} deveria ser barrado"
+            );
         }
     }
 
@@ -150,7 +177,10 @@ mod tests {
             shell_line_in(Some(dir), "claude", &args(&["--resume", "abc"])),
             "cd '/Users/dev/My Projects' && claude --resume abc"
         );
-        assert_eq!(shell_line_in(None, "claude", &args(&["/mcp"])), "claude /mcp");
+        assert_eq!(
+            shell_line_in(None, "claude", &args(&["/mcp"])),
+            "claude /mcp"
+        );
     }
 
     #[test]
@@ -163,7 +193,11 @@ mod tests {
         std::fs::create_dir_all(home.join("com espaço")).unwrap();
         std::fs::create_dir_all(root.join("fora")).unwrap();
         assert!(validate_terminal_cwd(quoted.to_str(), Some(&home)).is_err());
-        assert!(validate_terminal_cwd(home.join("com espaço").to_str(), Some(&home)).unwrap().is_some());
+        assert!(
+            validate_terminal_cwd(home.join("com espaço").to_str(), Some(&home))
+                .unwrap()
+                .is_some()
+        );
         assert!(validate_terminal_cwd(root.join("fora").to_str(), Some(&home)).is_err());
         assert!(validate_terminal_cwd(None, Some(&home)).unwrap().is_none());
         let _ = std::fs::remove_dir_all(&root);
@@ -179,12 +213,20 @@ mod tests {
     #[test]
     fn builds_windows_arguments_without_quoting() {
         let built = windows_terminal_args("claude", &args(&["/login"]));
-        assert_eq!(built, args(&["/C", "start", "", "cmd", "/K", "claude", "/login"]));
+        assert_eq!(
+            built,
+            args(&["/C", "start", "", "cmd", "/K", "claude", "/login"])
+        );
     }
 
     #[test]
     fn rejects_arguments_outside_the_per_program_policy_before_launching() {
-        let denied = terminal_run("claude".into(), args(&["--dangerously-skip-permissions"]), None).unwrap_err();
+        let denied = terminal_run(
+            "claude".into(),
+            args(&["--dangerously-skip-permissions"]),
+            None,
+        )
+        .unwrap_err();
         assert_eq!(denied.kind, ErrorKind::InvalidArgument);
         let other = terminal_run("gh".into(), args(&["auth", "token"]), None).unwrap_err();
         assert_eq!(other.kind, ErrorKind::InvalidArgument);
@@ -193,7 +235,9 @@ mod tests {
     #[test]
     fn rejects_programs_outside_the_allowlist() {
         assert_eq!(
-            terminal_run("bash".into(), args(&["-c"]), None).unwrap_err().kind,
+            terminal_run("bash".into(), args(&["-c"]), None)
+                .unwrap_err()
+                .kind,
             ErrorKind::ProgramNotAllowed
         );
     }

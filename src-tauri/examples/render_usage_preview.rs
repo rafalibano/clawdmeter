@@ -8,7 +8,11 @@ fn crc32(data: &[u8]) -> u32 {
     for byte in data {
         crc ^= *byte as u32;
         for _ in 0..8 {
-            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     !crc
@@ -58,7 +62,13 @@ fn encode_png(icon: &UsageIcon) -> Vec<u8> {
     png
 }
 
-fn composite(icon: &UsageIcon, background: [u8; 3], tint: Option<[u8; 3]>, zoom: u32, pad: u32) -> UsageIcon {
+fn composite(
+    icon: &UsageIcon,
+    background: [u8; 3],
+    tint: Option<[u8; 3]>,
+    zoom: u32,
+    pad: u32,
+) -> UsageIcon {
     let width = (icon.width + pad * 2) * zoom;
     let height = (icon.height + pad * 2) * zoom;
     let mut rgba = Vec::with_capacity((width * height * 4) as usize);
@@ -66,7 +76,11 @@ fn composite(icon: &UsageIcon, background: [u8; 3], tint: Option<[u8; 3]>, zoom:
         for x in 0..width {
             let (sx, sy) = (x / zoom, y / zoom);
             let inside = sx >= pad && sy >= pad && sx < pad + icon.width && sy < pad + icon.height;
-            let mut pixel = [background[0] as f32, background[1] as f32, background[2] as f32];
+            let mut pixel = [
+                background[0] as f32,
+                background[1] as f32,
+                background[2] as f32,
+            ];
             if inside {
                 let at = (((sy - pad) * icon.width + (sx - pad)) * 4) as usize;
                 let source = &icon.rgba[at..at + 4];
@@ -79,7 +93,11 @@ fn composite(icon: &UsageIcon, background: [u8; 3], tint: Option<[u8; 3]>, zoom:
             rgba.extend_from_slice(&[pixel[0] as u8, pixel[1] as u8, pixel[2] as u8, 255]);
         }
     }
-    UsageIcon { width, height, rgba }
+    UsageIcon {
+        width,
+        height,
+        rgba,
+    }
 }
 
 fn write(dir: &PathBuf, name: &str, icon: &UsageIcon) {
@@ -99,23 +117,55 @@ fn main() {
 
     let mac = render_usage_icon(Some(24.0), Some(51.0), 2);
     write(&dir, "macos-2x-24-51-template.png", &mac);
-    write(&dir, "macos-2x-24-51-dark.png", &composite(&mac, DARK_BAR, Some(WHITE), 4, 6));
-    write(&dir, "macos-2x-24-51-light.png", &composite(&mac, LIGHT_BAR, Some(BLACK), 4, 6));
+    write(
+        &dir,
+        "macos-2x-24-51-dark.png",
+        &composite(&mac, DARK_BAR, Some(WHITE), 4, 6),
+    );
+    write(
+        &dir,
+        "macos-2x-24-51-light.png",
+        &composite(&mac, LIGHT_BAR, Some(BLACK), 4, 6),
+    );
 
     let mac_none = render_usage_icon(None, None, 2);
-    write(&dir, "macos-2x-sem-dado-dark.png", &composite(&mac_none, DARK_BAR, Some(WHITE), 4, 6));
+    write(
+        &dir,
+        "macos-2x-sem-dado-dark.png",
+        &composite(&mac_none, DARK_BAR, Some(WHITE), 4, 6),
+    );
 
     let mac_high = render_usage_icon(Some(100.0), Some(8.0), 2);
-    write(&dir, "macos-2x-100-8-dark.png", &composite(&mac_high, DARK_BAR, Some(WHITE), 4, 6));
+    write(
+        &dir,
+        "macos-2x-100-8-dark.png",
+        &composite(&mac_high, DARK_BAR, Some(WHITE), 4, 6),
+    );
 
     let win = render_usage_icon_square(Some(24.0), Some(51.0), 2);
     write(&dir, "windows-32-24-51.png", &win);
-    write(&dir, "windows-32-24-51-dark.png", &composite(&win, DARK_BAR, None, 8, 4));
-    write(&dir, "windows-32-24-51-light.png", &composite(&win, LIGHT_BAR, None, 8, 4));
+    write(
+        &dir,
+        "windows-32-24-51-dark.png",
+        &composite(&win, DARK_BAR, None, 8, 4),
+    );
+    write(
+        &dir,
+        "windows-32-24-51-light.png",
+        &composite(&win, LIGHT_BAR, None, 8, 4),
+    );
 
     let win_small = render_usage_icon_square(Some(24.0), Some(51.0), 1);
-    write(&dir, "windows-16-24-51-dark.png", &composite(&win_small, DARK_BAR, None, 16, 2));
+    write(
+        &dir,
+        "windows-16-24-51-dark.png",
+        &composite(&win_small, DARK_BAR, None, 16, 2),
+    );
 
     let win_none = render_usage_icon_square(None, None, 2);
-    write(&dir, "windows-32-sem-dado-dark.png", &composite(&win_none, DARK_BAR, None, 8, 4));
+    write(
+        &dir,
+        "windows-32-sem-dado-dark.png",
+        &composite(&win_none, DARK_BAR, None, 8, 4),
+    );
 }

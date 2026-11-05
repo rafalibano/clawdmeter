@@ -30,9 +30,10 @@ pub struct ClaudeCredential {
 }
 
 pub fn parse_credentials(raw: &str) -> CommandResult<ClaudeCredential> {
-    let malformed = |detail: &str| CommandError::new(ErrorKind::CredentialMalformed, detail.to_string());
-    let stored: StoredCredentials =
-        serde_json::from_str(raw.trim()).map_err(|_| malformed("credencial do Claude Code não é um JSON válido"))?;
+    let malformed =
+        |detail: &str| CommandError::new(ErrorKind::CredentialMalformed, detail.to_string());
+    let stored: StoredCredentials = serde_json::from_str(raw.trim())
+        .map_err(|_| malformed("credencial do Claude Code não é um JSON válido"))?;
     let oauth = stored
         .claude_ai_oauth
         .ok_or_else(|| malformed("credencial sem claudeAiOauth"))?;
@@ -171,14 +172,22 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json() {
-        assert_eq!(parse_credentials("nao-json").unwrap_err().kind, ErrorKind::CredentialMalformed);
+        assert_eq!(
+            parse_credentials("nao-json").unwrap_err().kind,
+            ErrorKind::CredentialMalformed
+        );
     }
 
     #[test]
     fn rejects_missing_oauth_block_and_empty_token() {
-        assert_eq!(parse_credentials("{}").unwrap_err().kind, ErrorKind::CredentialMalformed);
         assert_eq!(
-            parse_credentials(r#"{"claudeAiOauth":{"accessToken":""}}"#).unwrap_err().kind,
+            parse_credentials("{}").unwrap_err().kind,
+            ErrorKind::CredentialMalformed
+        );
+        assert_eq!(
+            parse_credentials(r#"{"claudeAiOauth":{"accessToken":""}}"#)
+                .unwrap_err()
+                .kind,
             ErrorKind::CredentialMalformed
         );
     }
@@ -186,18 +195,33 @@ mod tests {
     #[test]
     fn classifies_security_exit_codes() {
         assert_eq!(
-            classify_security_failure(Some(44), "The specified item could not be found in the keychain."),
+            classify_security_failure(
+                Some(44),
+                "The specified item could not be found in the keychain."
+            ),
             KeychainOutcome::Missing
         );
-        assert_eq!(classify_security_failure(Some(51), "User canceled the operation."), KeychainOutcome::Denied);
-        assert_eq!(classify_security_failure(Some(36), ""), KeychainOutcome::Denied);
-        assert_eq!(classify_security_failure(Some(1), "boom"), KeychainOutcome::Failed);
+        assert_eq!(
+            classify_security_failure(Some(51), "User canceled the operation."),
+            KeychainOutcome::Denied
+        );
+        assert_eq!(
+            classify_security_failure(Some(36), ""),
+            KeychainOutcome::Denied
+        );
+        assert_eq!(
+            classify_security_failure(Some(1), "boom"),
+            KeychainOutcome::Failed
+        );
     }
 
     #[test]
     fn builds_credentials_path_under_home() {
         let path = credentials_file_path(Some(PathBuf::from("/home/dev"))).unwrap();
-        assert!(path.ends_with(".claude/.credentials.json") || path.ends_with(".claude\\.credentials.json"));
+        assert!(
+            path.ends_with(".claude/.credentials.json")
+                || path.ends_with(".claude\\.credentials.json")
+        );
         assert_eq!(credentials_file_path(None), None);
     }
 }

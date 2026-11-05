@@ -39,11 +39,17 @@ impl ProcessRegistry {
     }
 
     fn contains(&self, pid: u32) -> bool {
-        self.0.lock().map(|pids| pids.contains(&pid)).unwrap_or(false)
+        self.0
+            .lock()
+            .map(|pids| pids.contains(&pid))
+            .unwrap_or(false)
     }
 
     fn drain(&self) -> Vec<u32> {
-        self.0.lock().map(|mut pids| pids.drain().collect()).unwrap_or_default()
+        self.0
+            .lock()
+            .map(|mut pids| pids.drain().collect())
+            .unwrap_or_default()
     }
 
     pub fn terminate_all(&self) {
@@ -73,7 +79,12 @@ struct ExitEvent {
     code: Option<i32>,
 }
 
-pub fn candidate_paths(program: &str, path_var: Option<&str>, home: Option<&Path>, windows: bool) -> Vec<PathBuf> {
+pub fn candidate_paths(
+    program: &str,
+    path_var: Option<&str>,
+    home: Option<&Path>,
+    windows: bool,
+) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = path_var
         .map(|value| {
             std::env::split_paths(value)
@@ -120,7 +131,12 @@ fn resolve_program(program: &str) -> CommandResult<PathBuf> {
     candidate_paths(program, path_var.as_deref(), home.as_deref(), cfg!(windows))
         .into_iter()
         .find(|candidate| candidate.is_file())
-        .ok_or_else(|| CommandError::new(ErrorKind::ProgramNotFound, format!("{program} não encontrado")))
+        .ok_or_else(|| {
+            CommandError::new(
+                ErrorKind::ProgramNotFound,
+                format!("{program} não encontrado"),
+            )
+        })
 }
 
 fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandResult<Command> {
@@ -131,7 +147,11 @@ fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandRe
         .or_else(|| home.as_ref().map(|dir| dir.to_string_lossy().into_owned()));
     let dir = validate_cwd(effective.as_deref(), home.as_deref())?;
     let mut command = Command::new(resolve_program(program)?);
-    command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if let Some(dir) = dir {
         command.current_dir(dir);
     }
@@ -188,19 +208,31 @@ impl Capture {
 
     fn finish_within(self, limit: Duration) -> String {
         let _ = join_with_limit(self.reader, limit);
-        let bytes = self.buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+        let bytes = self
+            .buffer
+            .lock()
+            .map(|bytes| bytes.clone())
+            .unwrap_or_default();
         String::from_utf8_lossy(&bytes).into_owned()
     }
 }
 
 #[tauri::command(async)]
-pub fn process_run(program: String, args: Vec<String>, timeout_ms: Option<u64>) -> CommandResult<RunOutput> {
+pub fn process_run(
+    program: String,
+    args: Vec<String>,
+    timeout_ms: Option<u64>,
+) -> CommandResult<RunOutput> {
     let mut child = build_command(&program, &args, None)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
     let stderr = child.stderr.take().map(Capture::start);
-    let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_RUN_TIMEOUT_MS).min(MAX_RUN_TIMEOUT_MS));
+    let limit = Duration::from_millis(
+        timeout_ms
+            .unwrap_or(DEFAULT_RUN_TIMEOUT_MS)
+            .min(MAX_RUN_TIMEOUT_MS),
+    );
     let started = Instant::now();
     let status = loop {
         match child.try_wait().map_err(CommandError::io)? {
@@ -212,7 +244,10 @@ pub fn process_run(program: String, args: Vec<String>, timeout_ms: Option<u64>) 
                 for capture in [stdout, stderr].into_iter().flatten() {
                     let _ = capture.finish();
                 }
-                return Err(CommandError::new(ErrorKind::Timeout, format!("{program} excedeu o tempo limite")));
+                return Err(CommandError::new(
+                    ErrorKind::Timeout,
+                    format!("{program} excedeu o tempo limite"),
+                ));
             }
             None => thread::sleep(Duration::from_millis(POLL_INTERVAL_MS)),
         }
@@ -224,7 +259,12 @@ pub fn process_run(program: String, args: Vec<String>, timeout_ms: Option<u64>) 
     })
 }
 
-fn stream_lines(app: AppHandle, pid: u32, stream: &'static str, source: impl Read + Send + 'static) -> thread::JoinHandle<()> {
+fn stream_lines(
+    app: AppHandle,
+    pid: u32,
+    stream: &'static str,
+    source: impl Read + Send + 'static,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for line in BufReader::new(source).lines().map_while(Result::ok) {
             let _ = app.emit(OUTPUT_EVENT, OutputEvent { pid, stream, line });
@@ -354,11 +394,19 @@ mod tests {
 
     #[test]
     fn unix_candidates_include_path_homebrew_and_home() {
-        let paths = candidate_paths("gh", Some("/custom/bin:/usr/bin"), Some(Path::new("/Users/dev")), false);
+        let paths = candidate_paths(
+            "gh",
+            Some("/custom/bin:/usr/bin"),
+            Some(Path::new("/Users/dev")),
+            false,
+        );
         assert_eq!(paths[0], PathBuf::from("/custom/bin/gh"));
         assert!(paths.contains(&PathBuf::from("/opt/homebrew/bin/gh")));
         assert!(paths.contains(&PathBuf::from("/Users/dev/.local/bin/gh")));
-        let usr_bin = paths.iter().filter(|path| **path == PathBuf::from("/usr/bin/gh")).count();
+        let usr_bin = paths
+            .iter()
+            .filter(|path| **path == PathBuf::from("/usr/bin/gh"))
+            .count();
         assert_eq!(usr_bin, 1);
     }
 
@@ -367,7 +415,10 @@ mod tests {
         let paths = candidate_paths("claude", None, Some(Path::new("C:\\Users\\dev")), true);
         let names: Vec<String> = paths
             .iter()
-            .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+            .filter_map(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+            })
             .collect();
         assert!(names.contains(&"claude.exe".to_string()));
         assert!(names.contains(&"claude.cmd".to_string()));
@@ -448,7 +499,11 @@ mod tests {
     #[test]
     fn killing_an_already_exited_registered_pid_is_ignored() {
         use std::os::unix::process::CommandExt;
-        let mut child = Command::new("/bin/sh").args(["-c", "exit 0"]).process_group(0).spawn().unwrap();
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
         let pid = child.id();
         child.wait().unwrap();
         let registry = ProcessRegistry::default();

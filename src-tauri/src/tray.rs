@@ -92,7 +92,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn set_usage(app: &AppHandle, five_hour: Option<f64>, seven_day: Option<f64>, tooltip: &str) -> tauri::Result<()> {
+pub fn set_usage(
+    app: &AppHandle,
+    five_hour: Option<f64>,
+    seven_day: Option<f64>,
+    tooltip: &str,
+) -> tauri::Result<()> {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return Ok(());
     };

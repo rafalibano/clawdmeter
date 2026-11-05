@@ -9,9 +9,17 @@ pub fn classify_keyring_error(error: &keyring::Error) -> ErrorKind {
         keyring::Error::NoStorageAccess(_) => ErrorKind::KeychainDenied,
         keyring::Error::PlatformFailure(inner) => {
             let text = inner.to_string().to_lowercase();
-            let denied = ["-128", "-25293", "-25308", "user canceled", "user interaction", "access denied", "denied"]
-                .iter()
-                .any(|marker| text.contains(marker));
+            let denied = [
+                "-128",
+                "-25293",
+                "-25308",
+                "user canceled",
+                "user interaction",
+                "access denied",
+                "denied",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker));
             if denied {
                 ErrorKind::KeychainDenied
             } else {
@@ -54,7 +62,9 @@ impl SecretBackend for KeyringBackend {
     }
 
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
-        Self::entry(key)?.set_password(value).map_err(to_command_error)
+        Self::entry(key)?
+            .set_password(value)
+            .map_err(to_command_error)
     }
 
     fn remove(&self, key: &str) -> CommandResult<()> {
@@ -75,8 +85,13 @@ fn classify(stored: &str) -> Stored<'_> {
     let Some(rest) = stored.strip_prefix(HEADER_PREFIX) else {
         return Stored::Plain(stored);
     };
-    match rest.split_once(':').and_then(|(count, first)| Some((count.parse::<usize>().ok()?, first))) {
-        Some((count, first)) if (1..=MAX_CHUNKS).contains(&count) => Stored::Chunked { count, first },
+    match rest
+        .split_once(':')
+        .and_then(|(count, first)| Some((count.parse::<usize>().ok()?, first)))
+    {
+        Some((count, first)) if (1..=MAX_CHUNKS).contains(&count) => {
+            Stored::Chunked { count, first }
+        }
         _ => Stored::Corrupt,
     }
 }
@@ -90,7 +105,10 @@ fn check_key(key: &str) -> CommandResult<()> {
         return Err(CommandError::new(ErrorKind::InvalidArgument, "chave vazia"));
     }
     if key.contains('#') {
-        return Err(CommandError::new(ErrorKind::InvalidArgument, "chave com caractere reservado"));
+        return Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "chave com caractere reservado",
+        ));
     }
     Ok(())
 }
@@ -154,7 +172,10 @@ pub fn set_secret(backend: &dyn SecretBackend, key: &str, value: &str) -> Comman
     check_key(key)?;
     let pieces = split_chunks(value);
     if pieces.len() > MAX_CHUNKS {
-        return Err(CommandError::new(ErrorKind::InvalidArgument, "segredo grande demais"));
+        return Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "segredo grande demais",
+        ));
     }
     let previous = stored_pieces(backend, key)?;
     if pieces.len() == 1 && !value.starts_with(HEADER_PREFIX) {
@@ -163,7 +184,10 @@ pub fn set_secret(backend: &dyn SecretBackend, key: &str, value: &str) -> Comman
         for (index, piece) in pieces.iter().enumerate().skip(1) {
             backend.write(&tail_key(key, index), piece)?;
         }
-        backend.write(key, &format!("{HEADER_PREFIX}{}:{}", pieces.len(), pieces[0]))?;
+        backend.write(
+            key,
+            &format!("{HEADER_PREFIX}{}:{}", pieces.len(), pieces[0]),
+        )?;
     }
     drop_tails(backend, key, pieces.len(), previous)
 }
@@ -235,9 +259,14 @@ mod tests {
 
         fn write(&self, key: &str, value: &str) -> CommandResult<()> {
             if value.encode_utf16().count() * 2 > WINDOWS_BLOB_LIMIT {
-                return Err(CommandError::new(ErrorKind::Io, "blob acima do limite do Credential Manager"));
+                return Err(CommandError::new(
+                    ErrorKind::Io,
+                    "blob acima do limite do Credential Manager",
+                ));
             }
-            self.entries.borrow_mut().insert(key.to_string(), value.to_string());
+            self.entries
+                .borrow_mut()
+                .insert(key.to_string(), value.to_string());
             Ok(())
         }
 
@@ -248,7 +277,9 @@ mod tests {
     }
 
     fn big_secret(len: usize) -> String {
-        (0..len).map(|index| char::from(b'a' + (index % 26) as u8)).collect()
+        (0..len)
+            .map(|index| char::from(b'a' + (index % 26) as u8))
+            .collect()
     }
 
     #[test]
@@ -256,8 +287,14 @@ mod tests {
         let backend = FakeBackend::default();
         set_secret(&backend, "github.token", "gho_abc").unwrap();
         assert_eq!(backend.entries.borrow().len(), 1);
-        assert_eq!(backend.entries.borrow().get("github.token").unwrap(), "gho_abc");
-        assert_eq!(get_secret(&backend, "github.token").unwrap().as_deref(), Some("gho_abc"));
+        assert_eq!(
+            backend.entries.borrow().get("github.token").unwrap(),
+            "gho_abc"
+        );
+        assert_eq!(
+            get_secret(&backend, "github.token").unwrap().as_deref(),
+            Some("gho_abc")
+        );
     }
 
     #[test]
@@ -265,11 +302,16 @@ mod tests {
         let backend = FakeBackend::default();
         let secret = big_secret(5_000);
         set_secret(&backend, "k", &secret).unwrap();
-        assert_eq!(get_secret(&backend, "k").unwrap().as_deref(), Some(secret.as_str()));
+        assert_eq!(
+            get_secret(&backend, "k").unwrap().as_deref(),
+            Some(secret.as_str())
+        );
         let entries = backend.entries.borrow();
         assert!(entries.len() >= 5);
         assert!(entries.contains_key("k#1"));
-        assert!(entries.values().all(|value| value.encode_utf16().count() * 2 <= WINDOWS_BLOB_LIMIT));
+        assert!(entries
+            .values()
+            .all(|value| value.encode_utf16().count() * 2 <= WINDOWS_BLOB_LIMIT));
         assert!(entries.get("k").unwrap().starts_with(HEADER_PREFIX));
     }
 
@@ -278,7 +320,10 @@ mod tests {
         let backend = FakeBackend::default();
         let secret: String = "aé€😀".repeat(900);
         set_secret(&backend, "k", &secret).unwrap();
-        assert_eq!(get_secret(&backend, "k").unwrap().as_deref(), Some(secret.as_str()));
+        assert_eq!(
+            get_secret(&backend, "k").unwrap().as_deref(),
+            Some(secret.as_str())
+        );
     }
 
     #[test]
@@ -309,7 +354,10 @@ mod tests {
         let backend = FakeBackend::default();
         let tricky = format!("{HEADER_PREFIX}3:not-really-chunked");
         set_secret(&backend, "k", &tricky).unwrap();
-        assert_eq!(get_secret(&backend, "k").unwrap().as_deref(), Some(tricky.as_str()));
+        assert_eq!(
+            get_secret(&backend, "k").unwrap().as_deref(),
+            Some(tricky.as_str())
+        );
     }
 
     #[test]
@@ -318,7 +366,10 @@ mod tests {
         set_secret(&backend, "k", &big_secret(5_000)).unwrap();
         backend.entries.borrow_mut().remove("k#2");
         assert_eq!(get_secret(&backend, "k").unwrap(), None);
-        backend.entries.borrow_mut().insert("k".into(), format!("{HEADER_PREFIX}zzz:abc"));
+        backend
+            .entries
+            .borrow_mut()
+            .insert("k".into(), format!("{HEADER_PREFIX}zzz:abc"));
         assert_eq!(get_secret(&backend, "k").unwrap(), None);
         delete_secret(&backend, "k").unwrap();
         assert!(backend.entries.borrow().is_empty());
@@ -327,14 +378,21 @@ mod tests {
     #[test]
     fn keys_with_the_reserved_separator_are_rejected() {
         let backend = FakeBackend::default();
-        assert_eq!(set_secret(&backend, "a#1", "x").unwrap_err().kind, ErrorKind::InvalidArgument);
-        assert_eq!(get_secret(&backend, "").unwrap_err().kind, ErrorKind::InvalidArgument);
+        assert_eq!(
+            set_secret(&backend, "a#1", "x").unwrap_err().kind,
+            ErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            get_secret(&backend, "").unwrap_err().kind,
+            ErrorKind::InvalidArgument
+        );
     }
 
     #[test]
     fn oversized_secrets_are_refused() {
         let backend = FakeBackend::default();
-        let error = set_secret(&backend, "k", &big_secret(CHUNK_BYTES * MAX_CHUNKS + 1)).unwrap_err();
+        let error =
+            set_secret(&backend, "k", &big_secret(CHUNK_BYTES * MAX_CHUNKS + 1)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::InvalidArgument);
         assert!(backend.entries.borrow().is_empty());
     }

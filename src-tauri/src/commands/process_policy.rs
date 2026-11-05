@@ -24,11 +24,20 @@ pub fn validate_program(program: &str) -> CommandResult<&'static str> {
         .iter()
         .copied()
         .find(|allowed| *allowed == program)
-        .ok_or_else(|| CommandError::new(ErrorKind::ProgramNotAllowed, format!("programa não permitido: {program}")))
+        .ok_or_else(|| {
+            CommandError::new(
+                ErrorKind::ProgramNotAllowed,
+                format!("programa não permitido: {program}"),
+            )
+        })
 }
 
 pub fn validate_args(args: &[String]) -> CommandResult<()> {
-    if args.len() > MAX_ARGS || args.iter().any(|arg| arg.len() > MAX_ARG_BYTES || arg.contains('\0')) {
+    if args.len() > MAX_ARGS
+        || args
+            .iter()
+            .any(|arg| arg.len() > MAX_ARG_BYTES || arg.contains('\0'))
+    {
         return Err(invalid("argumentos inválidos"));
     }
     Ok(())
@@ -67,9 +76,12 @@ fn validate_gh_process(args: &[String]) -> CommandResult<()> {
 fn is_scope_list(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
-        && value
-            .split(',')
-            .all(|scope| !scope.is_empty() && scope.chars().all(|c| c.is_ascii_lowercase() || matches!(c, ':' | '_' | '-')))
+        && value.split(',').all(|scope| {
+            !scope.is_empty()
+                && scope
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || matches!(c, ':' | '_' | '-'))
+        })
 }
 
 fn validate_gh_terminal(args: &[String]) -> CommandResult<()> {
@@ -77,7 +89,11 @@ fn validate_gh_terminal(args: &[String]) -> CommandResult<()> {
     match args.as_slice() {
         ["auth", "login", flag, GH_HOST, "-w"] if is_host_flag(flag) => Ok(()),
         ["auth", "refresh", "-s", scopes] if is_scope_list(scopes) => Ok(()),
-        ["auth", "refresh", flag, GH_HOST, "-s", scopes] if is_host_flag(flag) && is_scope_list(scopes) => Ok(()),
+        ["auth", "refresh", flag, GH_HOST, "-s", scopes]
+            if is_host_flag(flag) && is_scope_list(scopes) =>
+        {
+            Ok(())
+        }
         _ => Err(invalid("argumentos do gh não permitidos")),
     }
 }
@@ -97,16 +113,23 @@ fn is_budget(value: &str) -> bool {
         && value.matches('.').count() <= 1
         && !value.starts_with('.')
         && !value.ends_with('.');
-    plain && value.parse::<f64>().is_ok_and(|budget| budget.is_finite() && budget > 0.0 && budget <= MAX_BUDGET_USD)
+    plain
+        && value
+            .parse::<f64>()
+            .is_ok_and(|budget| budget.is_finite() && budget > 0.0 && budget <= MAX_BUDGET_USD)
 }
 
 fn is_tool_list(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_ALLOWED_TOOLS_BYTES
         && !value.starts_with('-')
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '(' | ')' | '*' | ':' | '.' | '_' | '-' | '/' | '@' | ' '))
+        && value.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    ',' | '(' | ')' | '*' | ':' | '.' | '_' | '-' | '/' | '@' | ' '
+                )
+        })
 }
 
 fn validate_claude_print(prompt: &str, options: &[String]) -> CommandResult<()> {
@@ -140,7 +163,9 @@ fn validate_claude_print(prompt: &str, options: &[String]) -> CommandResult<()> 
     if format && budget {
         Ok(())
     } else {
-        Err(invalid("o claude exige --output-format stream-json e --max-budget-usd"))
+        Err(invalid(
+            "o claude exige --output-format stream-json e --max-budget-usd",
+        ))
     }
 }
 
@@ -211,8 +236,14 @@ mod tests {
     fn only_allowlisted_programs_are_accepted() {
         assert_eq!(validate_program("claude").unwrap(), "claude");
         assert_eq!(validate_program("gh").unwrap(), "gh");
-        assert_eq!(validate_program("rm").unwrap_err().kind, ErrorKind::ProgramNotAllowed);
-        assert_eq!(validate_program("../claude").unwrap_err().kind, ErrorKind::ProgramNotAllowed);
+        assert_eq!(
+            validate_program("rm").unwrap_err().kind,
+            ErrorKind::ProgramNotAllowed
+        );
+        assert_eq!(
+            validate_program("../claude").unwrap_err().kind,
+            ErrorKind::ProgramNotAllowed
+        );
     }
 
     #[test]
@@ -226,7 +257,10 @@ mod tests {
     fn gh_accepts_only_auth_token_with_optional_host() {
         assert!(validate_invocation("gh", &args(&["auth", "token"])).is_ok());
         assert!(validate_invocation("gh", &args(&["auth", "token", "-h", "github.com"])).is_ok());
-        assert!(validate_invocation("gh", &args(&["auth", "token", "--hostname", "github.com"])).is_ok());
+        assert!(
+            validate_invocation("gh", &args(&["auth", "token", "--hostname", "github.com"]))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -241,13 +275,23 @@ mod tests {
             vec!["alias", "set", "a", "!rm -rf ~"],
             vec![],
         ] {
-            assert!(validate_invocation("gh", &args(&bad)).is_err(), "{bad:?} deveria ser barrado");
+            assert!(
+                validate_invocation("gh", &args(&bad)).is_err(),
+                "{bad:?} deveria ser barrado"
+            );
         }
     }
 
     #[test]
     fn claude_accepts_the_print_format_used_by_the_app() {
-        let base = ["-p", "resuma o PR", "--output-format", "stream-json", "--max-budget-usd", "0.5"];
+        let base = [
+            "-p",
+            "resuma o PR",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "0.5",
+        ];
         assert!(validate_invocation("claude", &args(&base)).is_ok());
         let with_tools = [
             "-p",
@@ -276,18 +320,40 @@ mod tests {
             "Read,Grep,Glob,Bash(gh:*),Bash(git:*)",
         ];
         assert!(validate_invocation("claude", &args(&argv)).is_ok());
-        let without_tools = ["-p", "/acabativa", "--output-format", "stream-json", "--verbose", "--max-budget-usd", "2"];
+        let without_tools = [
+            "-p",
+            "/acabativa",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--max-budget-usd",
+            "2",
+        ];
         assert!(validate_invocation("claude", &args(&without_tools)).is_ok());
     }
 
     #[test]
     fn claude_verbose_is_a_bare_flag_accepted_once() {
         let twice = [
-            "-p", "oi", "--output-format", "stream-json", "--verbose", "--verbose", "--max-budget-usd", "1",
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--verbose",
+            "--max-budget-usd",
+            "1",
         ];
         assert!(validate_invocation("claude", &args(&twice)).is_err());
         let with_value = [
-            "-p", "oi", "--output-format", "stream-json", "--verbose", "true", "--max-budget-usd", "1",
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "true",
+            "--max-budget-usd",
+            "1",
         ];
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
@@ -301,19 +367,59 @@ mod tests {
     #[test]
     fn claude_requires_format_and_budget() {
         assert!(validate_invocation("claude", &args(&["-p", "oi"])).is_err());
-        assert!(validate_invocation("claude", &args(&["-p", "oi", "--output-format", "stream-json"])).is_err());
-        assert!(validate_invocation("claude", &args(&["-p", "oi", "--max-budget-usd", "1"])).is_err());
-        assert!(validate_invocation("claude", &args(&["-p", "oi", "--output-format", "text", "--max-budget-usd", "1"])).is_err());
+        assert!(validate_invocation(
+            "claude",
+            &args(&["-p", "oi", "--output-format", "stream-json"])
+        )
+        .is_err());
+        assert!(
+            validate_invocation("claude", &args(&["-p", "oi", "--max-budget-usd", "1"])).is_err()
+        );
+        assert!(validate_invocation(
+            "claude",
+            &args(&[
+                "-p",
+                "oi",
+                "--output-format",
+                "text",
+                "--max-budget-usd",
+                "1"
+            ])
+        )
+        .is_err());
     }
 
     #[test]
     fn claude_denies_dangerous_flags_anywhere() {
         for flag in DENIED_CLAUDE_FLAGS {
-            let appended = ["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", flag, "x"];
-            assert!(validate_invocation("claude", &args(&appended)).is_err(), "{flag} deveria ser barrado");
+            let appended = [
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+                flag,
+                "x",
+            ];
+            assert!(
+                validate_invocation("claude", &args(&appended)).is_err(),
+                "{flag} deveria ser barrado"
+            );
             let assigned = format!("{flag}=x");
-            let inline = ["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", assigned.as_str()];
-            assert!(validate_invocation("claude", &args(&inline)).is_err(), "{assigned} deveria ser barrado");
+            let inline = [
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+                assigned.as_str(),
+            ];
+            assert!(
+                validate_invocation("claude", &args(&inline)).is_err(),
+                "{assigned} deveria ser barrado"
+            );
             assert!(validate_invocation("claude", &args(&[flag, "x"])).is_err());
         }
     }
@@ -321,27 +427,47 @@ mod tests {
     #[test]
     fn claude_prompt_cannot_smuggle_a_flag() {
         let tail = ["--output-format", "stream-json", "--max-budget-usd", "1"];
-        let smuggled: Vec<&str> = ["-p", "--dangerously-skip-permissions"].into_iter().chain(tail).collect();
+        let smuggled: Vec<&str> = ["-p", "--dangerously-skip-permissions"]
+            .into_iter()
+            .chain(tail)
+            .collect();
         assert!(validate_invocation("claude", &args(&smuggled)).is_err());
-        let mentioning: Vec<&str> = ["-p", "explique --add-dir"].into_iter().chain(tail).collect();
+        let mentioning: Vec<&str> = ["-p", "explique --add-dir"]
+            .into_iter()
+            .chain(tail)
+            .collect();
         assert!(validate_invocation("claude", &args(&mentioning)).is_ok());
     }
 
     #[test]
     fn claude_rejects_bad_values_and_repeats() {
         let head = ["-p", "oi", "--output-format", "stream-json"];
-        for budget in ["0", "-1", "abc", "1e3", "inf", "NaN", "1001", "", ".5", "1."] {
-            let call: Vec<&str> = head.into_iter().chain(["--max-budget-usd", budget]).collect();
-            assert!(validate_invocation("claude", &args(&call)).is_err(), "{budget:?} deveria ser barrado");
+        for budget in [
+            "0", "-1", "abc", "1e3", "inf", "NaN", "1001", "", ".5", "1.",
+        ] {
+            let call: Vec<&str> = head
+                .into_iter()
+                .chain(["--max-budget-usd", budget])
+                .collect();
+            assert!(
+                validate_invocation("claude", &args(&call)).is_err(),
+                "{budget:?} deveria ser barrado"
+            );
         }
-        let repeated: Vec<&str> = head.into_iter().chain(["--max-budget-usd", "1", "--max-budget-usd", "2"]).collect();
+        let repeated: Vec<&str> = head
+            .into_iter()
+            .chain(["--max-budget-usd", "1", "--max-budget-usd", "2"])
+            .collect();
         assert!(validate_invocation("claude", &args(&repeated)).is_err());
         for tools in ["", "-x", "Bash;rm", "Bash$(x)", "a`b`", "a\nb", "a|b"] {
             let call: Vec<&str> = head
                 .into_iter()
                 .chain(["--max-budget-usd", "1", "--allowedTools", tools])
                 .collect();
-            assert!(validate_invocation("claude", &args(&call)).is_err(), "{tools:?} deveria ser barrado");
+            assert!(
+                validate_invocation("claude", &args(&call)).is_err(),
+                "{tools:?} deveria ser barrado"
+            );
         }
     }
 
@@ -353,13 +479,46 @@ mod tests {
             vec!["/login", "extra"],
             vec!["--version"],
             vec!["mcp", "add", "x"],
-            vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", "--verbose", "true"],
-            vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", "--debug"],
-            vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd"],
-            vec!["-p", "  ", "--output-format", "stream-json", "--max-budget-usd", "1"],
+            vec![
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+                "--verbose",
+                "true",
+            ],
+            vec![
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+                "--debug",
+            ],
+            vec![
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+            ],
+            vec![
+                "-p",
+                "  ",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+            ],
             vec![],
         ] {
-            assert!(validate_invocation("claude", &args(&bad)).is_err(), "{bad:?} deveria ser barrado");
+            assert!(
+                validate_invocation("claude", &args(&bad)).is_err(),
+                "{bad:?} deveria ser barrado"
+            );
         }
     }
 
@@ -368,17 +527,39 @@ mod tests {
         assert!(validate_terminal_invocation("claude", &args(&["/login"])).is_ok());
         assert!(validate_terminal_invocation("claude", &args(&["--resume", SESSION])).is_ok());
         assert!(validate_terminal_invocation("claude", &args(&["/mcp"])).is_ok());
-        assert!(validate_terminal_invocation("gh", &args(&["auth", "login", "-h", "github.com", "-w"])).is_ok());
-        assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-h", "github.com", "-s", "repo,read:org"])).is_ok());
-        assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-s", "repo,read:org"])).is_ok());
+        assert!(validate_terminal_invocation(
+            "gh",
+            &args(&["auth", "login", "-h", "github.com", "-w"])
+        )
+        .is_ok());
+        assert!(validate_terminal_invocation(
+            "gh",
+            &args(&["auth", "refresh", "-h", "github.com", "-s", "repo,read:org"])
+        )
+        .is_ok());
+        assert!(validate_terminal_invocation(
+            "gh",
+            &args(&["auth", "refresh", "-s", "repo,read:org"])
+        )
+        .is_ok());
     }
 
     #[test]
     fn terminal_denies_everything_else() {
         assert!(validate_terminal_invocation("gh", &args(&["auth", "token"])).is_err());
-        assert!(validate_terminal_invocation("gh", &args(&["auth", "login", "-h", "evil.example", "-w"])).is_err());
-        assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-s", "repo;rm"])).is_err());
-        assert!(validate_terminal_invocation("claude", &args(&["--dangerously-skip-permissions"])).is_err());
+        assert!(validate_terminal_invocation(
+            "gh",
+            &args(&["auth", "login", "-h", "evil.example", "-w"])
+        )
+        .is_err());
+        assert!(
+            validate_terminal_invocation("gh", &args(&["auth", "refresh", "-s", "repo;rm"]))
+                .is_err()
+        );
+        assert!(
+            validate_terminal_invocation("claude", &args(&["--dangerously-skip-permissions"]))
+                .is_err()
+        );
         assert!(validate_terminal_invocation("claude", &args(&["/mcp", "extra"])).is_err());
         assert!(validate_invocation("claude", &args(&["/mcp"])).is_err());
         assert!(validate_terminal_invocation("bash", &args(&["-c", "x"])).is_err());
@@ -390,7 +571,8 @@ mod tests {
 
     impl TempTree {
         fn new(label: &str) -> Self {
-            let root = std::env::temp_dir().join(format!("dev-pulse-{label}-{}", std::process::id()));
+            let root =
+                std::env::temp_dir().join(format!("dev-pulse-{label}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
             std::fs::create_dir_all(root.join("home").join("work")).unwrap();
             std::fs::create_dir_all(root.join("outside")).unwrap();
@@ -410,12 +592,18 @@ mod tests {
 
     #[test]
     fn verbatim_prefix_is_stripped_from_drive_paths_only() {
-        assert_eq!(strip_verbatim_prefix(PathBuf::from(r"\\?\C:\Users\dev")), PathBuf::from(r"C:\Users\dev"));
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\C:\Users\dev")),
+            PathBuf::from(r"C:\Users\dev")
+        );
         assert_eq!(
             strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\server\share")),
             PathBuf::from(r"\\?\UNC\server\share")
         );
-        assert_eq!(strip_verbatim_prefix(PathBuf::from("/Users/dev")), PathBuf::from("/Users/dev"));
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from("/Users/dev")),
+            PathBuf::from("/Users/dev")
+        );
     }
 
     #[test]
@@ -429,7 +617,9 @@ mod tests {
         let home = tree.home();
         let inside = home.join("work");
         assert!(validate_cwd(home.to_str(), Some(&home)).unwrap().is_some());
-        assert!(validate_cwd(inside.to_str(), Some(&home)).unwrap().is_some());
+        assert!(validate_cwd(inside.to_str(), Some(&home))
+            .unwrap()
+            .is_some());
     }
 
     #[test]

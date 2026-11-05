@@ -66,7 +66,13 @@ impl Canvas {
         }
     }
 
-    fn paint(&mut self, bounds: (f64, f64, f64, f64), color: [u8; 3], alpha: f32, inside: impl Fn(f64, f64) -> bool) {
+    fn paint(
+        &mut self,
+        bounds: (f64, f64, f64, f64),
+        color: [u8; 3],
+        alpha: f32,
+        inside: impl Fn(f64, f64) -> bool,
+    ) {
         let x0 = bounds.0.floor().max(0.0) as u32;
         let y0 = bounds.1.floor().max(0.0) as u32;
         let x1 = (bounds.2.ceil() as u32).min(self.width);
@@ -139,7 +145,10 @@ impl Bar {
         if px < left || px > right || py < top || py > bottom {
             return false;
         }
-        let radius = (radius - inset).max(0.0).min((right - left) / 2.0).min((bottom - top) / 2.0);
+        let radius = (radius - inset)
+            .max(0.0)
+            .min((right - left) / 2.0)
+            .min((bottom - top) / 2.0);
         let cx = px.clamp(left + radius, right - radius);
         let cy = py.clamp(top + radius, bottom - radius);
         (px - cx).powi(2) + (py - cy).powi(2) <= radius * radius
@@ -157,13 +166,24 @@ struct Style {
 }
 
 fn paint_bar(canvas: &mut Canvas, bar: Bar, percent: Option<f64>, style: &Style) {
-    let Style { fill, empty, radius, stroke, dash_on, dash_period } = *style;
+    let Style {
+        fill,
+        empty,
+        radius,
+        stroke,
+        dash_on,
+        dash_period,
+    } = *style;
     match normalize_percent(percent) {
         Some(value) => {
-            canvas.paint(bar.bounds(), empty, TRACK_ALPHA, |x, y| bar.contains(x, y, 0.0, radius));
+            canvas.paint(bar.bounds(), empty, TRACK_ALPHA, |x, y| {
+                bar.contains(x, y, 0.0, radius)
+            });
             let edge = bar.x + bar.width * value / 100.0;
             if value > 0.0 {
-                canvas.paint(bar.bounds(), fill, 1.0, |x, y| x < edge && bar.contains(x, y, 0.0, radius));
+                canvas.paint(bar.bounds(), fill, 1.0, |x, y| {
+                    x < edge && bar.contains(x, y, 0.0, radius)
+                });
             }
         }
         None => {
@@ -216,19 +236,31 @@ fn distance_to_segment(px: f64, py: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
 }
 
 fn paint_asterisk(canvas: &mut Canvas, scale: f64) {
-    let center = (WIDE_HEIGHT as f64 / 2.0 * scale, WIDE_HEIGHT as f64 / 2.0 * scale);
+    let center = (
+        WIDE_HEIGHT as f64 / 2.0 * scale,
+        WIDE_HEIGHT as f64 / 2.0 * scale,
+    );
     let arm = STAR_ARM * scale;
     let radius = STAR_THICKNESS * scale / 2.0;
     let rays: Vec<((f64, f64), (f64, f64))> = (0..STAR_RAYS / 2)
         .map(|index| {
             let angle = std::f64::consts::PI * index as f64 / (STAR_RAYS / 2) as f64;
             let (dx, dy) = (angle.cos() * arm, angle.sin() * arm);
-            ((center.0 - dx, center.1 - dy), (center.0 + dx, center.1 + dy))
+            (
+                (center.0 - dx, center.1 - dy),
+                (center.0 + dx, center.1 + dy),
+            )
         })
         .collect();
-    let bounds = (center.0 - arm - radius, center.1 - arm - radius, center.0 + arm + radius, center.1 + arm + radius);
+    let bounds = (
+        center.0 - arm - radius,
+        center.1 - arm - radius,
+        center.0 + arm + radius,
+        center.1 + arm + radius,
+    );
     canvas.paint(bounds, TEMPLATE_INK, 1.0, |x, y| {
-        rays.iter().any(|(a, b)| distance_to_segment(x, y, *a, *b) <= radius)
+        rays.iter()
+            .any(|(a, b)| distance_to_segment(x, y, *a, *b) <= radius)
     });
 }
 
@@ -261,7 +293,11 @@ pub fn render_usage_icon(five_hour: Option<f64>, seven_day: Option<f64>, scale: 
     canvas.finish()
 }
 
-pub fn render_usage_icon_square(five_hour: Option<f64>, seven_day: Option<f64>, scale: u32) -> UsageIcon {
+pub fn render_usage_icon_square(
+    five_hour: Option<f64>,
+    seven_day: Option<f64>,
+    scale: u32,
+) -> UsageIcon {
     let scale = scale.max(1);
     let s = scale as f64;
     let side = SQUARE_SIDE * scale;
@@ -355,7 +391,9 @@ mod tests {
         let opaque = |percent: f64| {
             let icon = render_usage_icon(Some(percent), None, SCALE);
             let y = bar_rows(SCALE)[0];
-            (BAR_X * SCALE..icon.width).filter(|x| column(&icon, *x, y) == 255).count()
+            (BAR_X * SCALE..icon.width)
+                .filter(|x| column(&icon, *x, y) == 255)
+                .count()
         };
         let (a, b, c) = (opaque(24.0), opaque(51.0), opaque(90.0));
         assert!(a < b && b < c, "{a} {b} {c}");
@@ -379,9 +417,14 @@ mod tests {
         let center_alpha = column(&icon, bar_x(0.5, SCALE), y);
         assert_eq!(center_alpha, 0);
         let top_edge = y - BAR_HEIGHT * SCALE / 2 + 1;
-        let on_edge: Vec<u8> = (bar_x(0.1, SCALE)..bar_x(0.9, SCALE)).map(|x| column(&icon, x, top_edge)).collect();
+        let on_edge: Vec<u8> = (bar_x(0.1, SCALE)..bar_x(0.9, SCALE))
+            .map(|x| column(&icon, x, top_edge))
+            .collect();
         assert!(on_edge.iter().any(|alpha| *alpha >= 140), "sem traço");
-        assert!(on_edge.iter().any(|alpha| *alpha == 0), "sem intervalo entre os traços");
+        assert!(
+            on_edge.iter().any(|alpha| *alpha == 0),
+            "sem intervalo entre os traços"
+        );
         let zero = render_usage_icon(Some(0.0), Some(0.0), SCALE);
         assert_ne!(icon.rgba, zero.rgba);
     }
@@ -392,7 +435,10 @@ mod tests {
             render_usage_icon(Some(250.0), Some(-30.0), SCALE),
             render_usage_icon(Some(100.0), Some(0.0), SCALE)
         );
-        assert_eq!(render_usage_icon(Some(f64::NAN), Some(f64::INFINITY), SCALE), render_usage_icon(None, None, SCALE));
+        assert_eq!(
+            render_usage_icon(Some(f64::NAN), Some(f64::INFINITY), SCALE),
+            render_usage_icon(None, None, SCALE)
+        );
         assert_eq!(normalize_percent(Some(120.0)), Some(100.0));
         assert_eq!(normalize_percent(Some(-1.0)), Some(0.0));
         assert_eq!(normalize_percent(None), None);
@@ -400,7 +446,10 @@ mod tests {
 
     #[test]
     fn scale_zero_behaves_like_one() {
-        assert_eq!(render_usage_icon(Some(10.0), None, 0), render_usage_icon(Some(10.0), None, 1));
+        assert_eq!(
+            render_usage_icon(Some(10.0), None, 0),
+            render_usage_icon(Some(10.0), None, 1)
+        );
     }
 
     #[test]
@@ -423,7 +472,10 @@ mod tests {
     #[test]
     fn template_icon_is_monochrome_black_with_alpha_only() {
         let icon = render_usage_icon(Some(40.0), Some(80.0), SCALE);
-        assert!(icon.rgba.chunks(4).all(|px| px[3] == 0 || px[..3] == [0, 0, 0]));
+        assert!(icon
+            .rgba
+            .chunks(4)
+            .all(|px| px[3] == 0 || px[..3] == [0, 0, 0]));
     }
 
     #[test]
@@ -441,7 +493,12 @@ mod tests {
         let top_y = 8;
         let bottom_y = 24;
         let inner = (2 * SQUARE_MARGIN + 2..30).collect::<Vec<u32>>();
-        let filled = |y: u32| inner.iter().filter(|x| column(&icon, **x, y) == 255).count();
+        let filled = |y: u32| {
+            inner
+                .iter()
+                .filter(|x| column(&icon, **x, y) == 255)
+                .count()
+        };
         let (top, bottom) = (filled(top_y), filled(bottom_y));
         assert!(top < bottom);
         assert!(top.abs_diff(5) <= 1, "{top}");
@@ -458,7 +515,10 @@ mod tests {
         let zero = render_usage_icon_square(Some(0.0), Some(0.0), 2);
         assert_ne!(none.rgba, zero.rgba);
         assert_eq!(column(&none, 16, 8), 0);
-        assert_eq!(render_usage_icon_square(Some(400.0), Some(-5.0), 2), render_usage_icon_square(Some(100.0), Some(0.0), 2));
+        assert_eq!(
+            render_usage_icon_square(Some(400.0), Some(-5.0), 2),
+            render_usage_icon_square(Some(100.0), Some(0.0), 2)
+        );
     }
 
     #[test]
