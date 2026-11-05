@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use super::blocking::run_blocking;
 use super::error::CommandResult;
 
 pub const GRANTED: &str = "granted";
@@ -56,10 +57,31 @@ fn platform_state(_app: &AppHandle) -> &'static str {
 }
 
 #[cfg(windows)]
+struct ComScope(bool);
+
+#[cfg(windows)]
+impl ComScope {
+    fn enter() -> Self {
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+        Self(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ComScope {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { windows::Win32::System::Com::CoUninitialize() };
+        }
+    }
+}
+
+#[cfg(windows)]
 fn platform_state(app: &AppHandle) -> &'static str {
     use windows::core::HSTRING;
     use windows::UI::Notifications::ToastNotificationManager;
 
+    let _com = ComScope::enter();
     let app_id = HSTRING::from(app.config().identifier.as_str());
     ToastNotificationManager::CreateToastNotifierWithId(&app_id)
         .and_then(|notifier| notifier.Setting())
@@ -72,9 +94,9 @@ fn platform_state(_app: &AppHandle) -> &'static str {
     UNKNOWN
 }
 
-#[tauri::command(async)]
-pub fn notification_permission_state(app: AppHandle) -> CommandResult<&'static str> {
-    Ok(platform_state(&app))
+#[tauri::command]
+pub async fn notification_permission_state(app: AppHandle) -> CommandResult<&'static str> {
+    run_blocking(move || Ok(platform_state(&app))).await
 }
 
 #[cfg(test)]
