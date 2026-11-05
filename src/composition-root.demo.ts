@@ -60,8 +60,7 @@ export function createComposition(): Application {
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
-          connectionAdapters.claudeCredentials,
-          new DemoUsageGateway(usageModel, () => clock.now()),
+          new DemoUsageGateway(usageModel, () => clock.now(), connectionAdapters.claudeCredentials),
           new DemoUsageHistoryStore(usageModel.history(origin)),
           clock,
           connections,

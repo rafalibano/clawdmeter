@@ -3,7 +3,6 @@ import { buildForecasts, recordSnapshot, retainHistory } from '../../../domain/u
 import type { UsageForecasts, UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
 import type {
-  ClaudeCredentialSource,
   Clock,
   ConnectionPrefsStore,
   UsageGateway,
@@ -23,7 +22,6 @@ export type UsageConnections = Pick<Connections, 'monitor' | 'check' | 'report'>
 export class LoadUsage {
   constructor(
     private readonly prefs: ConnectionPrefsStore,
-    private readonly credentials: ClaudeCredentialSource,
     private readonly gateway: UsageGateway,
     private readonly historyStore: UsageHistoryStore,
     private readonly clock: Clock,
@@ -47,11 +45,7 @@ export class LoadUsage {
       if (!(await this.prefs.load()).claude.enabled) {
         throw new Error('Claude desconectado. Conecte em Ajustes > Conexões.');
       }
-      const credential = await this.credentials.read();
-      if (credential.expiresAt !== null && credential.expiresAt <= now) {
-        throw new ConnectionProblemError('claude-expired');
-      }
-      return await this.gateway.fetch(credential.accessToken);
+      return await this.gateway.fetch();
     } catch (error) {
       this.indicate(null, now);
       if (error instanceof ConnectionProblemError) {

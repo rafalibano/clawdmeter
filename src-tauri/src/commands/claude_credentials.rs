@@ -1,8 +1,18 @@
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tauri_plugin_http::reqwest;
 
+use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
+use super::home::home_dir;
+
+pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+const OAUTH_BETA: &str = "oauth-2025-04-20";
+const USAGE_TIMEOUT_SECS: u64 = 15;
+const MAX_USAGE_BYTES: usize = 256 * 1024;
+const MAX_EXPIRES_AT_MS: f64 = 9_007_199_254_740_991.0;
 
 #[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
@@ -21,12 +31,37 @@ struct StoredOauth {
     subscription_type: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, PartialEq)]
 pub struct ClaudeCredential {
     pub access_token: String,
     pub expires_at: Option<u64>,
     pub subscription_type: Option<String>,
+}
+
+impl std::fmt::Debug for ClaudeCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ClaudeCredential")
+            .field("expires_at", &self.expires_at)
+            .field("subscription_type", &self.subscription_type)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeCredentialStatus {
+    pub expires_at: Option<u64>,
+    pub subscription_type: Option<String>,
+}
+
+impl From<&ClaudeCredential> for ClaudeCredentialStatus {
+    fn from(credential: &ClaudeCredential) -> Self {
+        Self {
+            expires_at: credential.expires_at,
+            subscription_type: credential.subscription_type.clone(),
+        }
+    }
 }
 
 pub fn parse_credentials(raw: &str) -> CommandResult<ClaudeCredential> {
@@ -46,7 +81,7 @@ pub fn parse_credentials(raw: &str) -> CommandResult<ClaudeCredential> {
         expires_at: oauth
             .expires_at
             .filter(|value| value.is_finite() && *value >= 0.0)
-            .map(|value| value as u64),
+            .map(|value| value.min(MAX_EXPIRES_AT_MS) as u64),
         subscription_type: oauth.subscription_type,
     })
 }
@@ -78,13 +113,6 @@ pub fn credentials_file_path(home: Option<PathBuf>) -> Option<PathBuf> {
     home.map(|dir| dir.join(".claude").join(".credentials.json"))
 }
 
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
 fn read_credentials_file() -> CommandResult<Option<String>> {
     let Some(path) = credentials_file_path(home_dir()) else {
         return Ok(None);
@@ -92,7 +120,7 @@ fn read_credentials_file() -> CommandResult<Option<String>> {
     match std::fs::read_to_string(&path) {
         Ok(text) => Ok(Some(text)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(CommandError::io(error)),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -100,8 +128,7 @@ fn read_credentials_file() -> CommandResult<Option<String>> {
 fn read_keychain() -> CommandResult<Option<String>> {
     let output = std::process::Command::new("/usr/bin/security")
         .args(["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"])
-        .output()
-        .map_err(CommandError::io)?;
+        .output()?;
     if output.status.success() {
         return Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()));
     }
@@ -112,7 +139,10 @@ fn read_keychain() -> CommandResult<Option<String>> {
             ErrorKind::KeychainDenied,
             "acesso ao Keychain do Claude Code negado",
         )),
-        KeychainOutcome::Failed => Err(CommandError::new(ErrorKind::Io, stderr.trim().to_string())),
+        KeychainOutcome::Failed => Err(CommandError::new(
+            ErrorKind::Keychain,
+            stderr.trim().to_string(),
+        )),
     }
 }
 
@@ -121,8 +151,7 @@ fn read_keychain() -> CommandResult<Option<String>> {
     Ok(None)
 }
 
-#[tauri::command(async)]
-pub fn claude_credentials_read() -> CommandResult<ClaudeCredential> {
+fn read_credential() -> CommandResult<ClaudeCredential> {
     let raw = match read_keychain()? {
         Some(raw) => Some(raw),
         None => read_credentials_file()?,
@@ -134,6 +163,78 @@ pub fn claude_credentials_read() -> CommandResult<ClaudeCredential> {
             "credencial do Claude Code não encontrada",
         )),
     }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+fn expired(credential: &ClaudeCredential, now: u64) -> bool {
+    credential
+        .expires_at
+        .is_some_and(|expires_at| expires_at <= now)
+}
+
+fn claude_expired() -> CommandError {
+    CommandError::new(ErrorKind::ClaudeExpired, "login do Claude expirado")
+}
+
+async fn request_usage(url: &str, access_token: &str) -> CommandResult<serde_json::Value> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(USAGE_TIMEOUT_SECS))
+        .build()?;
+    let response = client
+        .get(url)
+        .bearer_auth(access_token)
+        .header("anthropic-beta", OAUTH_BETA)
+        .header("Accept", "application/json")
+        .send()
+        .await?;
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(claude_expired());
+    }
+    if !status.is_success() {
+        return Err(CommandError::new(
+            ErrorKind::Http,
+            format!(
+                "Anthropic respondeu {} em /api/oauth/usage",
+                status.as_u16()
+            ),
+        ));
+    }
+    let body = response.bytes().await?;
+    if body.len() > MAX_USAGE_BYTES {
+        return Err(CommandError::new(
+            ErrorKind::Http,
+            "resposta de usage grande demais",
+        ));
+    }
+    serde_json::from_slice(&body)
+        .map_err(|_| CommandError::new(ErrorKind::Http, "resposta de usage não é um JSON válido"))
+}
+
+async fn fetch_usage(url: &str) -> CommandResult<serde_json::Value> {
+    let credential = run_blocking(read_credential).await?;
+    if expired(&credential, now_ms()) {
+        return Err(claude_expired());
+    }
+    request_usage(url, &credential.access_token).await
+}
+
+#[tauri::command]
+pub async fn claude_credentials_status() -> CommandResult<ClaudeCredentialStatus> {
+    let credential = run_blocking(read_credential).await?;
+    Ok(ClaudeCredentialStatus::from(&credential))
+}
+
+#[tauri::command]
+pub async fn claude_usage_fetch() -> CommandResult<serde_json::Value> {
+    fetch_usage(USAGE_URL).await
 }
 
 #[cfg(test)]
@@ -151,11 +252,33 @@ mod tests {
     }
 
     #[test]
-    fn never_exposes_the_refresh_token() {
+    fn the_status_sent_to_the_webview_carries_no_token() {
         let credential = parse_credentials(VALID).unwrap();
-        let json = serde_json::to_string(&credential).unwrap();
+        let json = serde_json::to_string(&ClaudeCredentialStatus::from(&credential)).unwrap();
+        assert_eq!(
+            json,
+            r#"{"expiresAt":1767225600000,"subscriptionType":"max"}"#
+        );
+        assert!(!json.contains("sk-ant"));
         assert!(!json.contains("refresh"));
-        assert!(!json.contains("sk-ant-ort01-xyz"));
+    }
+
+    #[test]
+    fn debug_output_hides_the_access_token() {
+        let credential = parse_credentials(VALID).unwrap();
+        let text = format!("{credential:?}");
+        assert!(!text.contains("sk-ant-oat01-abc"));
+        assert!(!text.contains("refresh"));
+    }
+
+    #[test]
+    fn expiry_is_checked_against_the_clock() {
+        let credential = parse_credentials(VALID).unwrap();
+        assert!(expired(&credential, 1_767_225_600_000));
+        assert!(expired(&credential, 1_767_225_600_001));
+        assert!(!expired(&credential, 1_767_225_599_999));
+        let eternal = parse_credentials(r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
+        assert!(!expired(&eternal, u64::MAX));
     }
 
     #[test]
@@ -213,6 +336,68 @@ mod tests {
             classify_security_failure(Some(1), "boom"),
             KeychainOutcome::Failed
         );
+    }
+
+    fn serve_once(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/usage",
+            listener.local_addr().unwrap().port()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8_lossy(&request[..read]).into_owned()
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn usage_request_sends_bearer_and_beta_header_and_returns_the_json() {
+        let (url, server) = serve_once("200 OK", r#"{"five_hour":{"utilization":41.0}}"#);
+        let usage =
+            tauri::async_runtime::block_on(request_usage(&url, "sk-ant-oat01-abc")).unwrap();
+        assert_eq!(usage["five_hour"]["utilization"], 41.0);
+        let request = server.join().unwrap().to_lowercase();
+        assert!(request.contains("authorization: bearer sk-ant-oat01-abc"));
+        assert!(request.contains("anthropic-beta: oauth-2025-04-20"));
+    }
+
+    #[test]
+    fn usage_401_is_a_typed_expired_login() {
+        let (url, server) = serve_once("401 Unauthorized", "{}");
+        let error = tauri::async_runtime::block_on(request_usage(&url, "t")).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.kind, ErrorKind::ClaudeExpired);
+    }
+
+    #[test]
+    fn usage_other_statuses_are_http_errors_without_the_token() {
+        let (url, server) = serve_once("429 Too Many Requests", "{}");
+        let error =
+            tauri::async_runtime::block_on(request_usage(&url, "sk-ant-oat01-secret")).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert_eq!(error.message, "Anthropic respondeu 429 em /api/oauth/usage");
+        assert!(!error.message.contains("secret"));
+    }
+
+    #[test]
+    fn usage_body_that_is_not_json_is_an_http_error() {
+        let (url, server) = serve_once("200 OK", "<html>");
+        let error = tauri::async_runtime::block_on(request_usage(&url, "t")).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.kind, ErrorKind::Http);
     }
 
     #[test]

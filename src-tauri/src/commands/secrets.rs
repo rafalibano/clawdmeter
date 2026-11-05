@@ -1,37 +1,21 @@
 use keyring::Entry;
 
+use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 
 const SERVICE: &str = "com.mottu.devpulse";
 
-pub fn classify_keyring_error(error: &keyring::Error) -> ErrorKind {
-    match error {
-        keyring::Error::NoStorageAccess(_) => ErrorKind::KeychainDenied,
-        keyring::Error::PlatformFailure(inner) => {
-            let text = inner.to_string().to_lowercase();
-            let denied = [
-                "-128",
-                "-25293",
-                "-25308",
-                "user canceled",
-                "user interaction",
-                "access denied",
-                "denied",
-            ]
-            .iter()
-            .any(|marker| text.contains(marker));
-            if denied {
-                ErrorKind::KeychainDenied
-            } else {
-                ErrorKind::Io
-            }
-        }
-        _ => ErrorKind::Io,
-    }
-}
+pub const ALLOWED_SECRET_KEYS: &[&str] = &["github.token", "microsoft.refresh-token"];
 
-fn to_command_error(error: keyring::Error) -> CommandError {
-    CommandError::new(classify_keyring_error(&error), error.to_string())
+fn ensure_known_key(key: &str) -> CommandResult<()> {
+    if ALLOWED_SECRET_KEYS.contains(&key) {
+        Ok(())
+    } else {
+        Err(CommandError::new(
+            ErrorKind::Policy,
+            "chave de segredo não permitida",
+        ))
+    }
 }
 
 const CHUNK_BYTES: usize = 1_200;
@@ -48,7 +32,7 @@ struct KeyringBackend;
 
 impl KeyringBackend {
     fn entry(key: &str) -> CommandResult<Entry> {
-        Entry::new(SERVICE, key).map_err(to_command_error)
+        Entry::new(SERVICE, key).map_err(CommandError::from)
     }
 }
 
@@ -57,20 +41,20 @@ impl SecretBackend for KeyringBackend {
         match Self::entry(key)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(error) => Err(to_command_error(error)),
+            Err(error) => Err(error.into()),
         }
     }
 
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
         Self::entry(key)?
             .set_password(value)
-            .map_err(to_command_error)
+            .map_err(CommandError::from)
     }
 
     fn remove(&self, key: &str) -> CommandResult<()> {
         match Self::entry(key)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(error) => Err(to_command_error(error)),
+            Err(error) => Err(error.into()),
         }
     }
 }
@@ -199,19 +183,22 @@ pub fn delete_secret(backend: &dyn SecretBackend, key: &str) -> CommandResult<()
     backend.remove(key)
 }
 
-#[tauri::command(async)]
-pub fn secret_get(key: String) -> CommandResult<Option<String>> {
-    get_secret(&KeyringBackend, &key)
+#[tauri::command]
+pub async fn secret_get(key: String) -> CommandResult<Option<String>> {
+    ensure_known_key(&key)?;
+    run_blocking(move || get_secret(&KeyringBackend, &key)).await
 }
 
-#[tauri::command(async)]
-pub fn secret_set(key: String, value: String) -> CommandResult<()> {
-    set_secret(&KeyringBackend, &key, &value)
+#[tauri::command]
+pub async fn secret_set(key: String, value: String) -> CommandResult<()> {
+    ensure_known_key(&key)?;
+    run_blocking(move || set_secret(&KeyringBackend, &key, &value)).await
 }
 
-#[tauri::command(async)]
-pub fn secret_delete(key: String) -> CommandResult<()> {
-    delete_secret(&KeyringBackend, &key)
+#[tauri::command]
+pub async fn secret_delete(key: String) -> CommandResult<()> {
+    ensure_known_key(&key)?;
+    run_blocking(move || delete_secret(&KeyringBackend, &key)).await
 }
 
 #[cfg(test)]
@@ -222,27 +209,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_storage_access_is_denied() {
-        let error = keyring::Error::NoStorageAccess("bloqueado".into());
-        assert_eq!(classify_keyring_error(&error), ErrorKind::KeychainDenied);
+    fn only_the_keys_the_app_owns_pass_the_allowlist() {
+        for key in ALLOWED_SECRET_KEYS {
+            assert!(ensure_known_key(key).is_ok());
+        }
+        for key in [
+            "",
+            "  ",
+            "k",
+            "github.token#1",
+            "GitHub.token",
+            "claude.token",
+            "../x",
+        ] {
+            assert_eq!(
+                ensure_known_key(key).unwrap_err().kind,
+                ErrorKind::Policy,
+                "{key:?}"
+            );
+        }
     }
 
     #[test]
-    fn user_canceled_platform_failure_is_denied() {
-        let error = keyring::Error::PlatformFailure("User canceled the operation. (-128)".into());
-        assert_eq!(classify_keyring_error(&error), ErrorKind::KeychainDenied);
+    fn commands_refuse_unknown_keys_before_touching_the_keychain() {
+        let denied = tauri::async_runtime::block_on(secret_get("outra.chave".into())).unwrap_err();
+        assert_eq!(denied.kind, ErrorKind::Policy);
+        let denied = tauri::async_runtime::block_on(secret_set("outra.chave".into(), "v".into()))
+            .unwrap_err();
+        assert_eq!(denied.kind, ErrorKind::Policy);
+        let denied =
+            tauri::async_runtime::block_on(secret_delete("outra.chave".into())).unwrap_err();
+        assert_eq!(denied.kind, ErrorKind::Policy);
     }
 
     #[test]
-    fn other_platform_failure_is_io() {
-        let error = keyring::Error::PlatformFailure("disco cheio".into());
-        assert_eq!(classify_keyring_error(&error), ErrorKind::Io);
-    }
-
-    #[test]
-    fn empty_key_is_rejected_before_touching_the_keychain() {
-        let error = secret_get("  ".into()).unwrap_err();
-        assert_eq!(error.kind, ErrorKind::InvalidArgument);
+    fn empty_key_is_still_rejected_by_the_storage_layer() {
+        let backend = FakeBackend::default();
+        assert_eq!(
+            get_secret(&backend, "  ").unwrap_err().kind,
+            ErrorKind::InvalidArgument
+        );
     }
 
     const WINDOWS_BLOB_LIMIT: usize = 2_560;

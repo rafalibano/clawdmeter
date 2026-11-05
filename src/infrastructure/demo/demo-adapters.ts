@@ -82,7 +82,7 @@ class DemoClaudeCredentials implements ClaudeCredentialSource {
       throw new ConnectionProblemError('keychain-denied');
     }
     if (claude.missing) throw new ConnectionProblemError('claude-code-missing');
-    return { accessToken: 'demo', expiresAt: claude.expired ? 0 : null, subscriptionType: 'max' };
+    return { expiresAt: claude.expired ? 0 : null, subscriptionType: 'max' };
   }
 }
 

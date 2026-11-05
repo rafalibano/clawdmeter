@@ -5,6 +5,6 @@ export class TauriClaudeCredentialSource implements ClaudeCredentialSource {
   constructor(private readonly commands: TauriCommands) {}
 
   read(): Promise<ClaudeCredential> {
-    return this.commands.call<ClaudeCredential>('claude_credentials_read');
+    return this.commands.call<ClaudeCredential>('claude_credentials_status');
   }
 }

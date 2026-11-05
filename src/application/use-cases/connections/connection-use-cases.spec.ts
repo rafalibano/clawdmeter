@@ -52,12 +52,12 @@ describe('Claude', () => {
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ state: 'error', problem: 'keychain-denied' });
     expect(fixLabel('claude', status)).toBe('Refazer permissão');
-    world.claude.outcome = { accessToken: 't', expiresAt: null, subscriptionType: null };
+    world.claude.outcome = { expiresAt: null, subscriptionType: null };
     expect(await runFix('claude', 'retry-permission')).toEqual({ state: 'connected' });
   });
 
   it('token vencido -> "Refazer login do Claude" abre o terminal com /login', async () => {
-    world.claude.outcome = { accessToken: 't', expiresAt: 5_000, subscriptionType: 'pro' };
+    world.claude.outcome = { expiresAt: 5_000, subscriptionType: 'pro' };
     const status = await connections.check.execute('claude');
     expect(status).toMatchObject({ problem: 'claude-expired' });
     expect(fixLabel('claude', status)).toBe('Refazer login do Claude');

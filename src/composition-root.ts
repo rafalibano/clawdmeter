@@ -106,8 +106,7 @@ export function createComposition(): Application {
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
-          claudeCredentials,
-          new AnthropicUsageGateway(tauriFetch),
+          new AnthropicUsageGateway(commands),
           new JsonUsageHistoryStore(new TauriJsonFile('usage-history.json')),
           clock,
           connections,

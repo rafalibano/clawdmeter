@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SECRET_KEYS } from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
 import { createFakeCommands, rejectWith } from '../testing/fakes';
-import { PlatformCommandError, toDomainError } from './tauri-commands';
+import { PlatformCommandError, TOO_MANY_PROCESSES_MESSAGE, toDomainError } from './tauri-commands';
 import { TauriClaudeCredentialSource } from './tauri-claude-credential-source';
 import { TauriNotificationPermission, toPermissionState } from './tauri-notification-permission';
 import { TauriNotifier } from './tauri-notifier';
@@ -18,6 +21,14 @@ describe('toDomainError', () => {
       message: 'negado',
     });
     expect(toDomainError({ kind: 'claude_code_missing', message: 'x' })).toBeInstanceOf(ConnectionProblemError);
+  });
+
+  it('claude_expired vira problema de conexão e too_many_processes ganha mensagem para o usuário', () => {
+    expect(toDomainError({ kind: 'claude_expired', message: 'x' })).toMatchObject({ problem: 'claude-expired' });
+    const busy = toDomainError({ kind: 'too_many_processes', message: 'limite de 4 processos simultâneos atingido' });
+    expect(busy).toBeInstanceOf(PlatformCommandError);
+    expect(busy.message).toBe(TOO_MANY_PROCESSES_MESSAGE);
+    expect((busy as PlatformCommandError).kind).toBe('too_many_processes');
   });
 
   it('demais kinds viram PlatformCommandError com o kind preservado', () => {
@@ -53,12 +64,12 @@ describe('TauriSecretStore', () => {
 });
 
 describe('TauriClaudeCredentialSource', () => {
-  it('devolve a credencial gravada do Rust (sem refresh token)', async () => {
-    const recorded = { accessToken: 'sk-ant-oat01-abc', expiresAt: 1767225600000, subscriptionType: 'max' };
+  it('lê só o status da credencial no Rust: o token nunca atravessa o IPC', async () => {
+    const recorded = { expiresAt: 1767225600000, subscriptionType: 'max' };
     const { commands, calls } = createFakeCommands(() => recorded);
     expect(await new TauriClaudeCredentialSource(commands).read()).toEqual(recorded);
-    expect(calls[0]?.command).toBe('claude_credentials_read');
-    expect(JSON.stringify(recorded)).not.toContain('refresh');
+    expect(calls).toEqual([{ command: 'claude_credentials_status', args: undefined }]);
+    expect(JSON.stringify(recorded)).not.toMatch(/token|refresh/i);
   });
 
   it('Claude Code ausente vira problema tipado', async () => {
@@ -66,6 +77,16 @@ describe('TauriClaudeCredentialSource', () => {
     await expect(new TauriClaudeCredentialSource(commands).read()).rejects.toMatchObject({
       problem: 'claude-code-missing',
     });
+  });
+});
+
+describe('chaves do cofre', () => {
+  it('SECRET_KEYS é exatamente a lista fixa que o Rust aceita (secrets.rs)', () => {
+    const source = readFileSync(resolve(__dirname, '../../../src-tauri/src/commands/secrets.rs'), 'utf8');
+    const block = /ALLOWED_SECRET_KEYS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    const rust = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]).sort();
+    expect(rust.length).toBeGreaterThan(0);
+    expect(Object.values(SECRET_KEYS).sort()).toEqual(rust);
   });
 });
 
@@ -175,7 +196,7 @@ describe('TauriUsageIndicator', () => {
   });
 
   it('propaga o erro do command', async () => {
-    const { commands } = createFakeCommands(() => rejectWith('io', 'sem bandeja'));
-    await expect(new TauriUsageIndicator(commands).update(null, NOW)).rejects.toMatchObject({ kind: 'io' });
+    const { commands } = createFakeCommands(() => rejectWith('tray', 'sem bandeja'));
+    await expect(new TauriUsageIndicator(commands).update(null, NOW)).rejects.toMatchObject({ kind: 'tray' });
   });
 });

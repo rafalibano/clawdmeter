@@ -62,7 +62,7 @@ export class FakeSecretStore implements SecretStore {
 }
 
 export class FakeClaudeCredentialSource implements ClaudeCredentialSource {
-  outcome: ClaudeCredential | Error = { accessToken: 'token', expiresAt: null, subscriptionType: 'max' };
+  outcome: ClaudeCredential | Error = { expiresAt: null, subscriptionType: 'max' };
   reads = 0;
 
   async read(): Promise<ClaudeCredential> {

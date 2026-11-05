@@ -26,14 +26,13 @@ beforeEach(async () => {
   gateway = new FakeUsageGateway();
   history = new FakeUsageHistoryStore();
   indicator = new FakeUsageIndicator();
-  loadUsage = new LoadUsage(world.prefs, world.claude, gateway, history, clock, connections, indicator);
+  loadUsage = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator);
 });
 
 describe('LoadUsage', () => {
-  it('usa o access token do Claude Code, grava um ponto por janela e começa coletando dados', async () => {
-    world.claude.outcome = { accessToken: 'sk-ant-oat01-x', expiresAt: null, subscriptionType: 'max' };
+  it('lê o usage pelo gateway (sem token no TS), grava um ponto por janela e começa coletando dados', async () => {
     const data = await loadUsage.execute();
-    expect(gateway.tokens).toEqual(['sk-ant-oat01-x']);
+    expect(gateway.fetches).toBe(1);
     expect(data.at).toBe(START);
     expect(history.saved).toHaveLength(1);
     expect(history.current.fiveHour).toEqual([{ at: START, utilization: 20, resetsAt: START + 3_600_000 }]);
@@ -81,25 +80,25 @@ describe('LoadUsage', () => {
     expect(history.saved).toHaveLength(0);
   });
 
-  it('token vencido: não chama a API e nunca tenta refresh', async () => {
-    world.claude.outcome = { accessToken: 't', expiresAt: START - 1, subscriptionType: null };
+  it('token vencido (detectado no Rust) vira problema de conexão sem gravar histórico', async () => {
+    gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
-    expect(gateway.tokens).toEqual([]);
     expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'claude-expired' });
+    expect(history.saved).toHaveLength(0);
   });
 
   it('cofre negado e Claude Code ausente chegam à conexão', async () => {
-    world.claude.outcome = new ConnectionProblemError('keychain-denied');
+    gateway.outcome = new ConnectionProblemError('keychain-denied');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'keychain-denied' });
     expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'keychain-denied' });
-    world.claude.outcome = new ConnectionProblemError('claude-code-missing');
+    gateway.outcome = new ConnectionProblemError('claude-code-missing');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-code-missing' });
   });
 
-  it('Claude desconectado em Ajustes: não lê a credencial', async () => {
+  it('Claude desconectado em Ajustes: não chama o Rust', async () => {
     await connections.disconnect.execute('claude');
     await expect(loadUsage.execute()).rejects.toThrow('Claude desconectado');
-    expect(world.claude.reads).toBe(0);
+    expect(gateway.fetches).toBe(0);
     expect(connections.monitor.get('claude')).toEqual({ state: 'disconnected' });
   });
 
@@ -134,7 +133,7 @@ describe('LoadUsage e o indicador da bandeja', () => {
   it('erro de rede, token vencido e Claude desconectado mandam null ao indicador', async () => {
     gateway.outcome = new Error('Anthropic respondeu 500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
-    world.claude.outcome = { accessToken: 't', expiresAt: START - 1, subscriptionType: null };
+    gateway.outcome = new ConnectionProblemError('claude-expired');
     await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
     await connections.disconnect.execute('claude');
     await expect(loadUsage.execute()).rejects.toThrow('Claude desconectado');

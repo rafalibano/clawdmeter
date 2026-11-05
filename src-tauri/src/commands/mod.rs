@@ -1,5 +1,7 @@
+pub mod blocking;
 pub mod claude_credentials;
 pub mod error;
+pub mod home;
 pub mod notification_permission;
 pub mod oauth_loopback;
 pub mod open_external;

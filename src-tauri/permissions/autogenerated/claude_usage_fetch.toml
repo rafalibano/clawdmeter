@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-usage-fetch"
+description = "Enables the claude_usage_fetch command without any pre-configured scope."
+commands.allow = ["claude_usage_fetch"]
+
+[[permission]]
+identifier = "deny-claude-usage-fetch"
+description = "Denies the claude_usage_fetch command without any pre-configured scope."
+commands.deny = ["claude_usage_fetch"]

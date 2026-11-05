@@ -809,6 +809,7 @@ dependencies = [
  "tauri-plugin-http",
  "tauri-plugin-notification",
  "tauri-plugin-positioner",
+ "thiserror 2.0.21",
  "url",
  "windows",
 ]

@@ -1,5 +1,4 @@
 export interface ClaudeCredential {
-  accessToken: string;
   expiresAt: number | null;
   subscriptionType: string | null;
 }

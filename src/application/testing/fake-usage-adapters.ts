@@ -8,10 +8,10 @@ export const SAMPLE_SNAPSHOT: UsageSnapshot = {
 
 export class FakeUsageGateway implements UsageGateway {
   outcome: UsageSnapshot | Error = SAMPLE_SNAPSHOT;
-  readonly tokens: string[] = [];
+  fetches = 0;
 
-  async fetch(accessToken: string): Promise<UsageSnapshot> {
-    this.tokens.push(accessToken);
+  async fetch(): Promise<UsageSnapshot> {
+    this.fetches += 1;
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
   }

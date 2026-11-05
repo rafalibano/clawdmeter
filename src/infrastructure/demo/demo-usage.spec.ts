@@ -46,6 +46,15 @@ describe('modelo de usage do demo', () => {
     expect(model.snapshotAt(ORIGIN - 2 * DAY_MS)).toEqual(new DemoUsageModel(ORIGIN).snapshotAt(ORIGIN - 2 * DAY_MS));
   });
 
+  it('o gateway do demo repete o que o Rust faz: credencial vencida vira claude-expired', async () => {
+    const world = createFakeConnectionWorld();
+    world.claude.outcome = { expiresAt: ORIGIN - 1, subscriptionType: 'max' };
+    const gateway = new DemoUsageGateway(model, () => ORIGIN, world.claude);
+    await expect(gateway.fetch()).rejects.toMatchObject({ problem: 'claude-expired' });
+    world.claude.outcome = { expiresAt: ORIGIN + 1, subscriptionType: 'max' };
+    expect((await gateway.fetch()).fiveHour).not.toBeNull();
+  });
+
   it('LoadUsage com o demo já devolve previsão pronta para a janela de 5h', async () => {
     const world = createFakeConnectionWorld();
     const clock = new FakeClock();
@@ -53,7 +62,6 @@ describe('modelo de usage do demo', () => {
     const connections = createConnections(world.adapters, clock);
     const load = new LoadUsage(
       world.prefs,
-      world.claude,
       new DemoUsageGateway(model, () => clock.now()),
       new DemoUsageHistoryStore(model.history(ORIGIN)),
       clock,

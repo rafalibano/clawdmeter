@@ -1,48 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { createFakeFetch } from '../testing/fakes';
-import { ANTHROPIC_USAGE_URL, AnthropicUsageGateway } from './anthropic-usage-gateway';
-
-const RECORDED = {
-  five_hour: { utilization: 41.0, resets_at: '2026-11-05T17:00:00.504132+00:00' },
-  seven_day: { utilization: 18.0, resets_at: '2026-11-08T12:00:00.504150+00:00' },
-  seven_day_oauth_apps: null,
-  seven_day_opus: null,
-  extra_usage: { is_enabled: false, monthly_limit: null, used_credits: null, utilization: null },
-};
+import { createFakeCommands, rejectWith } from '../testing/fakes';
+import { AnthropicUsageGateway } from './anthropic-usage-gateway';
 
 describe('AnthropicUsageGateway', () => {
-  it('chama o endpoint com Bearer e o header beta, sem nunca renovar o token', async () => {
-    const { fetcher, requests } = createFakeFetch(() => ({ json: RECORDED }));
-    await new AnthropicUsageGateway(fetcher).fetch('sk-ant-oat01-abc');
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({ url: ANTHROPIC_USAGE_URL, method: 'GET' });
-    expect(requests[0]?.headers).toMatchObject({
-      Authorization: 'Bearer sk-ant-oat01-abc',
-      'anthropic-beta': 'oauth-2025-04-20',
-    });
-    expect(ANTHROPIC_USAGE_URL).toBe('https://api.anthropic.com/api/oauth/usage');
-  });
+  const RECORDED = {
+    five_hour: { utilization: 41.0, resets_at: '2026-11-05T17:00:00.504132+00:00' },
+    seven_day: { utilization: 18.0, resets_at: '2026-11-08T12:00:00.504150+00:00' },
+    extra_usage: { is_enabled: false },
+  };
 
-  it('converte a resposta gravada em snapshot, ignorando campos extras', async () => {
-    const { fetcher } = createFakeFetch(() => ({ json: RECORDED }));
-    const snapshot = await new AnthropicUsageGateway(fetcher).fetch('t');
+  it('chama claude_usage_fetch sem argumentos e converte o JSON em snapshot', async () => {
+    const { commands, calls } = createFakeCommands(() => RECORDED);
+    const snapshot = await new AnthropicUsageGateway(commands).fetch();
+    expect(calls).toEqual([{ command: 'claude_usage_fetch', args: undefined }]);
     expect(snapshot.fiveHour).toEqual({ utilization: 41, resetsAt: Date.parse('2026-11-05T17:00:00.504Z') });
     expect(snapshot.sevenDay?.utilization).toBe(18);
   });
 
-  it('401 vira problema de conexão do Claude (sem refresh)', async () => {
-    const { fetcher, requests } = createFakeFetch(() => ({ status: 401, json: { error: 'unauthorized' } }));
-    await expect(new AnthropicUsageGateway(fetcher).fetch('t')).rejects.toMatchObject({ problem: 'claude-expired' });
-    expect(requests).toHaveLength(1);
+  it('claude_expired vira problema de conexão do Claude', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('claude_expired', 'login do Claude expirado'));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toMatchObject({ problem: 'claude-expired' });
   });
 
-  it('outros erros HTTP viram erro comum com o status', async () => {
-    const { fetcher } = createFakeFetch(() => ({ status: 429 }));
-    await expect(new AnthropicUsageGateway(fetcher).fetch('t')).rejects.toThrow('Anthropic respondeu 429');
+  it('cofre negado e Claude Code ausente chegam tipados', async () => {
+    const denied = createFakeCommands(() => rejectWith('keychain_denied', 'negado'));
+    await expect(new AnthropicUsageGateway(denied.commands).fetch()).rejects.toMatchObject({ problem: 'keychain-denied' });
+    const missing = createFakeCommands(() => rejectWith('claude_code_missing', 'sem credencial'));
+    await expect(new AnthropicUsageGateway(missing.commands).fetch()).rejects.toMatchObject({
+      problem: 'claude-code-missing',
+    });
+  });
+
+  it('erro HTTP do Rust mantém a mensagem com o status', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('http', 'Anthropic respondeu 429 em /api/oauth/usage'));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('Anthropic respondeu 429');
   });
 
   it('resposta sem janelas reconhecíveis falha', async () => {
-    const { fetcher } = createFakeFetch(() => ({ json: { surprise: true } }));
-    await expect(new AnthropicUsageGateway(fetcher).fetch('t')).rejects.toThrow('sem five_hour nem seven_day');
+    const { commands } = createFakeCommands(() => ({ surprise: true }));
+    await expect(new AnthropicUsageGateway(commands).fetch()).rejects.toThrow('sem five_hour nem seven_day');
   });
 });

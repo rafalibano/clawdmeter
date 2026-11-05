@@ -45,7 +45,6 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.anthropic.com/*" },
         { "url": "https://api.github.com/*" },
         { "url": "https://github.com/login/*" },
         { "url": "https://login.microsoftonline.com/*" },
@@ -58,7 +57,8 @@
     "allow-secret-get",
     "allow-secret-set",
     "allow-secret-delete",
-    "allow-claude-credentials-read",
+    "allow-claude-credentials-status",
+    "allow-claude-usage-fetch",
     "allow-process-run",
     "allow-process-spawn",
     "allow-process-kill",

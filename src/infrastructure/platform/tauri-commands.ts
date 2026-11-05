@@ -3,6 +3,9 @@ import { ConnectionProblemError } from '../../domain/connections';
 
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
+export const TOO_MANY_PROCESSES_MESSAGE =
+  'Há processos demais em andamento. Aguarde uma run terminar e tente de novo.';
+
 export class PlatformCommandError extends Error {
   constructor(
     readonly kind: string,
@@ -29,6 +32,10 @@ export function toDomainError(raw: unknown): Error {
       return new ConnectionProblemError('keychain-denied', raw.message);
     case 'claude_code_missing':
       return new ConnectionProblemError('claude-code-missing', raw.message);
+    case 'claude_expired':
+      return new ConnectionProblemError('claude-expired', raw.message);
+    case 'too_many_processes':
+      return new PlatformCommandError(raw.kind, TOO_MANY_PROCESSES_MESSAGE);
     default:
       return new PlatformCommandError(raw.kind, raw.message);
   }

@@ -1,4 +1,5 @@
-import type { UsageGateway, UsageHistoryStore } from '../../application/ports';
+import type { ClaudeCredentialSource, UsageGateway, UsageHistoryStore } from '../../application/ports';
+import { ConnectionProblemError } from '../../domain/connections';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../domain/time';
 import { createEmptyHistory, retainHistory, type UsageHistory, type UsageSnapshot } from '../../domain/usage';
 
@@ -93,9 +94,14 @@ export class DemoUsageGateway implements UsageGateway {
   constructor(
     private readonly model: DemoUsageModel,
     private readonly now: () => number = Date.now,
+    private readonly credentials?: ClaudeCredentialSource,
   ) {}
 
   async fetch(): Promise<UsageSnapshot> {
+    const credential = await this.credentials?.read();
+    if (credential?.expiresAt != null && credential.expiresAt <= this.now()) {
+      throw new ConnectionProblemError('claude-expired');
+    }
     return this.model.snapshotAt(this.now());
   }
 }

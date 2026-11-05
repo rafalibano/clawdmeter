@@ -1,7 +1,7 @@
 import type { UsageHistory, UsageSnapshot } from '../../domain/usage';
 
 export interface UsageGateway {
-  fetch(accessToken: string): Promise<UsageSnapshot>;
+  fetch(): Promise<UsageSnapshot>;
 }
 
 export interface UsageHistoryStore {
