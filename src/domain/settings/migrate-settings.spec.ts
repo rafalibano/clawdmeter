@@ -62,6 +62,24 @@ describe('migrateSettings', () => {
     expect(migrated.appearance.theme).toBe('dark');
   });
 
+  it('troca o destaque índigo antigo pelo verde Mottu, em versão 0 ou 1', () => {
+    for (const schemaVersion of [undefined, 1]) {
+      const migrated = migrateSettings({ schemaVersion, appearance: { accentColor: '#6366F1', theme: 'dark' } });
+      expect(migrated.appearance.accentColor).toBe('#00b131');
+      expect(migrated.appearance.theme).toBe('dark');
+      expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    }
+  });
+
+  it('preserva destaque escolhido e não mexe no índigo de um arquivo já na versão atual', () => {
+    expect(migrateSettings({ schemaVersion: 1, appearance: { accentColor: '#ff0000' } }).appearance.accentColor).toBe('#ff0000');
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, appearance: { accentColor: '#6366f1' } }).appearance.accentColor).toBe('#6366f1');
+  });
+
+  it('o destaque padrão é o verde Mottu', () => {
+    expect(createDefaultSettings().appearance.accentColor).toBe('#00b131');
+  });
+
   it('só roda as migrações pendentes', () => {
     const calls: number[] = [];
     const toOne: Migration = (raw) => (calls.push(1), raw);

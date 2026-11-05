@@ -1,12 +1,22 @@
 import type { AppSettings, ThemeMode } from './app-settings';
 import { THEME_MODES } from './app-settings';
-import { createDefaultSettings } from './defaults';
+import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { isHexColor } from './hex-color';
 import { SCHEMA_VERSION } from './schema-version';
 
 export type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
 
-export const MIGRATIONS: readonly Migration[] = [(raw) => ({ ...raw })];
+export const LEGACY_ACCENT_COLOR = '#6366f1';
+
+const adoptMottuAccent: Migration = (raw) => {
+  const appearance = raw['appearance'];
+  if (!isRecord(appearance)) return raw;
+  const accent = appearance['accentColor'];
+  if (typeof accent !== 'string' || accent.toLowerCase() !== LEGACY_ACCENT_COLOR) return raw;
+  return { ...raw, appearance: { ...appearance, accentColor: DEFAULT_ACCENT_COLOR } };
+};
+
+export const MIGRATIONS: readonly Migration[] = [(raw) => ({ ...raw }), adoptMottuAccent];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

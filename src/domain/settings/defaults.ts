@@ -1,7 +1,7 @@
 import type { AppSettings } from './app-settings';
 import { SCHEMA_VERSION } from './schema-version';
 
-export const DEFAULT_ACCENT_COLOR = '#6366f1';
+export const DEFAULT_ACCENT_COLOR = '#00b131';
 
 export function createDefaultSettings(): AppSettings {
   return {

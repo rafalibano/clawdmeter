@@ -73,6 +73,13 @@ describe('JsonSettingsStore', () => {
     expect(JSON.parse(file.text ?? '').schemaVersion).toBe(SCHEMA_VERSION);
   });
 
+  it('regrava o arquivo da F1 com o índigo antigo já em verde Mottu', async () => {
+    const file = new MemoryFile(JSON.stringify({ schemaVersion: 1, enabledPages: {}, appearance: { accentColor: '#6366f1', popoverBackground: null, theme: 'system' } }));
+    const settings = await new JsonSettingsStore(file).load();
+    expect(settings.appearance.accentColor).toBe('#00b131');
+    expect(JSON.parse(file.text ?? '')).toMatchObject({ schemaVersion: SCHEMA_VERSION, appearance: { accentColor: '#00b131' } });
+  });
+
   it('não regrava arquivo já na versão atual', async () => {
     const file = new MemoryFile(`${JSON.stringify(createDefaultSettings())}\n`);
     await new JsonSettingsStore(file).load();
