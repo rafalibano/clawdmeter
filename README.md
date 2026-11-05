@@ -245,14 +245,15 @@ A página `skills` não faz polling: só roda no clique em **Rodar**. As skills 
       "name": "Acabativa",
       "prompt": "/acabativa",
       "maxBudgetUsd": 2,
-      "allowedTools": ["Read", "Grep", "Glob", "Bash(gh:*)", "Bash(git:*)"],
+      "allowedTools": ["Read", "Grep", "Glob", "Bash(git log:*)", "Bash(git diff:*)", "Bash(git status:*)", "Bash(gh pr list:*)", "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh search prs:*)"],
       "cwd": null
     }
   ]
 }
 ```
 
-- Comando: `claude -p "<prompt>" --output-format stream-json --verbose --max-budget-usd <valor> --allowedTools "Read,Grep,…"` via `process_spawn` (sem shell; a lista de ferramentas é um único argumento). `--verbose` é exigido pelo `stream-json` em modo `-p`. Prompt começando com `-` é rejeitado, assim como ferramenta que comece com `-` ou use caracteres fora da lista que o Rust aceita (`skill-definition.ts` espelha `is_tool_list`). `cwd` precisa ser absoluto e sem `..`; sem `cwd` a run começa na pasta do usuário.
+- Comando: `claude -p "<prompt>" --output-format stream-json --verbose --max-budget-usd <valor> --allowedTools "Read,Grep,…"` via `process_spawn` (sem shell; a lista de ferramentas é um único argumento). `--verbose` é exigido pelo `stream-json` em modo `-p`. Prompt começando com `-` é rejeitado. `cwd` precisa ser absoluto e sem `..`; sem `cwd` a run começa na pasta do usuário.
+- **Ferramentas: allowlist exata.** `--allowedTools` só aceita entradas idênticas às de `ALLOWED_CLAUDE_TOOLS` (`process_policy.rs`, espelhada em `skill-definition.ts` por um teste que lê o arquivo Rust): `Read`, `Grep`, `Glob`, `Bash(git log|diff|status:*)`, `Bash(gh pr list|view|checks:*)`, `Bash(gh search prs:*)` e dois tools MCP de leitura do Jira que a `/acabativa` usa (`mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql` e `getJiraIssue`). `Bash` sem padrão, `Bash(*)`, `Bash(git:*)`, `Bash(gh:*)`, `Write`, `Edit`, qualquer `*` e qualquer outro tool são barrados no Rust; no TS a run falha antes de abrir o processo com "A skill … usa ferramenta não permitida: …". Os scripts auxiliares da `/acabativa` (`bash`/`python`) ficam de fora de propósito. Limite conhecido: o `claude` casa `Bash(git diff:*)` por prefixo, então flags de escrita do próprio subcomando (ex.: `--output=<arquivo>`) não são barradas por esta lista.
 - O stream é lido linha a linha (`process-output`/`process-exit`) e interpretado no `domain/skills` (`parseStreamLine` + `applyStreamEvent`): mensagens do assistant, `result` com custo/duração e `session_id`.
 - **Cancelar** mata o grupo do processo (`process_kill`); cancelar antes do processo estar anexado fica guardado e é aplicado no attach. O histórico (últimas 20 runs, sem o log ao vivo) fica em `runs.json` no `appConfigDir`, com gravações serializadas.
 - Ao fim da run (sucesso ou falha, nunca cancelada) sai uma notificação local com custo e duração, se a conexão de notificações estiver ok.

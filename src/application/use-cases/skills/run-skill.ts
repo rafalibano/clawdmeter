@@ -36,6 +36,7 @@ export class RunSkill {
     const skill = (await this.config.load()).find((candidate) => candidate.id === skillId);
     if (!skill) throw new Error(`Skill desconhecida: ${skillId}`);
     if (this.board.isSkillRunning(skill.id)) throw new Error(`${skill.name} já está rodando.`);
+    const args = buildClaudeArgs(skill);
 
     this.sequence += 1;
     const initial = startRun(`${skill.id}-${this.clock.now().toString(36)}-${this.sequence}`, skill, this.clock.now());
@@ -57,7 +58,7 @@ export class RunSkill {
 
     try {
       const handle = await this.runner.start(
-        { program: 'claude', args: buildClaudeArgs(skill), cwd: skill.cwd },
+        { program: 'claude', args, cwd: skill.cwd },
         {
           onLine: (line, stream) => {
             if (stream === 'stderr') {

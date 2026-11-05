@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CLAUDE_CODE_INSTALL_URL, ConnectionProblemError } from '../../../domain/connections';
 import {
+  DEFAULT_ALLOWED_TOOLS,
   FIXTURE_SESSION_ID,
   MCP_NEEDS_AUTH_STREAM,
   NOISY_STREAM,
@@ -67,9 +68,17 @@ describe('RunSkill', () => {
         '--max-budget-usd',
         '2',
         '--allowedTools',
-        'Read,Grep,Glob,Bash(gh:*),Bash(git:*)',
+        DEFAULT_ALLOWED_TOOLS.join(','),
       ],
     });
+  });
+
+  it('skill com ferramenta fora da lista não abre processo e explica o motivo', async () => {
+    const config = new FakeSkillsConfigStore(parseSkillsConfig(null).map((skill) => ({ ...skill, allowedTools: ['Read', 'Write'] })));
+    const guarded = createSkills({ config, runs: store, runner, terminal, urls, notifier }, clock, connections);
+    await expect(guarded.run.execute('acabativa')).rejects.toThrow('usa ferramenta não permitida: Write');
+    expect(runner.processes).toHaveLength(0);
+    expect(guarded.board.finished()).toHaveLength(0);
   });
 
   it('mostra o progresso ao vivo e conclui com custo, sessão e resultado', async () => {

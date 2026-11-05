@@ -6,6 +6,20 @@ const ALLOWED_PROGRAMS: &[&str] = &["claude", "gh"];
 const MAX_ARGS: usize = 64;
 const MAX_ARG_BYTES: usize = 8_192;
 const MAX_ALLOWED_TOOLS_BYTES: usize = 1_024;
+pub const ALLOWED_CLAUDE_TOOLS: &[&str] = &[
+    "Read",
+    "Grep",
+    "Glob",
+    "Bash(git log:*)",
+    "Bash(git diff:*)",
+    "Bash(git status:*)",
+    "Bash(gh pr list:*)",
+    "Bash(gh pr view:*)",
+    "Bash(gh pr checks:*)",
+    "Bash(gh search prs:*)",
+    "mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql",
+    "mcp__plugin_atlassian_atlassian__getJiraIssue",
+];
 const MAX_BUDGET_USD: f64 = 1_000.0;
 const GH_HOST: &str = "github.com";
 const DENIED_CLAUDE_FLAGS: &[&str] = &[
@@ -122,14 +136,9 @@ fn is_budget(value: &str) -> bool {
 fn is_tool_list(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_ALLOWED_TOOLS_BYTES
-        && !value.starts_with('-')
-        && value.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(
-                    c,
-                    ',' | '(' | ')' | '*' | ':' | '.' | '_' | '-' | '/' | '@' | ' '
-                )
-        })
+        && value
+            .split(',')
+            .all(|tool| ALLOWED_CLAUDE_TOOLS.contains(&tool))
 }
 
 fn validate_claude_print(prompt: &str, options: &[String]) -> CommandResult<()> {
@@ -317,7 +326,7 @@ mod tests {
             "--max-budget-usd",
             "2",
             "--allowedTools",
-            "Read,Grep,Glob,Bash(gh:*),Bash(git:*)",
+            "Read,Grep,Glob,Bash(git log:*),Bash(git diff:*),Bash(git status:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh search prs:*)",
         ];
         assert!(validate_invocation("claude", &args(&argv)).is_ok());
         let without_tools = [
@@ -330,6 +339,62 @@ mod tests {
             "2",
         ];
         assert!(validate_invocation("claude", &args(&without_tools)).is_ok());
+    }
+
+    fn print_call_with_tools(tools: &str) -> Vec<String> {
+        args(&[
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "1",
+            "--allowedTools",
+            tools,
+        ])
+    }
+
+    #[test]
+    fn claude_tools_outside_the_exact_allowlist_are_rejected() {
+        for tools in [
+            "Bash",
+            "Bash(*)",
+            "Bash(git:*)",
+            "Bash(gh:*)",
+            "Bash(git log)",
+            "Bash(git log:*) ",
+            "Bash(git -c core.sshCommand=x log:*)",
+            "Bash(gh api:*)",
+            "Bash(gh pr merge:*)",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "NotebookEdit",
+            "WebFetch",
+            "*",
+            "mcp__*",
+            "mcp__plugin_atlassian_atlassian__*",
+            "read",
+            "Read,Write",
+            "Read,Bash(git:*)",
+        ] {
+            assert!(
+                validate_invocation("claude", &print_call_with_tools(tools)).is_err(),
+                "{tools:?} deveria ser barrado"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_accepts_every_allowlisted_tool_alone_and_together() {
+        for tool in ALLOWED_CLAUDE_TOOLS {
+            assert!(
+                validate_invocation("claude", &print_call_with_tools(tool)).is_ok(),
+                "{tool} deveria passar"
+            );
+        }
+        let all = ALLOWED_CLAUDE_TOOLS.join(",");
+        assert!(validate_invocation("claude", &print_call_with_tools(&all)).is_ok());
     }
 
     #[test]
@@ -459,7 +524,18 @@ mod tests {
             .chain(["--max-budget-usd", "1", "--max-budget-usd", "2"])
             .collect();
         assert!(validate_invocation("claude", &args(&repeated)).is_err());
-        for tools in ["", "-x", "Bash;rm", "Bash$(x)", "a`b`", "a\nb", "a|b"] {
+        for tools in [
+            "",
+            "-x",
+            "Bash;rm",
+            "Bash$(x)",
+            "a`b`",
+            "a\nb",
+            "a|b",
+            "Read,",
+            ",Read",
+            "Read,,Grep",
+        ] {
             let call: Vec<&str> = head
                 .into_iter()
                 .chain(["--max-budget-usd", "1", "--allowedTools", tools])

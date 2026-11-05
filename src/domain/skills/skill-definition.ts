@@ -9,7 +9,21 @@ export interface SkillDefinition {
 
 export const SKILLS_SCHEMA_VERSION = 1;
 export const DEFAULT_MAX_BUDGET_USD = 2;
-export const DEFAULT_ALLOWED_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash(gh:*)', 'Bash(git:*)'];
+export const ALLOWED_CLAUDE_TOOLS: readonly string[] = [
+  'Read',
+  'Grep',
+  'Glob',
+  'Bash(git log:*)',
+  'Bash(git diff:*)',
+  'Bash(git status:*)',
+  'Bash(gh pr list:*)',
+  'Bash(gh pr view:*)',
+  'Bash(gh pr checks:*)',
+  'Bash(gh search prs:*)',
+  'mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql',
+  'mcp__plugin_atlassian_atlassian__getJiraIssue',
+];
+export const DEFAULT_ALLOWED_TOOLS: readonly string[] = ALLOWED_CLAUDE_TOOLS.slice(0, 10);
 
 export const DEFAULT_SKILLS: readonly SkillDefinition[] = [
   {
@@ -87,7 +101,21 @@ export function parseSkillsConfig(raw: unknown): SkillDefinition[] {
   return skills;
 }
 
+export function findDisallowedTools(tools: readonly string[]): string[] {
+  return tools.filter((tool) => !ALLOWED_CLAUDE_TOOLS.includes(tool));
+}
+
+export function assertAllowedTools(skill: SkillDefinition): void {
+  const disallowed = findDisallowedTools(skill.allowedTools);
+  if (disallowed.length > 0) {
+    throw new Error(
+      `A skill "${skill.name}" usa ferramenta não permitida: ${disallowed.join(', ')}. Permitidas: ${ALLOWED_CLAUDE_TOOLS.join(', ')}.`,
+    );
+  }
+}
+
 export function buildClaudeArgs(skill: SkillDefinition): string[] {
+  assertAllowedTools(skill);
   const args = [
     '-p',
     skill.prompt,
