@@ -2,7 +2,7 @@
 
 Technical document for whoever maintains the app. To install and use it, see the [README](../README.md); to run and contribute, [DEVELOPMENT.md](DEVELOPMENT.md); for the process policy, secrets, capabilities and security backlog, [SECURITY.md](SECURITY.md).
 
-Tray app for macOS and Windows. On macOS it lives in the menu bar; on Windows, in the notification area. One click on the icon opens a popover with the enabled pages (Usage, Sessions, Pull Requests, Reviews, Agenda and Skills).
+Tray app for macOS and Windows, with experimental Linux (x86_64) support. On macOS it lives in the menu bar; on Windows, in the notification area; on Linux, in the system tray (StatusNotifierItem/AppIndicator). One click on the icon opens a popover with the enabled pages (Usage, Sessions, Pull Requests, Reviews, Agenda and Skills).
 
 Stack: Tauri 2 (Rust only in the platform layer), TypeScript, Angular 19 (standalone + signals).
 
@@ -27,6 +27,7 @@ The ⚙ button in the bottom right corner is the only way in. Pages (checkboxes 
 |---|---|
 | macOS | `~/Library/Application Support/com.mottu.clawdmeter/settings.json` |
 | Windows | `%APPDATA%\com.mottu.clawdmeter\settings.json` |
+| Linux | `~/.config/com.mottu.clawdmeter/settings.json` (`$XDG_CONFIG_HOME` when set) |
 
 The file has a `schemaVersion`; old versions are migrated and rewritten on read, and future versions are never rewritten at boot (no downgrade). Editing the file by hand while the app is open reloads the settings.
 
@@ -105,8 +106,9 @@ On every `LoadUsage` read (and on every failure) the `UsageIndicator` port updat
 
 - **macOS:** wide icon (template, only alpha counts) with the pixel mascot (12×8 grid in `usage_icon.rs`, eyes as holes) on the left and two `5h`/`7d` rows with a rounded bar: filled part opaque, empty at 35%. The mascot fills from bottom to top according to `7d` (0% all at 35%, 100% all opaque) and, when `5h` or `7d` reaches 100% (limit hit), the eyes turn into an X. `tray-icon` fixes the icon height at 18 pt, so the render is 128×36 px (@2x), pixel by pixel at that height.
 - **Windows:** the tray icon is square, so the 32×32 variant (16×16 at @1x) goes with only the mascot (fills with `7d`, eyes as an X when a limit is hit; filled blue, empty gray, readable on light and dark bars). Bars and numbers stay in the tooltip: `5h: 24% · resets 14:09 | 7d: 51% · resets Mon 05:39` (`domain/usage/usage-tooltip.ts`).
+- **Linux:** the same square mascot as Windows, drawn in a light monochrome ink (`render_usage_icon_square_light`, readable on dark panels) both as the initial icon and on every update. The tray library reports no click events on Linux, so the tray menu has **Open ClawdMeter** besides **Quit ClawdMeter**.
 - **No data** (missing window, Claude disconnected, expired token or read error): mascot all at 35% with normal eyes and bars with a dashed outline (on Windows, only the translucent mascot); the tooltip becomes `ClawdMeter · usage unavailable`. Percentages outside 0–100 are clamped in Rust.
-- **Before the first read** (and with the Usage page off) the app's default icon applies (`tray-template.png` on macOS, the window icon on Windows); the mascot render only shows up after a read attempt.
+- **Before the first read** (and with the Usage page off) the app's default icon applies (`tray-template.png` on macOS, the window icon on Windows, the light mascot on Linux); the mascot render only shows up after a read attempt.
 - The sources are in `src-tauri/src/usage_icon.rs` (mascot as a character matrix; embedded 4×6 bitmap font for `5`, `h`, `7`, `d`; no system fonts and no image dependency). `cargo run --example render_usage_preview` (in `src-tauri/`) rewrites the PNGs in `docs/tray-preview/`.
 
 ## Popover over full-screen apps (macOS)
@@ -118,6 +120,15 @@ To behave as a non-activating panel, `popover::apply` swaps the window's class t
 `popover.log` lines are written by one background thread. In release builds it does not record the activated app (pid and bundle id), window frames or the `show+100ms` probe; those lines exist only in debug builds.
 
 On Windows the popover is placed by `tauri-plugin-positioner` (`TrayCenter`, falling back to `BottomRight`) and then clamped to the monitor work area (`rcWork` from `MonitorFromWindow` + `GetMonitorInfoW`), so a taskbar on any edge does not cover it. A failed Ctrl+Alt+D registration (taken by another app, or AltGr on some layouts) is logged as `shortcut-register failed`.
+
+## Linux popover and tray
+
+- **Position** (`popover_cursor.rs`, pure and tested): most Linux desktops give no tray icon position, so the popover opens next to the mouse cursor (`window.cursor_position()` when the tray menu item or the shortcut fires), centered on it, below it in the upper half of the monitor and above it in the lower half, clamped to the monitor work area (`Monitor::work_area`, an 8 px margin). Without a cursor (Wayland often refuses it) or with the cursor outside the work area it goes to the top right corner. Wayland compositors may ignore `set_position`.
+- **No tray host** (`tray_host.rs`): at startup the app asks the session bus whether `org.kde.StatusNotifierWatcher` has an owner. If it is known to have none (GNOME without the AppIndicator extension), the first run opens the popover and the `startup_notice` command returns `no-tray`, which the shell shows as a dismissible notice ("Your desktop has no tray. Install the AppIndicator extension or use Ctrl+Alt+D."); a marker in `$APPDATA/.migration` keeps later runs quiet and the global shortcut keeps working. An unanswered query counts as "has a tray".
+- **Secret Service:** `keyring` uses `sync-secret-service` + `crypto-rust` on Linux. When the service is missing (no session bus, `org.freedesktop.secrets` not provided, no default collection) the command error is `keyring_unavailable`, the connection problem is `keyring-unavailable` ("System keyring unavailable — use the GitHub CLI") and its fix, `use-github-cli`, runs the normal GitHub CLI connection (a locked or dismissed keyring stays `keychain-denied`).
+- **Terminal:** `terminal_run` launches the first of `x-terminal-emulator`, `gnome-terminal` and `konsole` found on `PATH` (or the usual bin dirs) with the program and its arguments as separate `argv` entries after `sh -c '"$@"; exec "${SHELL:-/bin/sh}"'`, so the session stays open and no shell line is built from them; the working directory goes through `current_dir` and the terminal's own flag. **Open system settings** runs `gnome-control-center notifications` or `systemsettings kcm_notifications`.
+- **Processes:** `process_run/spawn` children also get `XDG_*_HOME`, `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, so `gh` can reach the Secret Service that holds its token.
+- **Paths:** Tauri resolves the app folders through XDG (`~/.config`, `~/.local/share`, `~/.cache`); the old `com.mottu.devpulse` folder never existed on Linux, so the legacy migration finds nothing. `~/.claude/.credentials.json` is read for the Claude credential, as on Windows.
 
 ## Sessions
 
@@ -186,8 +197,8 @@ The `skills` page does not poll: it only runs on a click on **Run**. Skills come
 
 ## Build and release
 
-- `.github/workflows/ci.yml`: on push to `main` and on PR, runs lint, typecheck, Vitest, build, `cargo test`, `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` on `macos-latest` and `windows-latest`; a `supply-chain` job (ubuntu) runs `cargo audit` and `cargo deny check` (`src-tauri/deny.toml`: permissive licenses, advisories and sources only from crates.io).
-- `.github/workflows/release.yml`: on a `v*` tag, builds a universal `.dmg` (arm64 + x64, macOS 14+) and `.msi` (Windows 10+) with `tauri-apps/tauri-action` and attaches them to a draft release.
+- `.github/workflows/ci.yml`: on push to `main` and on PR, runs lint, typecheck, Vitest, build, `cargo test`, `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` on `macos-latest`, `windows-latest` and `ubuntu-22.04` (which installs the WebKitGTK, AppIndicator, rsvg, OpenSSL, D-Bus and xdo development packages first); a `supply-chain` job (ubuntu) runs `cargo audit` and `cargo deny check` (`src-tauri/deny.toml`: permissive licenses, advisories and sources only from crates.io).
+- `.github/workflows/release.yml`: on a `v*` tag, builds a universal `.dmg` (arm64 + x64, macOS 14+), an `.msi` (Windows 10+) and an `.AppImage` plus `.deb` (Linux x86_64, built on Ubuntu 22.04) with `tauri-apps/tauri-action` and attaches them to a draft release.
 - **Permissions and pins.** `ci.yml` runs with `permissions: contents: read`; `release.yml` only has `contents: write` (it needs to create the draft release). Every `actions/checkout` uses `persist-credentials: false`, so the token is not stored in the jobs' `.git`. All actions are pinned by commit SHA, with the version in a `# vN` comment next to it: `actions/checkout` v4.4.0, `actions/setup-node` v4.4.0, `swatinem/rust-cache` v2.9.3, `taiki-e/install-action` v2.90.1, `tauri-apps/tauri-action` v0.6.2 and `dtolnay/rust-toolchain` on the `stable` branch (the action derives the toolchain from the ref name, and a SHA does not carry that name, so `toolchain:` is explicit). Dependabot (`.github/dependabot.yml`) opens weekly PRs for `github-actions`, `cargo` (`/src-tauri`) and `npm`, and updates the SHA together with the comment. The SHAs were checked with `gh api repos/<org>/<repo>/commits/<sha>` and `…/tags`. A test (`tools/workflows.spec.ts`) fails if an action leaves the SHA pin, loses the version comment, or if a checkout loses `persist-credentials: false`.
 - **Pinned Rust toolchain.** `rust-toolchain.toml` (root) pins `1.99.1`, the stable version installed on the development machine (`rustc 1.99.1`, 2026-10-13), with `clippy` and `rustfmt`; CI and release pass `toolchain: 1.99.1` to the action and the same test requires the values to match. To bump the version, change the `channel` and the `toolchain:` values together.
 

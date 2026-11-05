@@ -1,6 +1,6 @@
 # ClawdMeter
 
-ClawdMeter is a menu bar app for macOS that shows, in one click, how much of Claude Code you have used and what is happening in your workday: consumption of the 5-hour and 7-day windows with a projection up to the reset, your open Claude Code sessions, your Pull Requests and the Reviews waiting for you. Everything runs on your computer, with no Mottu server in the middle.
+ClawdMeter is a menu bar app for macOS (with experimental Linux support, see [Linux](#linux-experimental)) that shows, in one click, how much of Claude Code you have used and what is happening in your workday: consumption of the 5-hour and 7-day windows with a projection up to the reset, your open Claude Code sessions, your Pull Requests and the Reviews waiting for you. Everything runs on your computer, with no Mottu server in the middle.
 
 ![ClawdMeter Usage tab](docs/images/usage.png)
 
@@ -29,12 +29,21 @@ The **Skills** (run Claude Code skills) and **Agenda** (Outlook/Teams meetings) 
 
 The `.dmg` is for Macs with an Apple chip (M1 or newer). You need Claude Code installed and signed in.
 
+## Installation (Linux, experimental)
+
+Requirements: Linux x86_64 on Ubuntu 22.04 / Debian 12 or newer (or an equivalent distribution), WebKitGTK 4.1, Claude Code installed and signed in, and a desktop with a system tray (see below).
+
+- **AppImage:** download `ClawdMeter_0.1.0_amd64.AppImage`, then `chmod +x ClawdMeter_0.1.0_amd64.AppImage` and run it.
+- **Debian/Ubuntu (.deb):** `sudo apt install ./ClawdMeter_0.1.0_amd64.deb` (apt installs WebKitGTK and the AppIndicator library for you).
+
+The builds are not signed. Run `ClawdMeter` from the application menu; the mascot icon appears in the system tray.
+
 ## Getting started
 
 - Click the mascot icon in the menu bar to open the panel. If the icon is hidden, use the **Ctrl + Option + D** shortcut.
 - Click the gear (⚙) in the bottom right corner to open **Settings**: enabled tabs, connections, projection method, language, colors and light/dark theme. The app opens in English; pick Português (Brasil) or Español (México) under Settings > Language.
 - To see Pull Requests and Reviews, connect GitHub in **Settings > Connections**. There are three ways: use the `gh` CLI that is already signed in on your Mac, sign in through the browser, or paste an access token.
-- To quit the app, right-click the menu bar icon.
+- To quit the app, right-click the menu bar icon. On Linux the tray icon has no click event: open its menu and choose **Open ClawdMeter** (or use **Ctrl + Alt + D**) and **Quit ClawdMeter**.
 
 ![ClawdMeter Settings](docs/images/settings.png)
 
@@ -44,7 +53,7 @@ Everything stays on your computer. There is no ClawdMeter server, nothing is sen
 
 What the app reads:
 
-- **The Claude Code credential**, read-only, from the macOS Keychain. The app never refreshes it, never writes it anywhere else and it never leaves the app's native layer.
+- **The Claude Code credential**, read-only, from the macOS Keychain (on Windows and Linux, from `~/.claude/.credentials.json`). The app never refreshes it, never writes it anywhere else and it never leaves the app's native layer.
 - **`~/.claude/sessions`**, to list your open Claude Code sessions.
 - **The usage history**, which the app itself keeps in `~/Library/Application Support/com.mottu.clawdmeter`, along with your settings.
 
@@ -54,7 +63,7 @@ Who the app talks to over the internet, and only these:
 - `api.github.com`: your PRs and Reviews.
 - `graph.microsoft.com`: the agenda (tab under maintenance).
 
-The GitHub token, if you use one, is kept in the Keychain. Skills, when they come back, will only be able to run a closed list of read commands.
+The GitHub token, if you use one, is kept in the Keychain (on Linux, in the Secret Service of your desktop, for example GNOME Keyring or KWallet). Skills, when they come back, will only be able to run a closed list of read commands.
 
 Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -71,6 +80,14 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
 3. Open the **Keychain Access** app, search for `com.mottu.clawdmeter` and delete the items found. The Claude Code credential does not belong to ClawdMeter and must stay.
 
+On Linux the folders are `~/.config/com.mottu.clawdmeter` (settings and history), `~/.local/share/com.mottu.clawdmeter` (logs, in `logs/`) and `~/.cache/com.mottu.clawdmeter`; to remove the app and its data:
+
+```bash
+sudo apt remove clawdmeter   # or delete the AppImage
+rm -rf ~/.config/com.mottu.clawdmeter ~/.local/share/com.mottu.clawdmeter ~/.cache/com.mottu.clawdmeter
+secret-tool clear service com.mottu.clawdmeter   # only if you saved a GitHub token
+```
+
 ## Common problems
 
 - **"Anthropic rate limit" (error 429):** Anthropic limits how often usage can be queried. The app waits on its own and tries again, showing the latest data in the meantime. You do not need to do anything.
@@ -78,9 +95,19 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 - **The icon disappeared from the menu bar:** on Macs with a notch, macOS may hide icons when the bar is full. Use the **Ctrl + Option + D** shortcut to open the panel.
 - **"Sign in to Claude again":** the Claude Code login has expired. Run `claude /login` in Terminal (or use the app's own button).
 
+## Linux (experimental)
+
+Linux x86_64 builds, runs its tests and lints in CI on Ubuntu 22.04, and ships as `.AppImage` and `.deb`, but it has had little use on real desktops yet. What to expect:
+
+- **Tray:** needs a StatusNotifierItem/AppIndicator host: KDE Plasma, XFCE, Cinnamon and MATE have one; GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension. If your desktop has no tray, the app opens its window on the first run with a notice, and **Ctrl + Alt + D** keeps working. The tray icon is a light monochrome mascot, drawn for dark panels.
+- **Panel position:** the panel opens near the mouse cursor, inside the monitor work area, and falls back to the top right corner. Wayland compositors may ignore window positions and global shortcuts; on GNOME/Wayland run the app with `GDK_BACKEND=x11` if the shortcut or the position does not work.
+- **GitHub token:** the app stores it in the Secret Service. Without one (no GNOME Keyring or KWallet running), the connection shows *System keyring unavailable — use the GitHub CLI*, and the **Use the GitHub CLI** button connects through `gh`.
+- **Terminal buttons** (sign in to Claude, `gh auth login`) open `x-terminal-emulator`, `gnome-terminal` or `konsole`, the first one found.
+- **Notifications:** the system does not tell the app whether they are allowed, so the Notifications connection shows *Cannot verify*; **Open system settings** opens GNOME or KDE settings when available.
+
 ## Windows
 
-There is a Windows version in the code, but it has not been validated on a Windows computer yet. For now, official support is macOS only.
+There is a Windows version in the code, but it has not been validated on a Windows computer yet. For now, official support is macOS, with Linux in an experimental state.
 
 ## For developers
 

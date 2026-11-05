@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Experimental Linux (x86_64) support, shipped as `.AppImage` and `.deb`: light monochrome tray icon with an **Open ClawdMeter** menu item (Linux trays report no clicks), panel placed near the mouse cursor inside the monitor work area, a first-run window with a translated notice when the desktop has no tray, and the GitHub token kept in the Secret Service.
+- A missing Secret Service shows *System keyring unavailable — use the GitHub CLI* (English, pt-BR, es-MX) with a **Use the GitHub CLI** button.
+- Terminal buttons open `x-terminal-emulator`, `gnome-terminal` or `konsole`; **Open system settings** opens GNOME or KDE settings; skill and `gh` children keep the session bus and XDG variables.
+- CI runs the full check on `ubuntu-22.04`; releases attach the Linux packages; `cargo deny` also checks the Linux target.
+
 ## 0.1.0
 
 First internally distributed version.

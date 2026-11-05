@@ -4,10 +4,18 @@ Guide for those who want to run, change and package ClawdMeter. To install and u
 
 ## Prerequisites
 
-- macOS 14 or later
+- macOS 14 or later, or Windows, or Linux x86_64 (experimental)
 - Node 22 and Yarn 1
 - Rust 1.99.1 via [rustup](https://rustup.rs): the `rust-toolchain.toml` at the root pins the version, and rustup installs it on its own the first time `cargo` runs
-- Xcode Command Line Tools: `xcode-select --install`
+- Xcode Command Line Tools on macOS: `xcode-select --install`
+- On Linux (Ubuntu 22.04 / Debian 12 or newer), the Tauri system packages:
+
+```bash
+sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+  librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev patchelf
+```
+
+  The GitHub token is stored through the Secret Service over D-Bus (`keyring` with `sync-secret-service` and `crypto-rust`, which reuses the `libdbus-1` the Tauri window library already needs), so `libsecret` is not a build dependency. To run the app you need a Secret Service provider (GNOME Keyring or KWallet) and a tray host (see the README).
 
 ## Commands
 
@@ -26,6 +34,7 @@ Guide for those who want to run, change and package ClawdMeter. To install and u
 | `cargo fmt --check` | Rust formatting (run in `src-tauri/`) |
 | `cargo deny check` | licenses, advisories and sources of the dependencies (`src-tauri/deny.toml`) |
 | `CI=true yarn tauri build --bundles dmg` | generates the `.dmg` in `src-tauri/target/release/bundle/dmg/` |
+| `CI=true yarn tauri build --bundles appimage,deb` | on Linux, generates the `.AppImage` and `.deb` in `src-tauri/target/release/bundle/` |
 
 Demo mode swaps `composition-root.ts` for `composition-root.demo.ts` through Angular's `fileReplacements` (the `demo` configuration). The popover has a fixed width of 380 px in both modes.
 
