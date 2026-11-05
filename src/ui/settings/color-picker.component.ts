@@ -4,7 +4,7 @@ import type { AccentPreset } from '../theme/accent-presets';
 import { parseHexInput } from '../theme/color';
 
 @Component({
-  selector: 'dp-color-picker',
+  selector: 'cm-color-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './color-picker.component.html',
   styleUrl: './color-picker.component.scss',

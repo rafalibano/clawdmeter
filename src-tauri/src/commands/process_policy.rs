@@ -908,7 +908,7 @@ mod tests {
     impl TempTree {
         fn new(label: &str) -> Self {
             let root =
-                std::env::temp_dir().join(format!("dev-pulse-{label}-{}", std::process::id()));
+                std::env::temp_dir().join(format!("clawdmeter-{label}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
             std::fs::create_dir_all(root.join("home").join("work")).unwrap();
             std::fs::create_dir_all(root.join("outside")).unwrap();
@@ -975,7 +975,7 @@ mod tests {
     fn cwd_rejects_the_app_config_dir_and_everything_inside_it() {
         let tree = TempTree::new("cwd-config");
         let home = tree.home();
-        let config = home.join("Library").join("com.fake.devpulse");
+        let config = home.join("Library").join("com.fake.clawdmeter");
         let nested = config.join("projeto").join(".claude");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::create_dir_all(home.join("Library").join("outro")).unwrap();

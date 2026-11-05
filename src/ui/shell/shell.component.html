@@ -26,7 +26,7 @@
 
   <main class="content">
     @if (showingSettings()) {
-      <dp-settings />
+      <cm-settings />
     } @else {
       @if (current(); as page) {
         <ng-container [ngComponentOutlet]="page.component" />

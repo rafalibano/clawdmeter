@@ -13,7 +13,7 @@ import { TEAMS_PAGE } from './teams-page-ref';
 const CLOCK_TICK_MS = 1_000;
 
 @Component({
-  selector: 'dp-teams-page',
+  selector: 'cm-teams-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     :host {
@@ -37,12 +37,12 @@ const CLOCK_TICK_MS = 1_000;
       align-items: center;
       gap: 8px;
       padding: 10px 12px;
-      border: 1px solid var(--dp-border);
-      border-radius: var(--dp-radius-md);
-      background: var(--dp-surface);
+      border: 1px solid var(--cm-border);
+      border-radius: var(--cm-radius-md);
+      background: var(--cm-surface);
     }
     .row[data-tone='now'] {
-      border-color: var(--dp-accent);
+      border-color: var(--cm-accent);
     }
     .row[data-tone='past'] {
       opacity: 0.55;
@@ -55,7 +55,7 @@ const CLOCK_TICK_MS = 1_000;
     }
     .time {
       font-variant-numeric: tabular-nums;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
     .title {
       font-weight: 500;
@@ -63,40 +63,40 @@ const CLOCK_TICK_MS = 1_000;
     }
     .detail,
     .hint {
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-size: 12px;
     }
     .badge {
       margin-left: 6px;
       padding: 1px 6px;
-      border-radius: var(--dp-radius-pill);
-      background: var(--dp-accent);
-      color: var(--dp-accent-fg);
+      border-radius: var(--cm-radius-pill);
+      background: var(--cm-accent);
+      color: var(--cm-accent-fg);
       font-size: 11px;
       font-weight: 400;
     }
     .btn {
       padding: 4px 10px;
-      border: 1px solid var(--dp-control-border);
-      border-radius: var(--dp-radius-btn);
-      background: var(--dp-accent);
-      color: var(--dp-accent-fg);
+      border: 1px solid var(--cm-control-border);
+      border-radius: var(--cm-radius-btn);
+      background: var(--cm-accent);
+      color: var(--cm-accent-fg);
       cursor: pointer;
     }
     .btn:active:not(.secondary) {
-      border-color: var(--dp-accent-active);
-      background: var(--dp-accent-active);
-      color: var(--dp-accent-fg-active);
+      border-color: var(--cm-accent-active);
+      background: var(--cm-accent-active);
+      color: var(--cm-accent-fg-active);
     }
     .btn.secondary {
       background: transparent;
-      color: var(--dp-fg);
+      color: var(--cm-fg);
     }
     .problem {
       padding: 10px;
-      border: 1px solid var(--dp-border);
-      border-radius: var(--dp-radius-md);
-      background: color-mix(in srgb, var(--dp-danger) 14%, transparent);
+      border: 1px solid var(--cm-border);
+      border-radius: var(--cm-radius-md);
+      background: color-mix(in srgb, var(--cm-danger) 14%, transparent);
     }
     .problem p {
       margin: 0 0 8px;
@@ -109,7 +109,7 @@ const CLOCK_TICK_MS = 1_000;
     h2 {
       margin: 0 0 6px;
       font-size: 12px;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-weight: 500;
     }
   `,

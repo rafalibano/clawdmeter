@@ -1,4 +1,5 @@
 mod commands;
+mod legacy_migration;
 mod platform;
 mod popover_dismiss;
 #[cfg(any(target_os = "macos", test))]
@@ -45,8 +46,21 @@ pub fn run() {
             commands::tray_usage::tray_set_usage,
         ])
         .setup(|app| {
+            let config_dir = app.path().app_config_dir();
+            let migrated = config_dir.as_ref().ok().and_then(|dir| {
+                let legacy = legacy_migration::legacy_dir_for(dir)?;
+                Some(legacy_migration::migrate_config_dir(dir, &legacy))
+            });
             if let Ok(dir) = app.path().app_log_dir() {
                 popover_log::init(dir);
+            }
+            if let Some(outcome) = migrated {
+                popover_log::write(&format!("legacy-config {outcome:?}"));
+            }
+            if let Ok(dir) = config_dir {
+                commands::secrets::enable_legacy_migration(
+                    dir.join(legacy_migration::SECRETS_MARKER),
+                );
             }
             popover_log::write(&format!("app-start version={}", app.package_info().version));
             platform::configure_app(app);

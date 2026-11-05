@@ -5,14 +5,14 @@ import { I18n } from '../../i18n';
 import { PageProblemFacade } from './page-problem.facade';
 
 @Component({
-  selector: 'dp-page-error',
+  selector: 'cm-page-error',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .error {
       padding: 12px;
-      border: 1px solid color-mix(in srgb, var(--dp-danger) 40%, transparent);
-      border-radius: var(--dp-radius-md);
-      background: color-mix(in srgb, var(--dp-danger) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--cm-danger) 40%, transparent);
+      border-radius: var(--cm-radius-md);
+      background: color-mix(in srgb, var(--cm-danger) 10%, transparent);
     }
     .message {
       margin: 0 0 10px;
@@ -23,21 +23,21 @@ import { PageProblemFacade } from './page-problem.facade';
     }
     .btn {
       padding: 4px 10px;
-      border: 1px solid var(--dp-control-border);
-      border-radius: var(--dp-radius-btn);
-      background: var(--dp-surface);
+      border: 1px solid var(--cm-control-border);
+      border-radius: var(--cm-radius-btn);
+      background: var(--cm-surface);
       color: inherit;
       cursor: pointer;
     }
     .btn.primary {
-      border-color: var(--dp-accent);
-      background: var(--dp-accent);
-      color: var(--dp-accent-fg);
+      border-color: var(--cm-accent);
+      background: var(--cm-accent);
+      color: var(--cm-accent-fg);
     }
     .btn.primary:active:not(:disabled) {
-      border-color: var(--dp-accent-active);
-      background: var(--dp-accent-active);
-      color: var(--dp-accent-fg-active);
+      border-color: var(--cm-accent-active);
+      background: var(--cm-accent-active);
+      color: var(--cm-accent-fg-active);
     }
     .btn:disabled {
       opacity: 0.6;

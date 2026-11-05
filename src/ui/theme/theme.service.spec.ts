@@ -82,7 +82,7 @@ describe('ThemeService', () => {
     media.change(true);
     flush();
     expect(service.resolved()).toBe('light');
-    expect(properties.get('--dp-accent')).toBe('#ff0000');
+    expect(properties.get('--cm-accent')).toBe('#ff0000');
   });
 
   it('para de ouvir o sistema ao ser destruído', () => {

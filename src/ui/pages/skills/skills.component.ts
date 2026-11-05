@@ -11,7 +11,7 @@ import { toRunView, type RunView } from './run-view';
 const CLOCK_TICK_MS = 1_000;
 
 @Component({
-  selector: 'dp-skills-page',
+  selector: 'cm-skills-page',
   imports: [PageErrorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
@@ -26,9 +26,9 @@ const CLOCK_TICK_MS = 1_000;
     .card {
       margin-bottom: 10px;
       padding: 10px 12px;
-      border: 1px solid var(--dp-border);
-      border-radius: var(--dp-radius-md);
-      background: var(--dp-surface);
+      border: 1px solid var(--cm-border);
+      border-radius: var(--cm-radius-md);
+      background: var(--cm-surface);
     }
     .row {
       display: flex;
@@ -43,39 +43,39 @@ const CLOCK_TICK_MS = 1_000;
       font-weight: 600;
     }
     .muted {
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-size: 12px;
     }
     .btn {
       padding: 3px 10px;
-      border: 1px solid var(--dp-control-border);
-      border-radius: var(--dp-radius-btn);
-      background: var(--dp-bg);
+      border: 1px solid var(--cm-control-border);
+      border-radius: var(--cm-radius-btn);
+      background: var(--cm-bg);
       color: inherit;
       cursor: pointer;
     }
     .btn.primary {
-      border-color: var(--dp-accent);
-      background: var(--dp-accent);
-      color: var(--dp-accent-fg);
+      border-color: var(--cm-accent);
+      background: var(--cm-accent);
+      color: var(--cm-accent-fg);
     }
     .btn.primary:active:not(:disabled) {
-      border-color: var(--dp-accent-active);
-      background: var(--dp-accent-active);
-      color: var(--dp-accent-fg-active);
+      border-color: var(--cm-accent-active);
+      background: var(--cm-accent-active);
+      color: var(--cm-accent-fg-active);
     }
     .btn:disabled {
       opacity: 0.5;
       cursor: default;
     }
     .status[data-status='running'] {
-      color: var(--dp-accent-text);
+      color: var(--cm-accent-text);
     }
     .status[data-status='succeeded'] {
-      color: var(--dp-ok-text);
+      color: var(--cm-ok-text);
     }
     .status[data-status='failed'] {
-      color: var(--dp-danger-text);
+      color: var(--cm-danger-text);
     }
     .log {
       margin: 6px 0 0;
@@ -89,15 +89,15 @@ const CLOCK_TICK_MS = 1_000;
       white-space: nowrap;
     }
     .log .tool {
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
     .result {
       margin: 6px 0 0;
       max-height: 160px;
       overflow: auto;
       padding: 6px;
-      border-radius: var(--dp-radius-sm);
-      background: var(--dp-bg);
+      border-radius: var(--cm-radius-sm);
+      background: var(--cm-bg);
       font: inherit;
       font-size: 12px;
       white-space: pre-wrap;
@@ -106,15 +106,15 @@ const CLOCK_TICK_MS = 1_000;
     .problem {
       margin: 6px 0 0;
       padding: 6px 8px;
-      border-radius: var(--dp-radius-sm);
-      background: color-mix(in srgb, var(--dp-danger) 12%, transparent);
+      border-radius: var(--cm-radius-sm);
+      background: color-mix(in srgb, var(--cm-danger) 12%, transparent);
     }
     .problem p {
       margin: 0 0 6px;
     }
     .error {
       margin: 6px 0 0;
-      color: var(--dp-danger-text);
+      color: var(--cm-danger-text);
       font-size: 12px;
     }
     .actions {
@@ -128,7 +128,7 @@ const CLOCK_TICK_MS = 1_000;
     @if (state === undefined) {
       <p class="muted">{{ i18n.t('common.loading') }}</p>
     } @else if (state.status === 'error') {
-      <dp-page-error pageId="skills" connection="claude" [message]="state.error" [code]="state.code" [args]="state.args" />
+      <cm-page-error pageId="skills" connection="claude" [message]="state.error" [code]="state.code" [args]="state.args" />
     } @else {
       @if (facade.error(); as message) {
         <p class="error" role="alert">{{ message }}</p>

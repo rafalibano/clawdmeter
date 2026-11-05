@@ -1,9 +1,13 @@
+use std::path::{Path, PathBuf};
+use std::sync::{Once, OnceLock};
+
 use keyring::Entry;
 
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
+use crate::legacy_migration::LEGACY_IDENTIFIER;
 
-const SERVICE: &str = "com.mottu.devpulse";
+const SERVICE: &str = "com.mottu.clawdmeter";
 
 pub const ALLOWED_SECRET_KEYS: &[&str] = &["github.token", "microsoft.refresh-token"];
 
@@ -28,17 +32,24 @@ pub trait SecretBackend {
     fn remove(&self, key: &str) -> CommandResult<()>;
 }
 
-struct KeyringBackend;
+struct KeyringBackend {
+    service: &'static str,
+}
+
+const CURRENT: KeyringBackend = KeyringBackend { service: SERVICE };
+const LEGACY: KeyringBackend = KeyringBackend {
+    service: LEGACY_IDENTIFIER,
+};
 
 impl KeyringBackend {
-    fn entry(key: &str) -> CommandResult<Entry> {
-        Entry::new(SERVICE, key).map_err(CommandError::from)
+    fn entry(&self, key: &str) -> CommandResult<Entry> {
+        Entry::new(self.service, key).map_err(CommandError::from)
     }
 }
 
 impl SecretBackend for KeyringBackend {
     fn read(&self, key: &str) -> CommandResult<Option<String>> {
-        match Self::entry(key)?.get_password() {
+        match self.entry(key)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(error) => Err(error.into()),
@@ -46,13 +57,13 @@ impl SecretBackend for KeyringBackend {
     }
 
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
-        Self::entry(key)?
+        self.entry(key)?
             .set_password(value)
             .map_err(CommandError::from)
     }
 
     fn remove(&self, key: &str) -> CommandResult<()> {
-        match Self::entry(key)?.delete_credential() {
+        match self.entry(key)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(error) => Err(error.into()),
         }
@@ -183,22 +194,78 @@ pub fn delete_secret(backend: &dyn SecretBackend, key: &str) -> CommandResult<()
     backend.remove(key)
 }
 
+pub fn migrate_legacy_secrets(
+    legacy: &dyn SecretBackend,
+    current: &dyn SecretBackend,
+    marker: &Path,
+) -> CommandResult<usize> {
+    if marker.exists() {
+        return Ok(0);
+    }
+    let mut copied = 0;
+    for key in ALLOWED_SECRET_KEYS {
+        if current.read(key)?.is_some() {
+            continue;
+        }
+        if let Some(value) = get_secret(legacy, key)? {
+            set_secret(current, key, &value)?;
+            copied += 1;
+        }
+    }
+    if let Some(dir) = marker.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(marker, LEGACY_IDENTIFIER)?;
+    Ok(copied)
+}
+
+static LEGACY_MARKER: OnceLock<PathBuf> = OnceLock::new();
+static LEGACY_ONCE: Once = Once::new();
+
+pub fn enable_legacy_migration(marker: PathBuf) {
+    let _ = LEGACY_MARKER.set(marker);
+}
+
+fn ensure_legacy_migrated() {
+    let Some(marker) = LEGACY_MARKER.get() else {
+        return;
+    };
+    LEGACY_ONCE.call_once(|| match migrate_legacy_secrets(&LEGACY, &CURRENT, marker) {
+        Ok(copied) => crate::popover_log::write(&format!("legacy-secrets copied={copied}")),
+        Err(error) => {
+            crate::popover_log::write(&format!("legacy-secrets failed={}", error.message))
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn secret_get(key: String) -> CommandResult<Option<String>> {
     ensure_known_key(&key)?;
-    run_blocking(move || get_secret(&KeyringBackend, &key)).await
+    run_blocking(move || {
+        ensure_legacy_migrated();
+        get_secret(&CURRENT, &key)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn secret_set(key: String, value: String) -> CommandResult<()> {
     ensure_known_key(&key)?;
-    run_blocking(move || set_secret(&KeyringBackend, &key, &value)).await
+    run_blocking(move || {
+        ensure_legacy_migrated();
+        set_secret(&CURRENT, &key, &value)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn secret_delete(key: String) -> CommandResult<()> {
     ensure_known_key(&key)?;
-    run_blocking(move || delete_secret(&KeyringBackend, &key)).await
+    run_blocking(move || {
+        ensure_legacy_migrated();
+        delete_secret(&CURRENT, &key)
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -401,6 +468,107 @@ mod tests {
             set_secret(&backend, "k", &big_secret(CHUNK_BYTES * MAX_CHUNKS + 1)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::InvalidArgument);
         assert!(backend.entries.borrow().is_empty());
+    }
+
+    struct MarkerDir(PathBuf);
+
+    impl MarkerDir {
+        fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir()
+                .join(format!("clawdmeter-secrets-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            Self(dir)
+        }
+
+        fn marker(&self) -> PathBuf {
+            self.0.join(crate::legacy_migration::SECRETS_MARKER)
+        }
+    }
+
+    impl Drop for MarkerDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn legacy_secrets_are_copied_once_including_chunked_ones() {
+        let dir = MarkerDir::new("copy");
+        let legacy = FakeBackend::default();
+        let current = FakeBackend::default();
+        let refresh = big_secret(5_000);
+        set_secret(&legacy, "github.token", "gho_old").unwrap();
+        set_secret(&legacy, "microsoft.refresh-token", &refresh).unwrap();
+        set_secret(&legacy, "claude.token", "nao-e-nosso").unwrap();
+
+        assert_eq!(
+            migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap(),
+            2
+        );
+        assert_eq!(
+            get_secret(&current, "github.token").unwrap().as_deref(),
+            Some("gho_old")
+        );
+        assert_eq!(
+            get_secret(&current, "microsoft.refresh-token")
+                .unwrap()
+                .as_deref(),
+            Some(refresh.as_str())
+        );
+        assert_eq!(current.read("claude.token").unwrap(), None);
+        assert_eq!(
+            get_secret(&legacy, "github.token").unwrap().as_deref(),
+            Some("gho_old")
+        );
+        assert!(dir.marker().is_file());
+    }
+
+    #[test]
+    fn existing_secrets_are_never_overwritten() {
+        let dir = MarkerDir::new("keep");
+        let legacy = FakeBackend::default();
+        let current = FakeBackend::default();
+        set_secret(&legacy, "github.token", "gho_old").unwrap();
+        set_secret(&current, "github.token", "gho_new").unwrap();
+
+        assert_eq!(
+            migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap(),
+            0
+        );
+        assert_eq!(
+            get_secret(&current, "github.token").unwrap().as_deref(),
+            Some("gho_new")
+        );
+    }
+
+    #[test]
+    fn after_the_marker_a_logout_is_not_undone() {
+        let dir = MarkerDir::new("idempotent");
+        let legacy = FakeBackend::default();
+        let current = FakeBackend::default();
+        set_secret(&legacy, "github.token", "gho_old").unwrap();
+        migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap();
+        delete_secret(&current, "github.token").unwrap();
+
+        assert_eq!(
+            migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap(),
+            0
+        );
+        assert_eq!(get_secret(&current, "github.token").unwrap(), None);
+    }
+
+    #[test]
+    fn without_legacy_secrets_only_the_marker_is_written() {
+        let dir = MarkerDir::new("empty");
+        let legacy = FakeBackend::default();
+        let current = FakeBackend::default();
+
+        assert_eq!(
+            migrate_legacy_secrets(&legacy, &current, &dir.marker()).unwrap(),
+            0
+        );
+        assert!(current.entries.borrow().is_empty());
+        assert!(dir.marker().is_file());
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { I18n } from '../../i18n';
 
 @Component({
-  selector: 'dp-maintenance-page',
+  selector: 'cm-maintenance-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     :host {
@@ -12,7 +12,7 @@ import { I18n } from '../../i18n';
       gap: 6px;
       padding: 32px 12px;
       text-align: center;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
     .title {
       margin: 0;

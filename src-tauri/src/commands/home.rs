@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn the_workdir_is_created_empty_under_the_cache_dir() {
-        let cache = std::env::temp_dir().join(format!("dev-pulse-cache-{}", std::process::id()));
+        let cache = std::env::temp_dir().join(format!("clawdmeter-cache-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cache);
         let home = std::env::temp_dir();
         let workdir = prepare_workdir(&cache, Some(&home), &[]).unwrap();
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn the_workdir_is_never_the_home_or_the_config_dir() {
-        let root = std::env::temp_dir().join(format!("dev-pulse-wd-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("clawdmeter-wd-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let config = root.join("config");
         let cache = root.join("cache");
@@ -117,7 +117,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_symlinked_workdir_is_replaced_by_a_real_directory() {
-        let root = std::env::temp_dir().join(format!("dev-pulse-link-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("clawdmeter-link-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let home = root.join("home");
         let cache = root.join("cache");
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn a_workdir_that_is_or_contains_the_home_is_rejected() {
-        let root = std::env::temp_dir().join(format!("dev-pulse-hm-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("clawdmeter-hm-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let cache = root.join("cache");
         std::fs::create_dir_all(&cache).unwrap();

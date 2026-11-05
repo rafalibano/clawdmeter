@@ -13,31 +13,31 @@
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 2px solid var(--dp-control-border);
+  border: 2px solid var(--cm-control-border);
   border-radius: 50%;
   cursor: pointer;
 }
 
 .swatch.selected {
-  border-color: var(--dp-fg);
+  border-color: var(--cm-fg);
 }
 
 .hex {
   width: 78px;
   padding: 3px 6px;
-  border: 1px solid var(--dp-control-border);
-  border-radius: var(--dp-radius-btn);
-  background: var(--dp-surface);
-  color: var(--dp-fg);
+  border: 1px solid var(--cm-control-border);
+  border-radius: var(--cm-radius-btn);
+  background: var(--cm-surface);
+  color: var(--cm-fg);
   font: inherit;
   user-select: text;
 }
 
 .hex:focus {
-  outline: 2px solid var(--dp-accent-text);
+  outline: 2px solid var(--cm-accent-text);
   outline-offset: 1px;
 }
 
 .hex.invalid {
-  border-color: var(--dp-danger);
+  border-color: var(--cm-danger);
 }

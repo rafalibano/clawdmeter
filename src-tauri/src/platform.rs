@@ -44,7 +44,7 @@ mod popover {
     define_class!(
         #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
         #[thread_kind = MainThreadOnly]
-        #[name = "DevPulsePopoverPanel"]
+        #[name = "ClawdMeterPopoverPanel"]
         pub struct PopoverPanel;
 
         impl PopoverPanel {

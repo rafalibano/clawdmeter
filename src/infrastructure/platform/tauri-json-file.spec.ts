@@ -10,7 +10,7 @@ const fs = vi.hoisted(() => ({
 }));
 
 vi.mock('@tauri-apps/api/path', () => ({
-  appConfigDir: vi.fn(async () => '/cfg/com.mottu.devpulse'),
+  appConfigDir: vi.fn(async () => '/cfg/com.mottu.clawdmeter'),
   join: vi.fn(async (...parts: string[]) => parts.join('/')),
 }));
 vi.mock('@tauri-apps/plugin-fs', () => fs);
@@ -42,7 +42,7 @@ describe('TauriJsonFile', () => {
   it('read devolve null quando o arquivo não existe, sem tentar ler', async () => {
     fs.exists.mockResolvedValue(false);
     expect(await new TauriJsonFile('settings.json').read()).toBeNull();
-    expect(fs.exists).toHaveBeenCalledWith('/cfg/com.mottu.devpulse/settings.json');
+    expect(fs.exists).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json');
     expect(fs.readTextFile).not.toHaveBeenCalled();
   });
 
@@ -50,7 +50,7 @@ describe('TauriJsonFile', () => {
     fs.exists.mockResolvedValue(true);
     fs.readTextFile.mockResolvedValue('{"a":1}');
     expect(await new TauriJsonFile('settings.json').read()).toBe('{"a":1}');
-    expect(fs.readTextFile).toHaveBeenCalledWith('/cfg/com.mottu.devpulse/settings.json');
+    expect(fs.readTextFile).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json');
   });
 
   it('write garante a pasta antes de gravar', async () => {
@@ -59,8 +59,8 @@ describe('TauriJsonFile', () => {
     fs.writeTextFile.mockImplementation(async () => void order.push('write'));
     await new TauriJsonFile('settings.json').write('texto');
     expect(order).toEqual(['mkdir', 'write']);
-    expect(fs.mkdir).toHaveBeenCalledWith('/cfg/com.mottu.devpulse', { recursive: true });
-    expect(fs.writeTextFile).toHaveBeenCalledWith('/cfg/com.mottu.devpulse/settings.json', 'texto');
+    expect(fs.mkdir).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter', { recursive: true });
+    expect(fs.writeTextFile).toHaveBeenCalledWith('/cfg/com.mottu.clawdmeter/settings.json', 'texto');
   });
 
   it('writeAtomic grava num .tmp e só então renomeia sobre o arquivo final', async () => {
@@ -69,8 +69,8 @@ describe('TauriJsonFile', () => {
     fs.rename.mockImplementation(async (from: string, to: string) => void order.push(`rename ${from} ${to}`));
     await new TauriJsonFile('usage-history.json').writeAtomic('texto');
     expect(order).toEqual([
-      'write /cfg/com.mottu.devpulse/usage-history.json.tmp',
-      'rename /cfg/com.mottu.devpulse/usage-history.json.tmp /cfg/com.mottu.devpulse/usage-history.json',
+      'write /cfg/com.mottu.clawdmeter/usage-history.json.tmp',
+      'rename /cfg/com.mottu.clawdmeter/usage-history.json.tmp /cfg/com.mottu.clawdmeter/usage-history.json',
     ]);
   });
 
@@ -84,8 +84,8 @@ describe('TauriJsonFile', () => {
     fs.exists.mockResolvedValue(true);
     await new TauriJsonFile('usage-history.json').quarantine();
     expect(fs.rename).toHaveBeenCalledWith(
-      '/cfg/com.mottu.devpulse/usage-history.json',
-      '/cfg/com.mottu.devpulse/usage-history.json.corrupt',
+      '/cfg/com.mottu.clawdmeter/usage-history.json',
+      '/cfg/com.mottu.clawdmeter/usage-history.json.corrupt',
     );
     fs.rename.mockClear();
     fs.exists.mockResolvedValue(false);
@@ -97,7 +97,7 @@ describe('TauriJsonFile', () => {
     emitter();
     await new TauriJsonFile('settings.json').watch(() => undefined);
     expect(fs.watch).toHaveBeenCalledTimes(1);
-    expect(fs.watch.mock.calls[0]?.[0]).toBe('/cfg/com.mottu.devpulse');
+    expect(fs.watch.mock.calls[0]?.[0]).toBe('/cfg/com.mottu.clawdmeter');
     expect(fs.watch.mock.calls[0]?.[2]).toEqual({ recursive: false, delayMs: 150 });
   });
 
@@ -105,8 +105,8 @@ describe('TauriJsonFile', () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
-    emit('/cfg/com.mottu.devpulse/settings.json');
-    emit('C:\\Users\\x\\AppData\\Roaming\\com.mottu.devpulse\\settings.json');
+    emit('/cfg/com.mottu.clawdmeter/settings.json');
+    emit('C:\\Users\\x\\AppData\\Roaming\\com.mottu.clawdmeter\\settings.json');
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
@@ -114,9 +114,9 @@ describe('TauriJsonFile', () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
-    emit('/cfg/com.mottu.devpulse/old-settings.json');
-    emit('/cfg/com.mottu.devpulse/settings.json.tmp');
-    emit('/cfg/com.mottu.devpulse/other.json');
+    emit('/cfg/com.mottu.clawdmeter/old-settings.json');
+    emit('/cfg/com.mottu.clawdmeter/settings.json.tmp');
+    emit('/cfg/com.mottu.clawdmeter/other.json');
     emit('/cfg/settings.json/other.json');
     emit();
     expect(onChange).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('TauriJsonFile', () => {
     const { emit } = emitter();
     const onChange = vi.fn();
     await new TauriJsonFile('settings.json').watch(onChange);
-    emit('/cfg/com.mottu.devpulse/other.json', '/cfg/com.mottu.devpulse/settings.json');
+    emit('/cfg/com.mottu.clawdmeter/other.json', '/cfg/com.mottu.clawdmeter/settings.json');
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

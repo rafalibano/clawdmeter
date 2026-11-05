@@ -5,7 +5,7 @@ import { SESSIONS_PAGE } from './sessions-page-ref';
 import { toSessionsView } from './sessions-view';
 
 @Component({
-  selector: 'dp-sessions-page',
+  selector: 'cm-sessions-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sessions.component.html',
   styleUrl: './sessions.component.scss',

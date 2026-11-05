@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "dev-pulse": {
+    "clawdmeter": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -37,12 +37,12 @@
       },
       "root": "",
       "sourceRoot": "src",
-      "prefix": "dp",
+      "prefix": "cm",
       "architect": {
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/dev-pulse",
+            "outputPath": "dist/clawdmeter",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": [
@@ -108,13 +108,13 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "dev-pulse:build:production"
+              "buildTarget": "clawdmeter:build:production"
             },
             "development": {
-              "buildTarget": "dev-pulse:build:development"
+              "buildTarget": "clawdmeter:build:development"
             },
             "demo": {
-              "buildTarget": "dev-pulse:build:demo"
+              "buildTarget": "clawdmeter:build:demo"
             }
           },
           "defaultConfiguration": "development",

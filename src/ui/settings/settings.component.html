@@ -15,7 +15,7 @@
   }
 </section>
 
-<dp-connections />
+<cm-connections />
 
 <section class="section">
   <h2 class="heading">{{ i18n.t('settings.projection') }}</h2>
@@ -63,7 +63,7 @@
 
   <div class="field">
     <span class="label">{{ i18n.t('settings.accent') }}</span>
-    <dp-color-picker
+    <cm-color-picker
       [label]="i18n.t('settings.accent')"
       [presets]="accentPresets"
       [value]="settings().appearance.accentColor"
@@ -73,7 +73,7 @@
 
   <div class="field">
     <span class="label">{{ i18n.t('settings.background') }}</span>
-    <dp-color-picker
+    <cm-color-picker
       [label]="i18n.t('settings.background')"
       [presets]="backgroundPresets"
       [value]="backgroundValue()"

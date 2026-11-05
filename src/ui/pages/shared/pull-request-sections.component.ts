@@ -8,7 +8,7 @@ import { PullRequestGroupsState } from './pull-request-groups.state';
 import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
 
 @Component({
-  selector: 'dp-pull-request-sections',
+  selector: 'cm-pull-request-sections',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .toolbar {
@@ -22,15 +22,15 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
       gap: 4px;
       padding: 2px 6px;
       border: 0;
-      border-radius: var(--dp-radius-sm);
+      border-radius: var(--cm-radius-sm);
       background: transparent;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-size: 12px;
       cursor: pointer;
     }
     .toggle-all:hover {
-      background: var(--dp-hover);
-      color: var(--dp-fg);
+      background: var(--cm-hover);
+      color: var(--cm-fg);
     }
     .section {
       margin-bottom: 18px;
@@ -45,7 +45,7 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
     }
     .count,
     .muted {
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-size: 12px;
       font-weight: 400;
     }
@@ -56,8 +56,8 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
       width: 100%;
       padding: 4px 6px;
       border: 0;
-      border-radius: var(--dp-radius-sm);
-      background: var(--dp-surface);
+      border-radius: var(--cm-radius-sm);
+      background: var(--cm-surface);
       color: inherit;
       font-weight: 600;
       text-align: left;
@@ -65,7 +65,7 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
     }
     .chevron {
       width: 10px;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
     .group-title {
       flex: 1;
@@ -79,20 +79,20 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
       padding: 6px 8px;
       border: 0;
       border-left: 3px solid transparent;
-      border-bottom: 1px solid var(--dp-border);
+      border-bottom: 1px solid var(--cm-border);
       background: transparent;
       color: inherit;
       text-align: left;
       cursor: pointer;
     }
     .pr[data-sla='attention'] {
-      border-left-color: var(--dp-sla-attention);
+      border-left-color: var(--cm-sla-attention);
     }
     .pr[data-sla='overdue'] {
-      border-left-color: var(--dp-danger);
+      border-left-color: var(--cm-danger);
     }
     .pr:hover {
-      background: var(--dp-hover);
+      background: var(--cm-hover);
     }
     .title {
       display: block;
@@ -106,53 +106,53 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
       align-items: center;
       gap: 6px;
       margin-top: 2px;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
       font-size: 11px;
     }
     .badge {
       padding: 0 6px;
-      border-radius: var(--dp-radius-pill);
-      border: 1px solid var(--dp-control-border);
+      border-radius: var(--cm-radius-pill);
+      border: 1px solid var(--cm-control-border);
       font-size: 11px;
     }
     .badge[data-tone='ok'] {
-      color: var(--dp-ok-text);
-      border-color: color-mix(in srgb, var(--dp-ok) 50%, transparent);
+      color: var(--cm-ok-text);
+      border-color: color-mix(in srgb, var(--cm-ok) 50%, transparent);
     }
     .badge[data-tone='info'] {
-      color: var(--dp-info-text);
-      border-color: color-mix(in srgb, var(--dp-info) 50%, transparent);
+      color: var(--cm-info-text);
+      border-color: color-mix(in srgb, var(--cm-info) 50%, transparent);
     }
     .badge[data-tone='bad'] {
-      color: var(--dp-danger-text);
-      border-color: color-mix(in srgb, var(--dp-danger) 50%, transparent);
+      color: var(--cm-danger-text);
+      border-color: color-mix(in srgb, var(--cm-danger) 50%, transparent);
     }
     .age[data-sla] {
       padding: 0 6px;
-      border: 1px solid var(--dp-border);
-      border-radius: var(--dp-radius-pill);
+      border: 1px solid var(--cm-border);
+      border-radius: var(--cm-radius-pill);
     }
     .age[data-sla='attention'] {
-      border-color: var(--dp-sla-attention);
-      background: var(--dp-sla-attention);
-      color: var(--dp-sla-fg);
+      border-color: var(--cm-sla-attention);
+      background: var(--cm-sla-attention);
+      color: var(--cm-sla-fg);
     }
     .age[data-sla='overdue'] {
-      border-color: var(--dp-danger);
-      background: var(--dp-danger);
-      color: var(--dp-sla-fg);
+      border-color: var(--cm-danger);
+      background: var(--cm-danger);
+      color: var(--cm-sla-fg);
     }
     .link {
       padding: 0;
       border: 0;
       background: none;
-      color: var(--dp-accent-text);
+      color: var(--cm-accent-text);
       font-size: 12px;
       cursor: pointer;
     }
     .empty {
       margin: 6px 0;
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
   `,
   template: `

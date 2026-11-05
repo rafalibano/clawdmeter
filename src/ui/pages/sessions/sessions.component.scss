@@ -4,26 +4,26 @@
 
 .summary {
   margin: 0 0 8px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
   font-size: 12px;
 }
 
 .card {
   margin-bottom: 10px;
   padding: 10px 14px;
-  border: 1px solid var(--dp-border);
-  border-radius: var(--dp-radius-md);
-  background: var(--dp-surface);
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius-md);
+  background: var(--cm-surface);
 }
 
 .card.error {
-  border-color: color-mix(in srgb, var(--dp-danger) 45%, transparent);
-  color: var(--dp-danger-text);
+  border-color: color-mix(in srgb, var(--cm-danger) 45%, transparent);
+  color: var(--cm-danger-text);
 }
 
 .card[data-attention] {
-  border-color: color-mix(in srgb, var(--dp-warning) 50%, transparent);
-  background: color-mix(in srgb, var(--dp-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--cm-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--cm-warning) 12%, transparent);
 }
 
 .head {
@@ -37,15 +37,15 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--dp-muted);
+  background: var(--cm-muted);
 }
 
 .card[data-status='busy'] .dot {
-  background: var(--dp-ok);
+  background: var(--cm-ok);
 }
 
 .card[data-status='idle'] .dot {
-  background: var(--dp-warning);
+  background: var(--cm-warning);
 }
 
 .title {
@@ -59,19 +59,19 @@
 .status {
   margin-left: auto;
   flex: none;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
   font-size: 12px;
 }
 
 .cwd {
   margin: 2px 0 0 16px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
   font-size: 12px;
 }
 
 .attention {
   margin: 4px 0 0 16px;
-  color: var(--dp-warning-text);
+  color: var(--cm-warning-text);
   font-size: 12px;
   font-weight: 600;
 }

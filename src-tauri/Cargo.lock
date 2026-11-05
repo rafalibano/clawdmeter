@@ -496,6 +496,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "clawdmeter"
+version = "0.1.0"
+dependencies = [
+ "block2",
+ "keyring",
+ "libc",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-user-notifications",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-fs",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-http",
+ "tauri-plugin-notification",
+ "tauri-plugin-positioner",
+ "thiserror 2.0.21",
+ "url",
+ "windows",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -790,31 +815,6 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "dev-pulse"
-version = "0.1.0"
-dependencies = [
- "block2",
- "keyring",
- "libc",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "objc2-user-notifications",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-fs",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-http",
- "tauri-plugin-notification",
- "tauri-plugin-positioner",
- "thiserror 2.0.21",
- "url",
- "windows",
 ]
 
 [[package]]

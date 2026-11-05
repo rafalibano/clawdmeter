@@ -4,11 +4,11 @@ import { SettingsFacade } from './settings.facade';
 import { ShellComponent } from './shell.component';
 
 @Component({
-  selector: 'dp-root',
+  selector: 'cm-root',
   imports: [ShellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `@if (facade.ready()) {
-    <dp-shell />
+    <cm-shell />
   }`,
 })
 export class AppComponent {

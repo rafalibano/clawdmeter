@@ -3,10 +3,10 @@ import { PullRequestsViewComponent } from '../shared/pull-requests-view.componen
 import { REVIEWS_PAGE } from './reviews-page-ref';
 
 @Component({
-  selector: 'dp-reviews-page',
+  selector: 'cm-reviews-page',
   imports: [PullRequestsViewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<dp-pull-requests-view [page]="page" [showAuthor]="true" />`,
+  template: `<cm-pull-requests-view [page]="page" [showAuthor]="true" />`,
 })
 export class ReviewsComponent {
   protected readonly page = REVIEWS_PAGE;

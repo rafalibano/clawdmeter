@@ -11,8 +11,8 @@ body {
   margin: 0;
   padding: 0;
   background: transparent;
-  color: var(--dp-fg);
-  font-family: var(--dp-font-family);
+  color: var(--cm-fg);
+  font-family: var(--cm-font-family);
   font-size: 13px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
@@ -26,19 +26,19 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--dp-accent-text);
+  outline: 2px solid var(--cm-accent-text);
   outline-offset: 1px;
 }
 
 input[type='checkbox'] {
-  accent-color: var(--dp-accent);
+  accent-color: var(--cm-accent);
 }
 
-dp-root {
+cm-root {
   display: block;
   color-scheme: light;
 }
 
-:root[data-theme='dark'] dp-root {
+:root[data-theme='dark'] cm-root {
   color-scheme: dark;
 }

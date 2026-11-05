@@ -17,7 +17,7 @@ import { ColorPickerComponent } from './color-picker.component';
 import { ConnectionsComponent } from './connections/connections.component';
 
 @Component({
-  selector: 'dp-settings',
+  selector: 'cm-settings',
   imports: [ColorPickerComponent, ConnectionsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',

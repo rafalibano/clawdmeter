@@ -8,7 +8,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
 }
 
 .check {
@@ -20,7 +20,7 @@
 }
 
 .check input {
-  accent-color: var(--dp-accent);
+  accent-color: var(--cm-accent);
 }
 
 .field {
@@ -37,46 +37,46 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--dp-accent-text);
+  color: var(--cm-accent-text);
   cursor: pointer;
 }
 
 .link:disabled {
-  color: var(--dp-muted);
+  color: var(--cm-muted);
   cursor: default;
 }
 
 .segmented {
   display: inline-flex;
   padding: 2px;
-  border-radius: var(--dp-radius-md);
-  background: var(--dp-surface);
+  border-radius: var(--cm-radius-md);
+  background: var(--cm-surface);
 }
 
 .hint {
   display: block;
   margin-top: 6px;
   font-size: 11px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
 }
 
 .segment {
   padding: 4px 12px;
   border: 0;
-  border-radius: var(--dp-radius-btn);
+  border-radius: var(--cm-radius-btn);
   background: transparent;
   cursor: pointer;
 }
 
 .segment.selected {
-  background: var(--dp-accent);
-  color: var(--dp-accent-fg);
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
 }
 
 .badge {
   padding: 1px 6px;
-  border: 1px solid var(--dp-border);
+  border: 1px solid var(--cm-border);
   border-radius: 999px;
   font-size: 10px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
 }

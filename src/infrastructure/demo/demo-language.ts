@@ -1,6 +1,6 @@
 import { isAppLanguage } from '../../domain/settings';
 
-export const DEMO_SETTINGS_KEY = 'dev-pulse.settings';
+export const DEMO_SETTINGS_KEY = 'clawdmeter.settings';
 
 export function applyDemoLanguage(search: string, storage: Pick<Storage, 'getItem' | 'setItem'>): void {
   const requested = new URLSearchParams(search).get('lang');

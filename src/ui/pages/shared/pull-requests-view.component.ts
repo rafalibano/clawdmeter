@@ -7,12 +7,12 @@ import { PageErrorComponent } from './page-error.component';
 import { PullRequestSectionsComponent } from './pull-request-sections.component';
 
 @Component({
-  selector: 'dp-pull-requests-view',
+  selector: 'cm-pull-requests-view',
   imports: [PageErrorComponent, PullRequestSectionsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .loading {
-      color: var(--dp-muted);
+      color: var(--cm-muted);
     }
   `,
   template: `
@@ -20,9 +20,9 @@ import { PullRequestSectionsComponent } from './pull-request-sections.component'
     @if (state === undefined) {
       <p class="loading">{{ i18n.t('common.loading') }}</p>
     } @else if (state.status === 'error') {
-      <dp-page-error [pageId]="page().id" connection="github" [message]="state.error" [problem]="state.problem" [code]="state.code" [args]="state.args" />
+      <cm-page-error [pageId]="page().id" connection="github" [message]="state.error" [problem]="state.problem" [code]="state.code" [args]="state.args" />
     } @else {
-      <dp-pull-request-sections [scope]="page().id" [sections]="state.data.sections" [now]="state.at" [showAuthor]="showAuthor()" />
+      <cm-pull-request-sections [scope]="page().id" [sections]="state.data.sections" [now]="state.at" [showAuthor]="showAuthor()" />
     }
   `,
 })

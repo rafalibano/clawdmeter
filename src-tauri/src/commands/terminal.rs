@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn terminal_cwd_rejects_quotes_and_backslashes_and_keeps_the_home_rule() {
-        let root = std::env::temp_dir().join(format!("dev-pulse-term-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("clawdmeter-term-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let home = root.join("home");
         let quoted = home.join("it's");
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn terminal_refuses_a_cwd_inside_the_app_config_before_launching() {
-        let root = std::env::temp_dir().join(format!("dev-pulse-termcfg-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("clawdmeter-termcfg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let home = root.join("home");
         let config = home.join("config-do-app");
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn resume_without_a_cwd_reopens_in_the_skill_workdir() {
-        let workdir = Path::new("/Users/dev/Library/Caches/com.fake.devpulse/skill-cwd");
+        let workdir = Path::new("/Users/dev/Library/Caches/com.fake.clawdmeter/skill-cwd");
         let resume = args(&["--resume", "3f2a9c1e-0000-4000-8000-123456789abc"]);
         assert_eq!(
             terminal_dir("claude", &resume, None, &[], Some(workdir)).unwrap(),

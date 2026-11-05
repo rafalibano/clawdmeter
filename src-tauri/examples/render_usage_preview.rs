@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use dev_pulse_lib::usage_icon::{render_usage_icon, render_usage_icon_square, UsageIcon};
+use clawdmeter_lib::usage_icon::{render_usage_icon, render_usage_icon_square, UsageIcon};
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;

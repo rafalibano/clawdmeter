@@ -52,7 +52,7 @@ export function createComposition(): Application {
   const application: Application = createApplication({
     clock,
     language,
-    settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('dev-pulse.settings')),
+    settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings')),
     connectionAdapters,
     skills: ({ connections }) =>
       createSkills(

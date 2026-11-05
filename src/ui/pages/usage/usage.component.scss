@@ -7,18 +7,18 @@
   gap: 2px;
   margin-bottom: 12px;
   padding: 3px;
-  border-radius: var(--dp-radius-md);
-  background: var(--dp-surface);
-  box-shadow: inset 0 0 0 1px var(--dp-border);
+  border-radius: var(--cm-radius-md);
+  background: var(--cm-surface);
+  box-shadow: inset 0 0 0 1px var(--cm-border);
 }
 
 .range {
   flex: 1;
   padding: 5px 0;
   border: 0;
-  border-radius: var(--dp-radius-btn);
+  border-radius: var(--cm-radius-btn);
   background: transparent;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -26,8 +26,8 @@
 }
 
 .range:hover:not(.active) {
-  background: var(--dp-hover);
-  color: var(--dp-fg);
+  background: var(--cm-hover);
+  color: var(--cm-fg);
 }
 
 .range:disabled {
@@ -36,22 +36,22 @@
 }
 
 .range.active {
-  background: var(--dp-accent);
-  color: var(--dp-accent-fg);
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
   font-weight: 600;
 }
 
 .card {
   margin-bottom: 12px;
   padding: 14px 16px;
-  border: 1px solid var(--dp-border);
-  border-radius: var(--dp-radius-md);
-  background: var(--dp-surface);
-  box-shadow: var(--dp-card-shadow);
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius-md);
+  background: var(--cm-surface);
+  box-shadow: var(--cm-card-shadow);
 }
 
 .card.error {
-  border-color: color-mix(in srgb, var(--dp-danger) 45%, transparent);
+  border-color: color-mix(in srgb, var(--cm-danger) 45%, transparent);
 }
 
 .bars {
@@ -60,11 +60,11 @@
 }
 
 .bar {
-  --series: var(--dp-series-five);
+  --series: var(--cm-series-five);
 }
 
 .bar[data-window='sevenDay'] {
-  --series: var(--dp-series-seven);
+  --series: var(--cm-series-seven);
 }
 
 .bar-head {
@@ -88,14 +88,14 @@
 .track {
   position: relative;
   height: 8px;
-  border-radius: var(--dp-radius-pill);
-  background: var(--dp-track);
+  border-radius: var(--cm-radius-pill);
+  background: var(--cm-track);
 }
 
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: var(--dp-radius-pill);
+  border-radius: var(--cm-radius-pill);
   background: var(--series);
 }
 
@@ -119,7 +119,7 @@
   justify-content: space-between;
   margin-top: 5px;
   font-size: 11px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
 }
 
 .projected {
@@ -130,7 +130,7 @@
 }
 
 .projected[data-alert='true'] {
-  color: var(--dp-danger-text);
+  color: var(--cm-danger-text);
 }
 
 .projected::before {
@@ -157,7 +157,7 @@
   gap: 16px;
   margin-top: 2px;
   font-size: 11px;
-  color: var(--dp-muted);
+  color: var(--cm-muted);
 }
 
 .legend-item::before {
@@ -167,16 +167,16 @@
   height: 7px;
   margin-right: 5px;
   border-radius: 50%;
-  background: var(--dp-series-five);
+  background: var(--cm-series-five);
 }
 
 .legend-item[data-window='sevenDay']::before {
-  background: var(--dp-series-seven);
+  background: var(--cm-series-seven);
 }
 
 .error-message {
   margin: 0 0 8px;
-  color: var(--dp-danger-text);
+  color: var(--cm-danger-text);
 }
 
 .actions {
@@ -187,22 +187,22 @@
 
 .btn {
   padding: 5px 12px;
-  border: 1px solid var(--dp-control-border);
-  border-radius: var(--dp-radius-btn);
+  border: 1px solid var(--cm-control-border);
+  border-radius: var(--cm-radius-btn);
   background: transparent;
   cursor: pointer;
 }
 
 .btn.primary {
-  border-color: var(--dp-accent);
-  background: var(--dp-accent);
-  color: var(--dp-accent-fg);
+  border-color: var(--cm-accent);
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
 }
 
 .btn.primary:active:not(:disabled) {
-  border-color: var(--dp-accent-active);
-  background: var(--dp-accent-active);
-  color: var(--dp-accent-fg-active);
+  border-color: var(--cm-accent-active);
+  background: var(--cm-accent-active);
+  color: var(--cm-accent-fg-active);
 }
 
 .stale {

@@ -11,7 +11,7 @@ import { SettingsComponent } from '../settings/settings.component';
 const CLOCK_TICK_MS = 1_000;
 
 @Component({
-  selector: 'dp-shell',
+  selector: 'cm-shell',
   imports: [NgComponentOutlet, SettingsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',

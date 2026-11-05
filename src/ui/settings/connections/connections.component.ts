@@ -8,7 +8,7 @@ import type { ConnectionRowView } from './connection-view';
 const TONE_ICONS = { ok: '✓', error: '⚠', idle: '○', busy: '…' } as const;
 
 @Component({
-  selector: 'dp-connections',
+  selector: 'cm-connections',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './connections.component.html',
   styleUrl: './connections.component.scss',

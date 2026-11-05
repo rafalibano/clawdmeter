@@ -17,7 +17,7 @@ import { toUsageErrorView, toUsageView } from './usage-view';
 const CLOCK_TICK_MS = 15_000;
 
 @Component({
-  selector: 'dp-usage-page',
+  selector: 'cm-usage-page',
   imports: [NgxEchartsDirective],
   providers: [provideEchartsCore({ echarts: () => import('./echarts-setup').then((module) => module.echarts) })],
   changeDetection: ChangeDetectionStrategy.OnPush,
