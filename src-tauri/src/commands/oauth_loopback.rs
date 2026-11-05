@@ -21,12 +21,24 @@ const HEAD_DEADLINE_MS: u64 = 5_000;
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 const MAX_TIMEOUT_MS: u64 = 600_000;
 const LISTENER_TTL_MS: u64 = MAX_TIMEOUT_MS + 5_000;
+const MAX_LISTENERS: usize = 2;
 
 type ListenerMap = Arc<Mutex<HashMap<String, Arc<LoopbackListener>>>>;
 
 pub struct LoopbackListener {
     socket: TcpListener,
     cancelled: AtomicBool,
+    claimed: AtomicBool,
+}
+
+impl LoopbackListener {
+    fn new(socket: TcpListener) -> Self {
+        Self {
+            socket,
+            cancelled: AtomicBool::new(false),
+            claimed: AtomicBool::new(false),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -36,14 +48,18 @@ pub struct LoopbackRegistry {
 }
 
 impl LoopbackRegistry {
-    fn insert(&self, listener: LoopbackListener) -> String {
+    fn insert(&self, listener: LoopbackListener) -> CommandResult<String> {
         self.insert_with_ttl(listener, Duration::from_millis(LISTENER_TTL_MS))
     }
 
-    fn insert_with_ttl(&self, listener: LoopbackListener, ttl: Duration) -> String {
+    fn insert_with_ttl(&self, listener: LoopbackListener, ttl: Duration) -> CommandResult<String> {
         let id = (self.next_id.fetch_add(1, Ordering::SeqCst) + 1).to_string();
         let shared = Arc::new(listener);
-        if let Ok(mut listeners) = self.listeners.lock() {
+        {
+            let mut listeners = self.listeners.lock().map_err(|_| too_many_listeners())?;
+            if listeners.len() >= MAX_LISTENERS {
+                return Err(too_many_listeners());
+            }
             listeners.insert(id.clone(), Arc::clone(&shared));
         }
         let weak = Arc::downgrade(&shared);
@@ -58,7 +74,12 @@ impl LoopbackRegistry {
                 listeners.remove(&expiring);
             }
         });
-        id
+        Ok(id)
+    }
+
+    fn claim(&self, id: &str) -> Option<Arc<LoopbackListener>> {
+        self.get(id)
+            .filter(|listener| !listener.claimed.swap(true, Ordering::SeqCst))
     }
 
     fn get(&self, id: &str) -> Option<Arc<LoopbackListener>> {
@@ -73,6 +94,13 @@ impl LoopbackRegistry {
             listeners.remove(id);
         }
     }
+}
+
+fn too_many_listeners() -> CommandError {
+    CommandError::new(
+        ErrorKind::TooManyProcesses,
+        format!("limit of {MAX_LISTENERS} open login listeners reached"),
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -266,10 +294,7 @@ fn serve_until_callback(
 pub fn oauth_loopback_listen(registry: State<LoopbackRegistry>) -> CommandResult<ListenInfo> {
     let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let port = socket.local_addr()?.port();
-    let id = registry.insert(LoopbackListener {
-        socket,
-        cancelled: AtomicBool::new(false),
-    });
+    let id = registry.insert(LoopbackListener::new(socket))?;
     Ok(ListenInfo { id, port })
 }
 
@@ -280,9 +305,12 @@ pub async fn oauth_loopback_wait(
     expected_state: String,
     timeout_ms: Option<u64>,
 ) -> CommandResult<CallbackResult> {
-    let listener = registry
-        .get(&id)
-        .ok_or_else(|| CommandError::new(ErrorKind::InvalidArgument, "unknown listener"))?;
+    let listener = registry.claim(&id).ok_or_else(|| {
+        CommandError::new(
+            ErrorKind::InvalidArgument,
+            "unknown or already awaited listener",
+        )
+    })?;
     let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
     let result =
         run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
@@ -372,13 +400,9 @@ mod tests {
         let registry = LoopbackRegistry::default();
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let id = registry.insert_with_ttl(
-            LoopbackListener {
-                socket,
-                cancelled: AtomicBool::new(false),
-            },
-            Duration::from_millis(60),
-        );
+        let id = registry
+            .insert_with_ttl(LoopbackListener::new(socket), Duration::from_millis(60))
+            .unwrap();
         let kept = registry.get(&id).unwrap();
         assert!(!kept.cancelled.load(Ordering::SeqCst));
         thread::sleep(Duration::from_millis(250));
@@ -394,13 +418,9 @@ mod tests {
         let registry = LoopbackRegistry::default();
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let id = registry.insert_with_ttl(
-            LoopbackListener {
-                socket,
-                cancelled: AtomicBool::new(false),
-            },
-            Duration::from_secs(60),
-        );
+        let id = registry
+            .insert_with_ttl(LoopbackListener::new(socket), Duration::from_secs(60))
+            .unwrap();
         registry.remove(&id);
         assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
     }
@@ -409,10 +429,7 @@ mod tests {
     fn serves_a_real_callback_over_loopback() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let listener = LoopbackListener {
-            socket,
-            cancelled: AtomicBool::new(false),
-        };
+        let listener = LoopbackListener::new(socket);
         let client = thread::spawn(move || {
             let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
             stream
@@ -440,10 +457,7 @@ mod tests {
     fn listener_on_free_port() -> (LoopbackListener, u16) {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let listener = LoopbackListener {
-            socket,
-            cancelled: AtomicBool::new(false),
-        };
+        let listener = LoopbackListener::new(socket);
         (listener, port)
     }
 
@@ -552,10 +566,7 @@ mod tests {
     #[test]
     fn times_out_without_a_callback() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let listener = LoopbackListener {
-            socket,
-            cancelled: AtomicBool::new(false),
-        };
+        let listener = LoopbackListener::new(socket);
         let error = serve_until_callback(&listener, "s-1", Duration::from_millis(120)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::Timeout);
     }
@@ -563,11 +574,39 @@ mod tests {
     #[test]
     fn cancellation_stops_the_wait() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let listener = LoopbackListener {
-            socket,
-            cancelled: AtomicBool::new(true),
-        };
+        let listener = LoopbackListener::new(socket);
+        listener.cancelled.store(true, Ordering::SeqCst);
         let error = serve_until_callback(&listener, "s-1", Duration::from_secs(5)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::Cancelled);
+    }
+
+    fn fresh_listener() -> LoopbackListener {
+        LoopbackListener::new(TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap())
+    }
+
+    #[test]
+    fn at_most_two_listeners_are_open_at_once() {
+        let registry = LoopbackRegistry::default();
+        let first = registry.insert(fresh_listener()).unwrap();
+        registry.insert(fresh_listener()).unwrap();
+        let error = registry.insert(fresh_listener()).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::TooManyProcesses);
+        registry.remove(&first);
+        assert!(registry.insert(fresh_listener()).is_ok());
+    }
+
+    #[test]
+    fn a_listener_can_be_awaited_only_once_and_still_cancelled() {
+        let registry = LoopbackRegistry::default();
+        let id = registry.insert(fresh_listener()).unwrap();
+        let waiting = registry.claim(&id).unwrap();
+        assert!(registry.claim(&id).is_none());
+        assert!(registry.claim("unknown").is_none());
+        registry
+            .get(&id)
+            .unwrap()
+            .cancelled
+            .store(true, Ordering::SeqCst);
+        assert!(waiting.cancelled.load(Ordering::SeqCst));
     }
 }

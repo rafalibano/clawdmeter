@@ -216,14 +216,19 @@ fn http_date_secs(value: &str) -> Option<i64> {
     Some(days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
 }
 
+const MAX_RETRY_AFTER_SECS: u64 = 3_600;
+
 fn retry_after_secs(value: &str, now_secs: u64) -> Option<u64> {
     let value = value.trim();
-    if let Ok(seconds) = value.parse::<u64>() {
-        return Some(seconds);
-    }
-    let at = http_date_secs(value)?;
-    let now = i64::try_from(now_secs).ok()?;
-    Some(u64::try_from(at - now).unwrap_or(0))
+    let seconds = match value.parse::<u64>() {
+        Ok(seconds) => seconds,
+        Err(_) => {
+            let at = http_date_secs(value)?;
+            let now = i64::try_from(now_secs).ok()?;
+            u64::try_from(at - now).unwrap_or(0)
+        }
+    };
+    Some(seconds.min(MAX_RETRY_AFTER_SECS))
 }
 
 fn claude_expired() -> CommandError {
@@ -262,6 +267,7 @@ async fn request_usage_limited(
 ) -> CommandResult<serde_json::Value> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(USAGE_TIMEOUT_SECS))
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let response = client
         .get(url)
@@ -506,12 +512,10 @@ mod tests {
     }
 
     #[test]
-    fn usage_429_with_an_http_date_counts_down_from_now() {
+    fn usage_429_with_an_http_date_far_ahead_is_capped_at_one_hour() {
         let error = rate_limited_with("Retry-After: Fri, 01 Jan 2100 00:00:00 GMT\r\n");
         assert_eq!(error.kind, ErrorKind::RateLimited);
-        let expected = 4_102_444_800 - now_ms() / 1000;
-        let secs = error.retry_after_secs.flatten().unwrap();
-        assert!(secs.abs_diff(expected) <= 5);
+        assert_eq!(error.retry_after_secs, Some(Some(MAX_RETRY_AFTER_SECS)));
     }
 
     #[test]
@@ -567,6 +571,36 @@ mod tests {
             let _ = stream.write_all(&response);
         });
         (url, server)
+    }
+
+    #[test]
+    fn usage_redirects_are_not_followed() {
+        let target = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        target.set_nonblocking(true).unwrap();
+        let location = format!(
+            "http://127.0.0.1:{}/elsewhere",
+            target.local_addr().unwrap().port()
+        );
+        let response = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let (url, server) = serve_raw(response.into_bytes());
+        let error =
+            tauri::async_runtime::block_on(request_usage(&url, "sk-ant-oat01-secret")).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert!(error.message.contains("302"));
+        assert!(
+            target.accept().is_err(),
+            "the redirect target was contacted"
+        );
+    }
+
+    #[test]
+    fn retry_after_is_capped_at_one_hour() {
+        assert_eq!(retry_after_secs("86400", 0), Some(MAX_RETRY_AFTER_SECS));
+        assert_eq!(retry_after_secs("18446744073709551615", 0), Some(3_600));
+        assert_eq!(retry_after_secs("3599", 0), Some(3_599));
     }
 
     #[test]

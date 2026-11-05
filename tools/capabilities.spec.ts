@@ -89,10 +89,13 @@ describe('capability default', () => {
 
     const reaching = (path: string) => fsScopes().filter((scope) => pathMatches(scope.path, path));
 
-    it('file read only, and only of history.json', () => {
-      expect(reaching(HISTORY).map((scope) => scope.identifier)).toEqual(['fs:allow-read-text-file']);
+    it('file read and stat only, and only of history.json', () => {
+      expect(reaching(HISTORY).map((scope) => scope.identifier)).toEqual(['fs:allow-read-text-file', 'fs:allow-stat']);
       const own = fsScopes().filter((scope) => scope.path.includes('claude-usage-bar'));
-      expect(own).toEqual([{ identifier: 'fs:allow-read-text-file', path: '$HOME/.config/claude-usage-bar/history.json' }]);
+      expect(own).toEqual([
+        { identifier: 'fs:allow-read-text-file', path: '$HOME/.config/claude-usage-bar/history.json' },
+        { identifier: 'fs:allow-stat', path: '$HOME/.config/claude-usage-bar/history.json' },
+      ]);
     });
 
     it('credentials.json in the same folder and the folder itself stay outside any scope', () => {

@@ -51,6 +51,10 @@
       "allow": [{ "path": "$HOME/.config/claude-usage-bar/history.json" }]
     },
     {
+      "identifier": "fs:allow-stat",
+      "allow": [{ "path": "$HOME/.config/claude-usage-bar/history.json" }]
+    },
+    {
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.github.com/*" },
