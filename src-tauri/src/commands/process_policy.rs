@@ -195,13 +195,6 @@ fn validate_claude(args: &[String]) -> CommandResult<()> {
     }
 }
 
-pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
 pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy();
     match text.strip_prefix(r"\\?\") {

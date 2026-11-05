@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::State;
 use url::Url;
 
+use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 
 const CALLBACK_PATH: &str = "/callback";
@@ -115,7 +116,7 @@ fn same_state(expected: &str, received: &str) -> bool {
 }
 
 pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<CallbackOutcome> {
-    let base = Url::parse("http://127.0.0.1").map_err(CommandError::io)?;
+    let base = Url::parse("http://127.0.0.1")?;
     let url = base
         .join(target)
         .map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "callback com URL inválida"))?;
@@ -190,10 +191,7 @@ fn serve_until_callback(
     expected_state: &str,
     limit: Duration,
 ) -> CommandResult<String> {
-    listener
-        .socket
-        .set_nonblocking(true)
-        .map_err(CommandError::io)?;
+    listener.socket.set_nonblocking(true)?;
     let started = Instant::now();
     loop {
         if listener.cancelled.load(Ordering::SeqCst) {
@@ -211,7 +209,7 @@ fn serve_until_callback(
                 thread::sleep(Duration::from_millis(ACCEPT_POLL_MS));
                 continue;
             }
-            Err(error) => return Err(CommandError::io(error)),
+            Err(error) => return Err(error.into()),
         };
         let Some(head) = read_head(&mut stream) else {
             continue;
@@ -226,7 +224,12 @@ fn serve_until_callback(
             Ok(CallbackOutcome::NotCallback) => {
                 reply(&mut stream, &page("404 Not Found", "Não encontrado"))
             }
-            Err(error) if error.kind == ErrorKind::InvalidArgument => {
+            Err(error)
+                if matches!(
+                    error.kind,
+                    ErrorKind::InvalidArgument | ErrorKind::StateMismatch
+                ) =>
+            {
                 reply(&mut stream, &page("400 Bad Request", "Requisição inválida"));
             }
             Err(error) => {
@@ -239,8 +242,8 @@ fn serve_until_callback(
 
 #[tauri::command(async)]
 pub fn oauth_loopback_listen(registry: State<LoopbackRegistry>) -> CommandResult<ListenInfo> {
-    let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(CommandError::io)?;
-    let port = socket.local_addr().map_err(CommandError::io)?.port();
+    let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+    let port = socket.local_addr()?.port();
     let id = registry.insert(LoopbackListener {
         socket,
         cancelled: AtomicBool::new(false),
@@ -248,9 +251,9 @@ pub fn oauth_loopback_listen(registry: State<LoopbackRegistry>) -> CommandResult
     Ok(ListenInfo { id, port })
 }
 
-#[tauri::command(async)]
-pub fn oauth_loopback_wait(
-    registry: State<LoopbackRegistry>,
+#[tauri::command]
+pub async fn oauth_loopback_wait(
+    registry: State<'_, LoopbackRegistry>,
     id: String,
     expected_state: String,
     timeout_ms: Option<u64>,
@@ -259,7 +262,8 @@ pub fn oauth_loopback_wait(
         .get(&id)
         .ok_or_else(|| CommandError::new(ErrorKind::InvalidArgument, "listener desconhecido"))?;
     let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
-    let result = serve_until_callback(&listener, &expected_state, limit);
+    let result =
+        run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
     registry.remove(&id);
     result.map(|code| CallbackResult { code })
 }
@@ -399,6 +403,58 @@ mod tests {
         let code = serve_until_callback(&listener, "s-1", Duration::from_secs(5)).unwrap();
         assert_eq!(code, "the-code");
         assert!(client.join().unwrap().starts_with("HTTP/1.1 200 OK"));
+    }
+
+    fn send_get(port: u16, target: &str) -> String {
+        let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        stream
+            .write_all(format!("GET {target} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes())
+            .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    }
+
+    fn listener_on_free_port() -> (LoopbackListener, u16) {
+        let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        let listener = LoopbackListener {
+            socket,
+            cancelled: AtomicBool::new(false),
+        };
+        (listener, port)
+    }
+
+    #[test]
+    fn a_wrong_state_gets_a_400_and_the_login_keeps_waiting() {
+        let (listener, port) = listener_on_free_port();
+        let client = thread::spawn(move || {
+            let rejected = send_get(port, "/callback?code=x&state=forjado");
+            let missing = send_get(port, "/callback?code=x");
+            let accepted = send_get(port, "/callback?code=the-code&state=s-1");
+            (rejected, missing, accepted)
+        });
+        let code = serve_until_callback(&listener, "s-1", Duration::from_secs(5)).unwrap();
+        assert_eq!(code, "the-code");
+        let (rejected, missing, accepted) = client.join().unwrap();
+        assert!(rejected.starts_with("HTTP/1.1 400"));
+        assert!(missing.starts_with("HTTP/1.1 400"));
+        assert!(accepted.starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn a_provider_error_with_a_valid_state_still_ends_the_wait() {
+        let (listener, port) = listener_on_free_port();
+        let client = thread::spawn(move || {
+            let forged = send_get(port, "/callback?error=access_denied&state=forjado");
+            let real = send_get(port, "/callback?error=access_denied&state=s-1");
+            (forged, real)
+        });
+        let error = serve_until_callback(&listener, "s-1", Duration::from_secs(5)).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ProviderError);
+        let (forged, real) = client.join().unwrap();
+        assert!(forged.starts_with("HTTP/1.1 400"));
+        assert!(real.starts_with("HTTP/1.1 400"));
     }
 
     #[test]

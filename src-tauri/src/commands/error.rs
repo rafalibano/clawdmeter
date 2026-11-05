@@ -38,10 +38,6 @@ impl CommandError {
             message: message.into(),
         }
     }
-
-    pub fn io(error: impl std::fmt::Display) -> Self {
-        Self::new(ErrorKind::Io, error.to_string())
-    }
 }
 
 pub type CommandResult<T> = Result<T, CommandError>;

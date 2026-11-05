@@ -1,10 +1,12 @@
 use std::process::Command;
 
-use super::error::{CommandError, CommandResult, ErrorKind};
 use std::path::{Path, PathBuf};
 
+use super::error::{CommandError, CommandResult, ErrorKind};
+use super::home::home_dir;
+use super::process::resolve_program;
 use super::process_policy::{
-    home_dir, validate_args, validate_cwd, validate_program, validate_terminal_invocation,
+    validate_args, validate_cwd, validate_program, validate_terminal_invocation,
 };
 
 pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
@@ -26,16 +28,30 @@ pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
     }
 }
 
-pub fn shell_line(program: &str, args: &[String]) -> String {
-    std::iter::once(program.to_string())
+pub fn quote_path(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy())
+}
+
+pub fn shell_line(program: &Path, args: &[String]) -> String {
+    std::iter::once(quote_path(program))
         .chain(args.iter().cloned())
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-fn has_forbidden_cwd_char(text: &str, backslash_forbidden: bool) -> bool {
+fn has_forbidden_path_char(text: &str, backslash_forbidden: bool) -> bool {
     text.chars()
         .any(|c| matches!(c, '\'' | '"' | '\n' | '\r' | '\0') || (backslash_forbidden && c == '\\'))
+}
+
+pub fn validate_terminal_path(path: &Path) -> CommandResult<()> {
+    if has_forbidden_path_char(&path.to_string_lossy(), cfg!(target_os = "macos")) {
+        return Err(CommandError::new(
+            ErrorKind::InvalidArgument,
+            "caminho não permitido no terminal",
+        ));
+    }
+    Ok(())
 }
 
 pub fn validate_terminal_cwd(
@@ -44,21 +60,15 @@ pub fn validate_terminal_cwd(
 ) -> CommandResult<Option<PathBuf>> {
     let resolved = validate_cwd(cwd, home)?;
     if let Some(dir) = &resolved {
-        let text = dir.to_string_lossy();
-        if has_forbidden_cwd_char(&text, cfg!(target_os = "macos")) {
-            return Err(CommandError::new(
-                ErrorKind::InvalidArgument,
-                "diretório de trabalho não permitido no terminal",
-            ));
-        }
+        validate_terminal_path(dir)?;
     }
     Ok(resolved)
 }
 
-pub fn shell_line_in(cwd: Option<&Path>, program: &str, args: &[String]) -> String {
+pub fn shell_line_in(cwd: Option<&Path>, program: &Path, args: &[String]) -> String {
     let line = shell_line(program, args);
     match cwd {
-        Some(dir) => format!("cd '{}' && {line}", dir.to_string_lossy()),
+        Some(dir) => format!("cd {} && {line}", quote_path(dir)),
         None => line,
     }
 }
@@ -73,16 +83,17 @@ pub fn osascript_args(line: &str) -> Vec<String> {
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn windows_terminal_args(program: &str, args: &[String]) -> Vec<String> {
-    ["/C", "start", "", "cmd", "/K", program]
+pub fn windows_terminal_args(program: &Path, args: &[String]) -> Vec<String> {
+    ["/C", "start", "", "cmd", "/K"]
         .iter()
         .map(|part| part.to_string())
+        .chain(std::iter::once(program.to_string_lossy().into_owned()))
         .chain(args.iter().cloned())
         .collect()
 }
 
 #[cfg(target_os = "macos")]
-fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
+fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
     Command::new("/usr/bin/osascript")
         .args(osascript_args(&shell_line_in(cwd, program, args)))
         .spawn()
@@ -91,7 +102,7 @@ fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<(
 }
 
 #[cfg(target_os = "windows")]
-fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
+fn launch(program: &Path, args: &[String], cwd: Option<&Path>) -> CommandResult<()> {
     use std::os::windows::process::CommandExt;
     let mut command = Command::new("cmd");
     command
@@ -107,7 +118,7 @@ fn launch(program: &str, args: &[String], cwd: Option<&Path>) -> CommandResult<(
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn launch(_program: &str, _args: &[String], _cwd: Option<&Path>) -> CommandResult<()> {
+fn launch(_program: &Path, _args: &[String], _cwd: Option<&Path>) -> CommandResult<()> {
     Err(CommandError::new(
         ErrorKind::SpawnFailed,
         "terminal não suportado neste sistema",
@@ -120,7 +131,9 @@ pub fn terminal_run(program: String, args: Vec<String>, cwd: Option<String>) -> 
     validate_terminal_args(&args)?;
     validate_terminal_invocation(program, &args)?;
     let dir = validate_terminal_cwd(cwd.as_deref(), home_dir().as_deref())?;
-    launch(program, &args, dir.as_deref())
+    let executable = resolve_program(program)?;
+    validate_terminal_path(&executable)?;
+    launch(&executable, &args, dir.as_deref())
 }
 
 #[cfg(test)]
@@ -134,10 +147,10 @@ mod tests {
     #[test]
     fn backslash_is_only_rejected_where_the_shell_line_needs_it() {
         let windows_path = r"C:\Users\dev\proj";
-        assert!(!has_forbidden_cwd_char(windows_path, false));
-        assert!(has_forbidden_cwd_char(windows_path, true));
-        assert!(has_forbidden_cwd_char(r"C:\Users\o'brien", false));
-        assert!(has_forbidden_cwd_char("C:\\dev\n", false));
+        assert!(!has_forbidden_path_char(windows_path, false));
+        assert!(has_forbidden_path_char(windows_path, true));
+        assert!(has_forbidden_path_char(r"C:\Users\o'brien", false));
+        assert!(has_forbidden_path_char("C:\\dev\n", false));
     }
 
     #[test]
@@ -166,21 +179,39 @@ mod tests {
 
     #[test]
     fn builds_the_shell_line() {
-        assert_eq!(shell_line("claude", &args(&["/login"])), "claude /login");
-        assert_eq!(shell_line("gh", &[]), "gh");
+        let claude = Path::new("/opt/homebrew/bin/claude");
+        assert_eq!(
+            shell_line(claude, &args(&["/login"])),
+            "'/opt/homebrew/bin/claude' /login"
+        );
+        assert_eq!(shell_line(Path::new("/usr/bin/gh"), &[]), "'/usr/bin/gh'");
     }
 
     #[test]
     fn builds_the_shell_line_in_a_directory() {
         let dir = Path::new("/Users/dev/My Projects");
+        let claude = Path::new("/Users/dev/.local/bin/claude");
         assert_eq!(
-            shell_line_in(Some(dir), "claude", &args(&["--resume", "abc"])),
-            "cd '/Users/dev/My Projects' && claude --resume abc"
+            shell_line_in(Some(dir), claude, &args(&["--resume", "abc"])),
+            "cd '/Users/dev/My Projects' && '/Users/dev/.local/bin/claude' --resume abc"
         );
         assert_eq!(
-            shell_line_in(None, "claude", &args(&["/mcp"])),
-            "claude /mcp"
+            shell_line_in(None, claude, &args(&["/mcp"])),
+            "'/Users/dev/.local/bin/claude' /mcp"
         );
+    }
+
+    #[test]
+    fn the_resolved_program_path_follows_the_same_forbidden_chars_as_the_cwd() {
+        assert!(validate_terminal_path(Path::new("/opt/homebrew/bin/claude")).is_ok());
+        assert!(validate_terminal_path(Path::new("/Users/dev/My Tools/claude")).is_ok());
+        for bad in [
+            "/Users/o'brien/claude",
+            "/Users/\"x\"/claude",
+            "/Users/a\nb/claude",
+        ] {
+            assert!(validate_terminal_path(Path::new(bad)).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
@@ -212,10 +243,10 @@ mod tests {
 
     #[test]
     fn builds_windows_arguments_without_quoting() {
-        let built = windows_terminal_args("claude", &args(&["/login"]));
+        let built = windows_terminal_args(Path::new("claude.cmd"), &args(&["/login"]));
         assert_eq!(
             built,
-            args(&["/C", "start", "", "cmd", "/K", "claude", "/login"])
+            args(&["/C", "start", "", "cmd", "/K", "claude.cmd", "/login"])
         );
     }
 

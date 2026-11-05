@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -7,56 +7,122 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::process_policy::{home_dir, validate_cwd, validate_invocation, validate_program};
+use super::home::home_dir;
+use super::process_policy::{validate_cwd, validate_invocation, validate_program};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
 const MAX_RUN_TIMEOUT_MS: u64 = 120_000;
 const POLL_INTERVAL_MS: u64 = 25;
 const READER_JOIN_LIMIT_MS: u64 = 2_000;
+const MAX_CONCURRENT_PROCESSES: usize = 4;
+const MAX_CAPTURE_BYTES: usize = 1_048_576;
+const MAX_LINE_BYTES: usize = 65_536;
+const CAPTURE_TRUNCATED_MARK: &str = "\n[saída truncada]";
+const LINE_TRUNCATED_MARK: &str = " …[linha truncada]";
 pub const OUTPUT_EVENT: &str = "process-output";
 pub const EXIT_EVENT: &str = "process-exit";
 
 #[cfg(windows)]
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    Running,
+    Exiting,
+}
+
 #[derive(Default)]
-pub struct ProcessRegistry(Mutex<HashSet<u32>>);
+pub struct ProcessRegistry(Mutex<HashMap<u32, Slot>>);
 
 impl ProcessRegistry {
-    fn insert(&self, pid: u32) {
-        if let Ok(mut pids) = self.0.lock() {
-            pids.insert(pid);
+    fn ensure_capacity(&self) -> CommandResult<()> {
+        let full = self
+            .0
+            .lock()
+            .map(|slots| slots.len() >= MAX_CONCURRENT_PROCESSES)
+            .unwrap_or(true);
+        if full {
+            Err(too_many_processes())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn insert(&self, pid: u32) -> CommandResult<()> {
+        let mut slots = self.0.lock().map_err(|_| too_many_processes())?;
+        if slots.len() >= MAX_CONCURRENT_PROCESSES {
+            return Err(too_many_processes());
+        }
+        slots.insert(pid, Slot::Running);
+        Ok(())
+    }
+
+    fn mark_exiting(&self, pid: u32) {
+        if let Ok(mut slots) = self.0.lock() {
+            if let Some(slot) = slots.get_mut(&pid) {
+                *slot = Slot::Exiting;
+            }
         }
     }
 
     fn remove(&self, pid: u32) {
-        if let Ok(mut pids) = self.0.lock() {
-            pids.remove(&pid);
+        if let Ok(mut slots) = self.0.lock() {
+            slots.remove(&pid);
         }
     }
 
-    fn contains(&self, pid: u32) -> bool {
+    #[cfg(test)]
+    fn is_running(&self, pid: u32) -> bool {
         self.0
             .lock()
-            .map(|pids| pids.contains(&pid))
+            .map(|slots| slots.get(&pid) == Some(&Slot::Running))
             .unwrap_or(false)
     }
 
-    fn drain(&self) -> Vec<u32> {
+    fn signal_if_running(
+        &self,
+        pid: u32,
+        send: impl FnOnce() -> CommandResult<()>,
+    ) -> CommandResult<()> {
+        let Ok(slots) = self.0.lock() else {
+            return Ok(());
+        };
+        if slots.get(&pid) == Some(&Slot::Running) {
+            send()
+        } else {
+            Ok(())
+        }
+    }
+
+    fn drain_running(&self) -> Vec<u32> {
         self.0
             .lock()
-            .map(|mut pids| pids.drain().collect())
+            .map(|mut slots| {
+                slots
+                    .drain()
+                    .filter(|(_, slot)| *slot == Slot::Running)
+                    .map(|(pid, _)| pid)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     pub fn terminate_all(&self) {
-        for pid in self.drain() {
+        for pid in self.drain_running() {
             let _ = terminate(pid, true);
         }
     }
+}
+
+fn too_many_processes() -> CommandError {
+    CommandError::new(
+        ErrorKind::TooManyProcesses,
+        format!("limite de {MAX_CONCURRENT_PROCESSES} processos simultâneos atingido"),
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -124,7 +190,7 @@ pub fn candidate_paths(
     result
 }
 
-fn resolve_program(program: &str) -> CommandResult<PathBuf> {
+pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
     let program = validate_program(program)?;
     let home = home_dir();
     let path_var = std::env::var("PATH").ok();
@@ -179,14 +245,24 @@ fn join_with_limit<T>(handle: thread::JoinHandle<T>, limit: Duration) -> Option<
     handle.join().ok()
 }
 
+#[derive(Default)]
+struct Captured {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
 struct Capture {
-    buffer: Arc<Mutex<Vec<u8>>>,
+    buffer: Arc<Mutex<Captured>>,
     reader: thread::JoinHandle<()>,
 }
 
 impl Capture {
-    fn start(mut source: impl Read + Send + 'static) -> Self {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
+    fn start(source: impl Read + Send + 'static) -> Self {
+        Self::start_with_limit(source, MAX_CAPTURE_BYTES)
+    }
+
+    fn start_with_limit(mut source: impl Read + Send + 'static, limit: usize) -> Self {
+        let buffer = Arc::new(Mutex::new(Captured::default()));
         let sink = Arc::clone(&buffer);
         let reader = thread::spawn(move || {
             let mut chunk = [0u8; 4096];
@@ -194,8 +270,11 @@ impl Capture {
                 if read == 0 {
                     break;
                 }
-                if let Ok(mut bytes) = sink.lock() {
-                    bytes.extend_from_slice(&chunk[..read]);
+                if let Ok(mut captured) = sink.lock() {
+                    let room = limit.saturating_sub(captured.bytes.len());
+                    let kept = read.min(room);
+                    captured.bytes.extend_from_slice(&chunk[..kept]);
+                    captured.truncated |= kept < read;
                 }
             }
         });
@@ -208,22 +287,23 @@ impl Capture {
 
     fn finish_within(self, limit: Duration) -> String {
         let _ = join_with_limit(self.reader, limit);
-        let bytes = self
-            .buffer
-            .lock()
-            .map(|bytes| bytes.clone())
-            .unwrap_or_default();
-        String::from_utf8_lossy(&bytes).into_owned()
+        let Ok(captured) = self.buffer.lock() else {
+            return String::new();
+        };
+        let mut text = String::from_utf8_lossy(&captured.bytes).into_owned();
+        if captured.truncated {
+            text.push_str(CAPTURE_TRUNCATED_MARK);
+        }
+        text
     }
 }
 
-#[tauri::command(async)]
-pub fn process_run(
-    program: String,
-    args: Vec<String>,
+fn run_to_completion(
+    program: &str,
+    args: &[String],
     timeout_ms: Option<u64>,
 ) -> CommandResult<RunOutput> {
-    let mut child = build_command(&program, &args, None)?
+    let mut child = build_command(program, args, None)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
@@ -235,7 +315,7 @@ pub fn process_run(
     );
     let started = Instant::now();
     let status = loop {
-        match child.try_wait().map_err(CommandError::io)? {
+        match child.try_wait()? {
             Some(status) => break status,
             None if started.elapsed() >= limit => {
                 let _ = terminate(child.id(), true);
@@ -259,6 +339,56 @@ pub fn process_run(
     })
 }
 
+#[tauri::command]
+pub async fn process_run(
+    program: String,
+    args: Vec<String>,
+    timeout_ms: Option<u64>,
+) -> CommandResult<RunOutput> {
+    run_blocking(move || run_to_completion(&program, &args, timeout_ms)).await
+}
+
+fn finish_line(line: &mut Vec<u8>, truncated: &mut bool) -> String {
+    if line.last() == Some(&b'\r') {
+        line.pop();
+    }
+    let mut text = String::from_utf8_lossy(line).into_owned();
+    if *truncated {
+        text.push_str(LINE_TRUNCATED_MARK);
+    }
+    line.clear();
+    *truncated = false;
+    text
+}
+
+fn read_bounded_lines(source: impl Read, max: usize, mut emit: impl FnMut(String)) {
+    let mut reader = BufReader::new(source);
+    let mut line: Vec<u8> = Vec::new();
+    let mut truncated = false;
+    loop {
+        let (consumed, complete) = match reader.fill_buf() {
+            Ok([]) => break,
+            Ok(chunk) => {
+                let end = chunk.iter().position(|byte| *byte == b'\n');
+                let piece = &chunk[..end.unwrap_or(chunk.len())];
+                let kept = piece.len().min(max.saturating_sub(line.len()));
+                truncated |= kept < piece.len();
+                line.extend_from_slice(&piece[..kept]);
+                (end.map_or(chunk.len(), |index| index + 1), end.is_some())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+        reader.consume(consumed);
+        if complete {
+            emit(finish_line(&mut line, &mut truncated));
+        }
+    }
+    if !line.is_empty() || truncated {
+        emit(finish_line(&mut line, &mut truncated));
+    }
+}
+
 fn stream_lines(
     app: AppHandle,
     pid: u32,
@@ -266,19 +396,57 @@ fn stream_lines(
     source: impl Read + Send + 'static,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        for line in BufReader::new(source).lines().map_while(Result::ok) {
+        read_bounded_lines(source, MAX_LINE_BYTES, |line| {
             let _ = app.emit(OUTPUT_EVENT, OutputEvent { pid, stream, line });
-        }
+        });
     })
+}
+
+#[cfg(unix)]
+fn wait_until_exited(pid: u32) {
+    loop {
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if result == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+            return;
+        }
+    }
+}
+
+fn reap(child: &mut Child, registry: &ProcessRegistry) -> Option<i32> {
+    let pid = child.id();
+    #[cfg(unix)]
+    {
+        wait_until_exited(pid);
+        registry.mark_exiting(pid);
+        child.wait().ok().and_then(|status| status.code())
+    }
+    #[cfg(not(unix))]
+    {
+        let code = child.wait().ok().and_then(|status| status.code());
+        registry.mark_exiting(pid);
+        code
+    }
 }
 
 fn watch_exit(app: AppHandle, mut child: Child, pid: u32, readers: Vec<thread::JoinHandle<()>>) {
     thread::spawn(move || {
-        let code = child.wait().ok().and_then(|status| status.code());
+        let registry = app.try_state::<ProcessRegistry>();
+        let code = match &registry {
+            Some(registry) => reap(&mut child, registry),
+            None => child.wait().ok().and_then(|status| status.code()),
+        };
         for reader in readers {
             let _ = join_with_limit(reader, Duration::from_millis(READER_JOIN_LIMIT_MS));
         }
-        if let Some(registry) = tauri::Manager::try_state::<ProcessRegistry>(&app) {
+        if let Some(registry) = registry {
             registry.remove(pid);
         }
         let _ = app.emit(EXIT_EVENT, ExitEvent { pid, code });
@@ -293,11 +461,16 @@ pub fn process_spawn(
     args: Vec<String>,
     cwd: Option<String>,
 ) -> CommandResult<u32> {
+    registry.ensure_capacity()?;
     let mut child = build_command(&program, &args, cwd.as_deref())?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let pid = child.id();
-    registry.insert(pid);
+    if let Err(error) = registry.insert(pid) {
+        let _ = terminate(pid, true);
+        let _ = child.wait();
+        return Err(error);
+    }
     let mut readers = Vec::new();
     if let Some(out) = child.stdout.take() {
         readers.push(stream_lines(app.clone(), pid, "stdout", out));
@@ -309,16 +482,13 @@ pub fn process_spawn(
     Ok(pid)
 }
 
-#[tauri::command(async)]
-pub fn process_kill(registry: State<ProcessRegistry>, pid: u32) -> CommandResult<()> {
-    kill_registered(&registry, pid)
+#[tauri::command]
+pub async fn process_kill(app: AppHandle, pid: u32) -> CommandResult<()> {
+    run_blocking(move || kill_registered(&app.state::<ProcessRegistry>(), pid)).await
 }
 
 fn kill_registered(registry: &ProcessRegistry, pid: u32) -> CommandResult<()> {
-    if !registry.contains(pid) {
-        return Ok(());
-    }
-    terminate(pid, false)
+    registry.signal_if_running(pid, || terminate(pid, false))
 }
 
 #[cfg(unix)]
@@ -337,7 +507,7 @@ fn terminate(pid: u32, force: bool) -> CommandResult<()> {
     if error.raw_os_error() == Some(libc::ESRCH) {
         Ok(())
     } else {
-        Err(CommandError::io(error))
+        Err(error.into())
     }
 }
 
@@ -347,8 +517,7 @@ fn terminate(pid: u32, _force: bool) -> CommandResult<()> {
     let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .creation_flags(CREATE_NO_WINDOW)
-        .status()
-        .map_err(CommandError::io)?;
+        .status()?;
     if status.success() {
         Ok(())
     } else {
@@ -383,9 +552,12 @@ fn is_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-#[tauri::command(async)]
-pub fn process_is_alive(pid: u32) -> bool {
-    pid != 0 && is_alive(pid)
+#[tauri::command]
+pub async fn process_is_alive(pid: u32) -> bool {
+    pid != 0
+        && tauri::async_runtime::spawn_blocking(move || is_alive(pid))
+            .await
+            .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -405,7 +577,7 @@ mod tests {
         assert!(paths.contains(&PathBuf::from("/Users/dev/.local/bin/gh")));
         let usr_bin = paths
             .iter()
-            .filter(|path| **path == PathBuf::from("/usr/bin/gh"))
+            .filter(|path| path.as_path() == Path::new("/usr/bin/gh"))
             .count();
         assert_eq!(usr_bin, 1);
     }
@@ -485,7 +657,10 @@ mod tests {
     #[test]
     fn current_process_is_alive_and_pid_zero_is_not() {
         assert!(is_alive(std::process::id()));
-        assert!(!process_is_alive(0));
+        assert!(!tauri::async_runtime::block_on(process_is_alive(0)));
+        assert!(tauri::async_runtime::block_on(process_is_alive(
+            std::process::id()
+        )));
     }
 
     #[test]
@@ -507,7 +682,7 @@ mod tests {
         let pid = child.id();
         child.wait().unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(pid);
+        registry.insert(pid).unwrap();
         assert!(kill_registered(&registry, pid).is_ok());
     }
 
@@ -521,19 +696,184 @@ mod tests {
             .spawn()
             .unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(child.id());
+        registry.insert(child.id()).unwrap();
         thread::sleep(Duration::from_millis(150));
         registry.terminate_all();
         assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
-        assert!(!registry.contains(child.id()));
+        assert!(!registry.is_running(child.id()));
     }
 
     #[test]
     fn registry_tracks_only_inserted_pids() {
         let registry = ProcessRegistry::default();
-        registry.insert(10);
-        assert!(registry.contains(10));
+        registry.insert(10).unwrap();
+        assert!(registry.is_running(10));
         registry.remove(10);
-        assert!(!registry.contains(10));
+        assert!(!registry.is_running(10));
+    }
+    #[test]
+    fn capture_keeps_at_most_the_limit_marks_the_cut_and_keeps_draining() {
+        let source = std::io::repeat(b'a').take(50_000);
+        let capture = Capture::start_with_limit(source, 100);
+        let text = capture.finish_within(Duration::from_secs(5));
+        assert_eq!(text, format!("{}{CAPTURE_TRUNCATED_MARK}", "a".repeat(100)));
+    }
+
+    #[test]
+    fn capture_below_the_limit_is_untouched() {
+        let capture = Capture::start_with_limit(&b"curto"[..], 100);
+        assert_eq!(capture.finish_within(Duration::from_secs(5)), "curto");
+    }
+
+    #[test]
+    fn capture_default_limit_is_one_mebibyte() {
+        assert_eq!(MAX_CAPTURE_BYTES, 1_048_576);
+        let source = std::io::repeat(b'x').take(3 * 1_048_576);
+        let text = Capture::start(source).finish_within(Duration::from_secs(10));
+        assert_eq!(text.len(), MAX_CAPTURE_BYTES + CAPTURE_TRUNCATED_MARK.len());
+        assert!(text.ends_with(CAPTURE_TRUNCATED_MARK));
+    }
+
+    fn lines_of(input: &[u8], max: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        read_bounded_lines(input, max, |line| lines.push(line));
+        lines
+    }
+
+    #[test]
+    fn bounded_lines_match_plain_lines_when_nothing_is_too_long() {
+        assert_eq!(lines_of(b"a\nb\r\n\nc", 100), ["a", "b", "", "c"]);
+        assert_eq!(lines_of(b"a\n", 100), ["a"]);
+        assert!(lines_of(b"", 100).is_empty());
+    }
+
+    #[test]
+    fn a_line_over_the_limit_is_cut_and_marked_without_swallowing_the_next_one() {
+        let mut input = "x".repeat(300).into_bytes();
+        input.extend_from_slice(b"\nproxima\n");
+        let lines = lines_of(&input, 64);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], format!("{}{LINE_TRUNCATED_MARK}", "x".repeat(64)));
+        assert_eq!(lines[1], "proxima");
+    }
+
+    #[test]
+    fn a_huge_last_line_without_newline_is_still_bounded() {
+        let input = vec![b'y'; 1_000_000];
+        let lines = lines_of(&input, MAX_LINE_BYTES);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].len(), MAX_LINE_BYTES + LINE_TRUNCATED_MARK.len());
+    }
+
+    #[test]
+    fn invalid_utf8_in_a_line_is_replaced_instead_of_ending_the_stream() {
+        let lines = lines_of(b"ok\n\xff\xfe\nfim\n", 100);
+        assert_eq!(lines, ["ok", "\u{fffd}\u{fffd}", "fim"]);
+    }
+
+    #[test]
+    fn the_registry_refuses_more_than_the_concurrent_limit() {
+        let registry = ProcessRegistry::default();
+        for pid in 1..=MAX_CONCURRENT_PROCESSES as u32 {
+            registry.ensure_capacity().unwrap();
+            registry.insert(pid).unwrap();
+        }
+        assert_eq!(
+            registry.ensure_capacity().unwrap_err().kind,
+            ErrorKind::TooManyProcesses
+        );
+        assert_eq!(
+            registry.insert(99).unwrap_err().kind,
+            ErrorKind::TooManyProcesses
+        );
+        registry.remove(1);
+        assert!(registry.ensure_capacity().is_ok());
+        assert!(registry.insert(99).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn killing_a_pid_marked_as_exiting_is_a_noop() {
+        use std::os::unix::process::CommandExt;
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let registry = ProcessRegistry::default();
+        registry.insert(child.id()).unwrap();
+        registry.mark_exiting(child.id());
+        kill_registered(&registry, child.id()).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert!(child.try_wait().unwrap().is_none());
+        let _ = terminate(child.id(), true);
+        let _ = child.wait();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn waiting_for_exit_leaves_the_zombie_so_the_pid_cannot_be_recycled_yet() {
+        use std::os::unix::process::CommandExt;
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exit 3"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        wait_until_exited(pid);
+        assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
+        assert_eq!(child.wait().unwrap().code(), Some(3));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reap_marks_the_pid_as_exiting_before_the_pid_is_released() {
+        use std::os::unix::process::CommandExt;
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exit 5"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let registry = ProcessRegistry::default();
+        registry.insert(child.id()).unwrap();
+        assert!(registry.is_running(child.id()));
+        assert_eq!(reap(&mut child, &registry), Some(5));
+        assert!(!registry.is_running(child.id()));
+        assert_eq!(
+            registry.0.lock().unwrap().get(&child.id()),
+            Some(&Slot::Exiting)
+        );
+        kill_registered(&registry, child.id()).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_kill_racing_the_exit_never_signals_a_released_pid() {
+        use std::os::unix::process::CommandExt;
+        for _ in 0..20 {
+            let mut child = Command::new("/bin/sh")
+                .args(["-c", "exit 0"])
+                .process_group(0)
+                .spawn()
+                .unwrap();
+            let pid = child.id();
+            let registry = Arc::new(ProcessRegistry::default());
+            registry.insert(pid).unwrap();
+            let killer = {
+                let registry = Arc::clone(&registry);
+                thread::spawn(move || {
+                    for _ in 0..200 {
+                        registry
+                            .signal_if_running(pid, || {
+                                assert!(is_alive(pid), "sinal enviado a um pid já liberado");
+                                Ok(())
+                            })
+                            .unwrap();
+                    }
+                })
+            };
+            reap(&mut child, &registry);
+            killer.join().unwrap();
+        }
     }
 }
