@@ -13,6 +13,7 @@ export class FixMicrosoftConnection implements StatusUseCase<FixAction> {
       case 'retry':
         return this.check.execute();
       case 'relogin-microsoft':
+      case 'connect-microsoft':
         return this.connect.execute();
       default:
         throw new ConnectionProblemError('unexpected', `Conserto não se aplica à Microsoft: ${fix}`);

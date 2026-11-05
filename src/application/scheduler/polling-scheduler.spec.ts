@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConnectionProblemError } from '../../domain/connections';
 import { createDefaultSettings, type AppSettings } from '../../domain/settings';
 import { PageRegistry } from '../pages/page-registry';
 import { FakeClock, flushPromises } from '../testing/fake-clock';
@@ -134,6 +135,59 @@ describe('PollingScheduler', () => {
     expect(hanging).toHaveBeenCalledTimes(2);
   });
 
+  it('refresh durante uma carga em andamento roda de novo ao terminar', async () => {
+    const releases: Array<(value: string) => void> = [];
+    const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
+    const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    const refreshed = scheduler.refresh('hang');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(1);
+    releases[0]?.('antiga');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(2);
+    releases[1]?.('nova');
+    await refreshed;
+    expect(updates.map((update) => (update.status === 'ok' ? update.data : update.error))).toEqual(['antiga', 'nova']);
+  });
+
+  it('vários refreshes durante a carga viram uma única recarga', async () => {
+    const releases: Array<(value: string) => void> = [];
+    const hanging = vi.fn(() => new Promise<string>((resolve) => releases.push(resolve)));
+    const registry = new PageRegistry([fakePage({ id: 'hang', pollIntervalMs: null, load: hanging })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.sync(createDefaultSettings());
+    void scheduler.refresh('hang');
+    void scheduler.refresh('hang');
+    releases[0]?.('a');
+    await flushPromises();
+    releases[1]?.('b');
+    await flushPromises();
+    expect(hanging).toHaveBeenCalledTimes(2);
+  });
+
+  it('problema de conexão vira mensagem legível e carrega o problema', async () => {
+    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired'));
+    const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(updates[0]).toMatchObject({ status: 'error', error: 'O login da Microsoft expirou.', problem: 'microsoft-expired' });
+  });
+
+  it('problema com mensagem específica mantém a mensagem', async () => {
+    const failing = vi.fn().mockRejectedValue(new ConnectionProblemError('microsoft-expired', 'Sem permissão'));
+    const registry = new PageRegistry([fakePage({ id: 'agenda', pollIntervalMs: null, load: failing })]);
+    const scheduler = new PollingScheduler(registry, clock);
+    scheduler.subscribe((update) => updates.push(update));
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    expect(updates[0]).toMatchObject({ error: 'Sem permissão', problem: 'microsoft-expired' });
+  });
+
   it('descarta o resultado de uma carga que terminou depois de a página ser desligada', async () => {
     let release: (value: string) => void = () => undefined;
     const registry = new PageRegistry([
@@ -194,5 +248,16 @@ describe('PollingScheduler', () => {
     scheduler.sync(createDefaultSettings());
     await flushPromises();
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('refresh recarrega uma página ligada na hora e ignora página desligada', async () => {
+    const scheduler = build();
+    scheduler.sync(settingsWith({ fast: false, slow: false }));
+    await flushPromises();
+    await scheduler.refresh('once');
+    expect(once).toHaveBeenCalledTimes(2);
+    await scheduler.refresh('fast');
+    await scheduler.refresh('inexistente');
+    expect(fast).not.toHaveBeenCalled();
   });
 });

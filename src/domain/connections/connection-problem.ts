@@ -6,6 +6,7 @@ export type ConnectionProblem =
   | 'github-missing-scope'
   | 'github-org-access'
   | 'microsoft-expired'
+  | 'microsoft-not-connected'
   | 'notifications-blocked'
   | 'notifications-unverifiable'
   | 'github-not-member'
@@ -19,6 +20,7 @@ export const CONNECTION_PROBLEMS: readonly ConnectionProblem[] = [
   'github-missing-scope',
   'github-org-access',
   'microsoft-expired',
+  'microsoft-not-connected',
   'notifications-blocked',
   'notifications-unverifiable',
   'github-not-member',

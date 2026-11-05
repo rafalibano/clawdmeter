@@ -1,3 +1,4 @@
+export * from './calendar-gateway';
 export * from './claude-credential-source';
 export * from './clock';
 export * from './connection-prefs-store';

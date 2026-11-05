@@ -1,6 +1,6 @@
 import {
   connectionDefinition,
-  errorStatus,
+  statusForProblem,
   type ConnectionId,
   type ConnectionProblem,
   type ConnectionStatus,
@@ -69,6 +69,6 @@ export class ReportConnectionProblem {
   constructor(private readonly monitor: ConnectionMonitor) {}
 
   execute(id: ConnectionId, problem: ConnectionProblem, message?: string): void {
-    this.monitor.set(id, errorStatus(problem, message));
+    this.monitor.set(id, statusForProblem(problem, message));
   }
 }

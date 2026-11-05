@@ -123,9 +123,9 @@ describe('PkceMicrosoftAuthorizer.signIn', () => {
 });
 
 describe('PkceMicrosoftAuthorizer.accessToken', () => {
-  it('sem refresh token no cofre, pede novo login', async () => {
+  it('sem refresh token no cofre, nunca conectou: pede Conectar, não Refazer login', async () => {
     const { authorizer } = setup(() => ({ json: {} }));
-    await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-expired' });
+    await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-not-connected' });
   });
 
   it('renova com o refresh token, rotaciona e usa cache até perto do vencimento', async () => {
@@ -155,7 +155,7 @@ describe('PkceMicrosoftAuthorizer.accessToken', () => {
     await authorizer.accessToken();
     await authorizer.signOut();
     expect(secrets.values.size).toBe(0);
-    await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-expired' });
+    await expect(authorizer.accessToken()).rejects.toMatchObject({ problem: 'microsoft-not-connected' });
     expect(requests).toHaveLength(1);
   });
 });
