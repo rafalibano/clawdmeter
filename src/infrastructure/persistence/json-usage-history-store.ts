@@ -9,7 +9,13 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
   constructor(private readonly file: AtomicJsonFile) {}
 
   load(): Promise<UsageHistory> {
-    this.loading ??= this.readFromDisk();
+    if (this.loading === null) {
+      const loading = this.readFromDisk();
+      this.loading = loading;
+      loading.catch(() => {
+        if (this.loading === loading) this.loading = null;
+      });
+    }
     return this.loading;
   }
 

@@ -35,6 +35,19 @@ class MemoryFile implements AtomicJsonFile {
 }
 
 describe('JsonUsageHistoryStore', () => {
+  it('leitura que falha não trava o próximo load', async () => {
+    const file = new MemoryFile();
+    let fail = true;
+    file.read = async () => {
+      if (fail) throw new Error('disco');
+      return null;
+    };
+    const store = new JsonUsageHistoryStore(file);
+    await expect(store.load()).rejects.toThrow('disco');
+    fail = false;
+    expect(await store.load()).toEqual(createEmptyHistory());
+  });
+
   it('arquivo ausente: histórico vazio', async () => {
     expect(await new JsonUsageHistoryStore(new MemoryFile()).load()).toEqual(createEmptyHistory());
   });
