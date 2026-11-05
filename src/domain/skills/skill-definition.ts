@@ -25,6 +25,10 @@ export const DEFAULT_SKILLS: readonly SkillDefinition[] = [
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/i;
 const TOOL_PATTERN = /^[a-z0-9()*:._/@ -]+$/i;
 const MAX_ALLOWED_TOOLS_LENGTH = 1_024;
+const MAX_PROMPT_BYTES = 8_192;
+const MAX_BUDGET_USD = 1_000;
+const MAX_BUDGET_TEXT_LENGTH = 12;
+const BUDGET_TEXT_PATTERN = /^\d+(\.\d+)?$/;
 
 const ABSOLUTE_PATH_PATTERN = /^(\/|[a-z]:[\\/]|\\\\)/i;
 
@@ -34,6 +38,12 @@ export function isAbsolutePath(path: string): boolean {
     !path.includes('\0') &&
     !path.split(/[\\/]/).includes('..')
   );
+}
+
+function isValidBudget(budget: unknown): budget is number {
+  if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0 || budget > MAX_BUDGET_USD) return false;
+  const text = String(budget);
+  return text.length <= MAX_BUDGET_TEXT_LENGTH && BUDGET_TEXT_PATTERN.test(text);
 }
 
 function isValidTool(tool: unknown): tool is string {
@@ -47,8 +57,9 @@ function parseSkill(raw: unknown): SkillDefinition | null {
   if (typeof id !== 'string' || !ID_PATTERN.test(id)) return null;
   if (typeof name !== 'string' || name.trim() === '') return null;
   if (typeof prompt !== 'string' || prompt.trim() === '' || prompt.trim().startsWith('-')) return null;
+  if (new TextEncoder().encode(prompt.trim()).length > MAX_PROMPT_BYTES) return null;
   const budget = maxBudgetUsd === undefined ? DEFAULT_MAX_BUDGET_USD : maxBudgetUsd;
-  if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0) return null;
+  if (!isValidBudget(budget)) return null;
   const tools = allowedTools === undefined ? [...DEFAULT_ALLOWED_TOOLS] : allowedTools;
   if (!Array.isArray(tools) || !tools.every(isValidTool) || tools.join(',').length > MAX_ALLOWED_TOOLS_LENGTH) return null;
   if (cwd !== undefined && cwd !== null && (typeof cwd !== 'string' || !isAbsolutePath(cwd))) return null;

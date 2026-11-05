@@ -222,6 +222,26 @@ describe('configuração de skills', () => {
     expect(skills[0]).toMatchObject({ maxBudgetUsd: 3, allowedTools: ['Read'] });
   });
 
+  it('orçamento segue as regras do processo nativo', () => {
+    const accepted = (maxBudgetUsd: unknown) =>
+      parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', maxBudgetUsd }] }).length === 1;
+    expect(accepted(1000)).toBe(true);
+    expect(accepted(0.5)).toBe(true);
+    expect(accepted(1000.01)).toBe(false);
+    expect(accepted(1e-7)).toBe(false);
+    expect(accepted(0.1234567890123)).toBe(false);
+    expect(accepted(-1)).toBe(false);
+    expect(accepted(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(accepted('2')).toBe(false);
+  });
+
+  it('prompt tem no máximo 8192 bytes', () => {
+    const accepted = (prompt: string) => parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt }] }).length === 1;
+    expect(accepted('a'.repeat(8192))).toBe(true);
+    expect(accepted('a'.repeat(8193))).toBe(false);
+    expect(accepted('é'.repeat(4097))).toBe(false);
+  });
+
   it('cwd precisa ser um caminho absoluto sem ..', () => {
     const accepted = (cwd: unknown) =>
       parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', cwd }] }).length === 1;
