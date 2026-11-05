@@ -41,7 +41,7 @@ export class ShellComponent {
   );
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
-    const update = page ? this.pageState.of(page.id)() : undefined;
+    const update = page ? this.pageState.get(page) : undefined;
     return formatUpdatedAgo(update?.at ?? null, this.now());
   });
 

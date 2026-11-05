@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, computed, inject, signal, type Signal } from '@angular/core';
 import type { PageId } from '../../domain/settings';
+import type { PageRef } from '../../application/pages';
 import type { PageUpdate } from '../../application/scheduler';
 import { APPLICATION } from './application.token';
 
@@ -14,7 +15,11 @@ export class PageStateService {
     inject(DestroyRef).onDestroy(stop);
   }
 
-  of(id: PageId): Signal<PageUpdate | undefined> {
-    return computed(() => this.updates().get(id));
+  get<T>(page: PageRef<T>): PageUpdate<T> | undefined {
+    return this.updates().get(page.id) as PageUpdate<T> | undefined;
+  }
+
+  of<T>(page: PageRef<T>): Signal<PageUpdate<T> | undefined> {
+    return computed(() => this.get(page));
   }
 }

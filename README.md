@@ -52,9 +52,11 @@ src-tauri/            Rust: bandeja, janela do popover, plugins
 1. Crie `src/ui/pages/<nome>/` com o componente e um `PageModule`:
 
 ```ts
+export const USAGE_PAGE = pageRef<UsageData>('usage');
+
 export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
   return {
-    id: 'usage',
+    id: USAGE_PAGE.id,
     title: 'Claude usage',
     requiredConnections: ['claude'],
     pollIntervalMs: 60_000,
@@ -70,7 +72,7 @@ export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
 pages: [createExamplePage({ clock }), createUsagePage({ clock })],
 ```
 
-Checkbox em Ajustes, polling e exigência de conexão saem do `PageRegistry`. Fonte de dado nova = uma porta em `application/ports` + um adapter em `infrastructure/`. O componente lê o resultado com `PageStateService.of(id)`.
+Checkbox em Ajustes, polling e exigência de conexão saem do `PageRegistry`. Fonte de dado nova = uma porta em `application/ports` + um adapter em `infrastructure/`. O componente lê o resultado tipado com `PageStateService.of(USAGE_PAGE)`; quem assina o scheduler depois recebe o último resultado de cada página, então páginas sem polling (`pollIntervalMs: null`) não perdem o primeiro update.
 
 `PageComponent` é `new () => unknown`: o componente injeta dependências com `inject()`, não pelo construtor.
 

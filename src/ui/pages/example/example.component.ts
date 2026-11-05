@@ -1,8 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { PageStateService } from '../../shell/page-state.service';
-import { EXAMPLE_PAGE_ID } from './example-page-id';
-import type { ExampleData } from './example.page';
+import { EXAMPLE_PAGE } from './example-page-ref';
 
 @Component({
   selector: 'dp-example-page',
@@ -38,10 +37,10 @@ import type { ExampleData } from './example.page';
   `,
 })
 export class ExampleComponent {
-  private readonly update = inject(PageStateService).of(EXAMPLE_PAGE_ID);
+  private readonly update = inject(PageStateService).of(EXAMPLE_PAGE);
 
   protected readonly data = computed(() => {
     const update = this.update();
-    return update?.status === 'ok' ? (update.data as ExampleData) : null;
+    return update?.status === 'ok' ? update.data : null;
   });
 }

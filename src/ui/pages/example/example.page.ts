@@ -1,17 +1,12 @@
 import type { Clock } from '../../../application/ports';
 import type { PageModule } from '../../../application/pages';
 import { ExampleComponent } from './example.component';
-import { EXAMPLE_PAGE_ID } from './example-page-id';
-
-export interface ExampleData {
-  loadedAt: number;
-  loads: number;
-}
+import { EXAMPLE_PAGE, type ExampleData } from './example-page-ref';
 
 export function createExamplePage(deps: { clock: Clock }): PageModule<ExampleData> {
   let loads = 0;
   return {
-    id: EXAMPLE_PAGE_ID,
+    id: EXAMPLE_PAGE.id,
     title: 'Exemplo',
     requiredConnections: [],
     pollIntervalMs: 10_000,
