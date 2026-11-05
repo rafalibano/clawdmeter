@@ -3,6 +3,8 @@ use std::process::Command;
 use url::Url;
 
 use super::error::{CommandError, CommandResult, ErrorKind};
+#[cfg(target_os = "windows")]
+use super::process::CREATE_NO_WINDOW;
 
 pub fn validate_https_url(raw: &str) -> CommandResult<Url> {
     let url = Url::parse(raw).map_err(|_| CommandError::new(ErrorKind::InvalidArgument, "URL inválida"))?;
@@ -34,7 +36,7 @@ fn launch(target: &str, is_url: bool) -> CommandResult<()> {
         command
     };
     command
-        .creation_flags(0x0800_0000)
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))

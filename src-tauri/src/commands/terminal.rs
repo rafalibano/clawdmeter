@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::process::{validate_args, validate_program};
+use super::process_policy::{validate_args, validate_program, validate_terminal_invocation};
 
 pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
     validate_args(args)?;
@@ -55,9 +55,12 @@ fn launch(program: &str, args: &[String]) -> CommandResult<()> {
 #[cfg(target_os = "windows")]
 fn launch(program: &str, args: &[String]) -> CommandResult<()> {
     use std::os::windows::process::CommandExt;
-    Command::new("cmd")
-        .args(windows_terminal_args(program, args))
-        .creation_flags(0x0800_0000)
+    let mut command = Command::new("cmd");
+    command.args(windows_terminal_args(program, args)).creation_flags(super::process::CREATE_NO_WINDOW);
+    if let Some(home) = super::process_policy::home_dir() {
+        command.current_dir(home);
+    }
+    command
         .spawn()
         .map(|_| ())
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))
@@ -72,6 +75,7 @@ fn launch(_program: &str, _args: &[String]) -> CommandResult<()> {
 pub fn terminal_run(program: String, args: Vec<String>) -> CommandResult<()> {
     let program = validate_program(&program)?;
     validate_terminal_args(&args)?;
+    validate_terminal_invocation(program, &args)?;
     launch(program, &args)
 }
 
@@ -114,6 +118,14 @@ mod tests {
     fn builds_windows_arguments_without_quoting() {
         let built = windows_terminal_args("claude", &args(&["/login"]));
         assert_eq!(built, args(&["/C", "start", "", "cmd", "/K", "claude", "/login"]));
+    }
+
+    #[test]
+    fn rejects_arguments_outside_the_per_program_policy_before_launching() {
+        let denied = terminal_run("claude".into(), args(&["--dangerously-skip-permissions"])).unwrap_err();
+        assert_eq!(denied.kind, ErrorKind::InvalidArgument);
+        let other = terminal_run("gh".into(), args(&["auth", "token"])).unwrap_err();
+        assert_eq!(other.kind, ErrorKind::InvalidArgument);
     }
 
     #[test]

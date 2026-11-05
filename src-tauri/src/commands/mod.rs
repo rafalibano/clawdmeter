@@ -3,5 +3,6 @@ pub mod error;
 pub mod oauth_loopback;
 pub mod open_external;
 pub mod process;
+pub mod process_policy;
 pub mod secrets;
 pub mod terminal;

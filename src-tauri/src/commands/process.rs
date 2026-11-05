@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,16 +10,17 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use super::error::{CommandError, CommandResult, ErrorKind};
+use super::process_policy::{home_dir, validate_cwd, validate_invocation, validate_program};
 
-const ALLOWED_PROGRAMS: &[&str] = &["claude", "gh"];
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
 const MAX_RUN_TIMEOUT_MS: u64 = 120_000;
 const POLL_INTERVAL_MS: u64 = 25;
+const READER_JOIN_LIMIT_MS: u64 = 2_000;
 pub const OUTPUT_EVENT: &str = "process-output";
 pub const EXIT_EVENT: &str = "process-exit";
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Default)]
 pub struct ProcessRegistry(Mutex<HashSet<u32>>);
@@ -60,21 +61,6 @@ struct OutputEvent {
 struct ExitEvent {
     pid: u32,
     code: Option<i32>,
-}
-
-pub fn validate_program(program: &str) -> CommandResult<&'static str> {
-    ALLOWED_PROGRAMS
-        .iter()
-        .copied()
-        .find(|allowed| *allowed == program)
-        .ok_or_else(|| CommandError::new(ErrorKind::ProgramNotAllowed, format!("programa não permitido: {program}")))
-}
-
-pub fn validate_args(args: &[String]) -> CommandResult<()> {
-    if args.len() > 64 || args.iter().any(|arg| arg.len() > 8_192 || arg.contains('\0')) {
-        return Err(CommandError::new(ErrorKind::InvalidArgument, "argumentos inválidos"));
-    }
-    Ok(())
 }
 
 pub fn candidate_paths(program: &str, path_var: Option<&str>, home: Option<&Path>, windows: bool) -> Vec<PathBuf> {
@@ -119,9 +105,7 @@ pub fn candidate_paths(program: &str, path_var: Option<&str>, home: Option<&Path
 
 fn resolve_program(program: &str) -> CommandResult<PathBuf> {
     let program = validate_program(program)?;
-    let home = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from);
+    let home = home_dir();
     let path_var = std::env::var("PATH").ok();
     candidate_paths(program, path_var.as_deref(), home.as_deref(), cfg!(windows))
         .into_iter()
@@ -130,10 +114,11 @@ fn resolve_program(program: &str) -> CommandResult<PathBuf> {
 }
 
 fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandResult<Command> {
-    validate_args(args)?;
+    validate_invocation(program, args)?;
+    let dir = validate_cwd(cwd, home_dir().as_deref())?;
     let mut command = Command::new(resolve_program(program)?);
     command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    if let Some(dir) = cwd {
+    if let Some(dir) = dir {
         command.current_dir(dir);
     }
     #[cfg(unix)]
@@ -149,12 +134,49 @@ fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandRe
     Ok(command)
 }
 
-fn read_all(mut source: impl Read + Send + 'static) -> thread::JoinHandle<String> {
-    thread::spawn(move || {
-        let mut buffer = Vec::new();
-        let _ = source.read_to_end(&mut buffer);
-        String::from_utf8_lossy(&buffer).into_owned()
-    })
+fn join_with_limit<T>(handle: thread::JoinHandle<T>, limit: Duration) -> Option<T> {
+    let started = Instant::now();
+    while !handle.is_finished() {
+        if started.elapsed() >= limit {
+            return None;
+        }
+        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+    }
+    handle.join().ok()
+}
+
+struct Capture {
+    buffer: Arc<Mutex<Vec<u8>>>,
+    reader: thread::JoinHandle<()>,
+}
+
+impl Capture {
+    fn start(mut source: impl Read + Send + 'static) -> Self {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&buffer);
+        let reader = thread::spawn(move || {
+            let mut chunk = [0u8; 4096];
+            while let Ok(read) = source.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                if let Ok(mut bytes) = sink.lock() {
+                    bytes.extend_from_slice(&chunk[..read]);
+                }
+            }
+        });
+        Self { buffer, reader }
+    }
+
+    fn finish(self) -> String {
+        self.finish_within(Duration::from_millis(READER_JOIN_LIMIT_MS))
+    }
+
+    fn finish_within(self, limit: Duration) -> String {
+        let _ = join_with_limit(self.reader, limit);
+        let bytes = self.buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
 }
 
 #[tauri::command(async)]
@@ -162,16 +184,20 @@ pub fn process_run(program: String, args: Vec<String>, timeout_ms: Option<u64>) 
     let mut child = build_command(&program, &args, None)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
-    let stdout = child.stdout.take().map(read_all);
-    let stderr = child.stderr.take().map(read_all);
+    let stdout = child.stdout.take().map(Capture::start);
+    let stderr = child.stderr.take().map(Capture::start);
     let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_RUN_TIMEOUT_MS).min(MAX_RUN_TIMEOUT_MS));
     let started = Instant::now();
     let status = loop {
         match child.try_wait().map_err(CommandError::io)? {
             Some(status) => break status,
             None if started.elapsed() >= limit => {
+                let _ = terminate(child.id(), true);
                 let _ = child.kill();
                 let _ = child.wait();
+                for capture in [stdout, stderr].into_iter().flatten() {
+                    let _ = capture.finish();
+                }
                 return Err(CommandError::new(ErrorKind::Timeout, format!("{program} excedeu o tempo limite")));
             }
             None => thread::sleep(Duration::from_millis(POLL_INTERVAL_MS)),
@@ -179,8 +205,8 @@ pub fn process_run(program: String, args: Vec<String>, timeout_ms: Option<u64>) 
     };
     Ok(RunOutput {
         code: status.code(),
-        stdout: stdout.map(|handle| handle.join().unwrap_or_default()).unwrap_or_default(),
-        stderr: stderr.map(|handle| handle.join().unwrap_or_default()).unwrap_or_default(),
+        stdout: stdout.map(Capture::finish).unwrap_or_default(),
+        stderr: stderr.map(Capture::finish).unwrap_or_default(),
     })
 }
 
@@ -196,7 +222,7 @@ fn watch_exit(app: AppHandle, mut child: Child, pid: u32, readers: Vec<thread::J
     thread::spawn(move || {
         let code = child.wait().ok().and_then(|status| status.code());
         for reader in readers {
-            let _ = reader.join();
+            let _ = join_with_limit(reader, Duration::from_millis(READER_JOIN_LIMIT_MS));
         }
         if let Some(registry) = tauri::Manager::try_state::<ProcessRegistry>(&app) {
             registry.remove(pid);
@@ -234,17 +260,18 @@ pub fn process_kill(registry: State<ProcessRegistry>, pid: u32) -> CommandResult
     if !registry.contains(pid) {
         return Err(CommandError::new(ErrorKind::InvalidArgument, "pid não foi iniciado por este app"));
     }
-    terminate(pid)
+    terminate(pid, false)
 }
 
 #[cfg(unix)]
-fn terminate(pid: u32) -> CommandResult<()> {
+fn terminate(pid: u32, force: bool) -> CommandResult<()> {
     let target = pid as i32;
-    let group = unsafe { libc::kill(-target, libc::SIGTERM) };
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    let group = unsafe { libc::kill(-target, signal) };
     if group == 0 {
         return Ok(());
     }
-    let single = unsafe { libc::kill(target, libc::SIGTERM) };
+    let single = unsafe { libc::kill(target, signal) };
     if single == 0 {
         Ok(())
     } else {
@@ -253,7 +280,7 @@ fn terminate(pid: u32) -> CommandResult<()> {
 }
 
 #[cfg(windows)]
-fn terminate(pid: u32) -> CommandResult<()> {
+fn terminate(pid: u32, _force: bool) -> CommandResult<()> {
     use std::os::windows::process::CommandExt;
     let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
@@ -304,21 +331,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_allowlisted_programs_are_accepted() {
-        assert_eq!(validate_program("claude").unwrap(), "claude");
-        assert_eq!(validate_program("gh").unwrap(), "gh");
-        assert_eq!(validate_program("rm").unwrap_err().kind, ErrorKind::ProgramNotAllowed);
-        assert_eq!(validate_program("../claude").unwrap_err().kind, ErrorKind::ProgramNotAllowed);
-    }
-
-    #[test]
-    fn rejects_nul_bytes_and_oversized_args() {
-        assert!(validate_args(&["ok".into()]).is_ok());
-        assert!(validate_args(&["a\0b".into()]).is_err());
-        assert!(validate_args(&vec!["x".to_string(); 65]).is_err());
-    }
-
-    #[test]
     fn unix_candidates_include_path_homebrew_and_home() {
         let paths = candidate_paths("gh", Some("/custom/bin:/usr/bin"), Some(Path::new("/Users/dev")), false);
         assert_eq!(paths[0], PathBuf::from("/custom/bin/gh"));
@@ -346,6 +358,54 @@ mod tests {
         assert!(!tasklist_lists_pid(listed, 42));
         let none = "INFO: No tasks are running which match the specified criteria.\r\n";
         assert!(!tasklist_lists_pid(none, 4242));
+    }
+
+    #[test]
+    fn capture_returns_partial_output_when_the_pipe_stays_open() {
+        struct HeldOpen(bool);
+        impl Read for HeldOpen {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.0 {
+                    thread::sleep(Duration::from_secs(5));
+                    return Ok(0);
+                }
+                self.0 = true;
+                buf[..5].copy_from_slice(b"parte");
+                Ok(5)
+            }
+        }
+        let started = Instant::now();
+        let capture = Capture::start(HeldOpen(false));
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(capture.finish_within(Duration::from_millis(200)), "parte");
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn join_with_limit_gives_up_on_a_stuck_thread() {
+        let stuck = thread::spawn(|| thread::sleep(Duration::from_secs(3)));
+        assert!(join_with_limit(stuck, Duration::from_millis(100)).is_none());
+        let quick = thread::spawn(|| 7);
+        assert_eq!(join_with_limit(quick, Duration::from_secs(1)), Some(7));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn forced_terminate_kills_the_whole_process_group() {
+        use std::os::unix::process::{CommandExt, ExitStatusExt};
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30 & wait"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        thread::sleep(Duration::from_millis(150));
+        terminate(pid, true).unwrap();
+        let status = child.wait().unwrap();
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+        thread::sleep(Duration::from_millis(100));
+        let group_alive = unsafe { libc::kill(-(pid as i32), 0) } == 0;
+        assert!(!group_alive);
     }
 
     #[cfg(unix)]
