@@ -1,6 +1,6 @@
 # Dev Pulse
 
-App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (Claude usage, Sessões, PRs, Reviews, Agenda, Skills e uma página de exemplo).
+App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (Usage, Sessões, PRs, Reviews, Agenda e Skills).
 
 Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (standalone + signals).
 
@@ -8,13 +8,12 @@ Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (stand
 
 | Página | Id | Polling | Conexões | O que mostra |
 |---|---|---|---|---|
-| Claude usage | `usage` | 60 s | Claude | consumo das janelas de 5 h e semanal, gráfico de 30 dias, tendência e previsão |
+| Usage | `usage` | 60 s | Claude | consumo das janelas de 5 h e semanal, gráfico de 30 dias, tendência e previsão |
 | Sessões | `sessions` | 5 s | nenhuma | sessões abertas do Claude Code e as que pedem atenção |
 | PRs | `prs` | 2 min | GitHub | meus PRs abertos por repo |
 | Reviews | `reviews` | 2 min | GitHub | PRs para revisar e revisados (abertos e dos últimos 30 dias) |
 | Agenda | `teams` | 5 min | Microsoft | reuniões de hoje do Outlook/Teams, com **Entrar** |
 | Skills | `skills` | sem polling | Claude | roda skills do Claude Code (`claude -p`) com stream, cancelamento e histórico |
-| Exemplo | `example` | 1 s | todas | página de referência para novas páginas |
 
 Cada uma liga e desliga em Ajustes. A página só roda se as conexões exigidas (`requiredConnections`) estiverem ok; senão mostra o botão de conserto.
 
@@ -82,7 +81,7 @@ export const USAGE_PAGE = pageRef<UsageData>('usage');
 export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
   return {
     id: USAGE_PAGE.id,
-    title: 'Claude usage',
+    title: 'Usage',
     requiredConnections: ['claude'],
     pollIntervalMs: 60_000,
     load: () => loadUsage.execute(),
@@ -94,7 +93,7 @@ export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
 2. Registre em `composition-root.ts` (e em `composition-root.demo.ts`, com adapters fakes) adicionando uma linha em `pages`. `pages` aceita a lista direta ou uma função que recebe `{ connections, skills }` da própria aplicação (as páginas que reportam problema de conexão usam essa forma). `createApplication` também recebe `skills`, pronto ou como função `({ connections }) => Skills` (as skills notificam o fim da run usando o estado da conexão de notificações):
 
 ```ts
-pages: [createExamplePage({ clock }), createUsagePage({ clock })],
+pages: [createUsagePage({ clock })],
 ```
 
 Checkbox em Ajustes, polling e exigência de conexão saem do `PageRegistry`. Fonte de dado nova = uma porta em `application/ports` + um adapter em `infrastructure/`. O componente lê o resultado tipado com `PageStateService.of(USAGE_PAGE)`; quem assina o scheduler depois recebe o último resultado de cada página, então páginas sem polling (`pollIntervalMs: null`) não perdem o primeiro update.

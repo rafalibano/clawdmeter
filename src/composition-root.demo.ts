@@ -3,7 +3,6 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
 import { LoadSessions, LoadUsage } from './application/use-cases';
-import type { ConnectionId } from './domain/connections';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoCalendar,
@@ -20,7 +19,6 @@ import {
 } from './infrastructure/demo';
 import { JsonSettingsStore, LocalStorageJsonFile } from './infrastructure/persistence';
 import { SystemClock } from './infrastructure/platform/system-clock';
-import { createExamplePage } from './ui/pages/example/example.page';
 import { createPullRequestsPage } from './ui/pages/pull-requests/pull-requests.page';
 import { createReviewsPage } from './ui/pages/reviews/reviews.page';
 import { createSessionsPage } from './ui/pages/sessions/sessions.page';
@@ -28,7 +26,6 @@ import { createSkillsPage } from './ui/pages/skills/skills.page';
 import { createTeamsPage } from './ui/pages/teams/teams.page';
 import { createUsagePage } from './ui/pages/usage/usage.page';
 
-const CONNECTIONS_FOR_EXAMPLE: ConnectionId[] = ['claude', 'github', 'microsoft', 'notifications'];
 
 export function createComposition(): Application {
   const clock = new SystemClock();
@@ -85,7 +82,6 @@ export function createComposition(): Application {
         reporter: { execute: (id, problem, message) => application.connections.report.execute(id, problem, message) },
       }),
       createSkillsPage({ skills }),
-      createExamplePage({ clock, requiredConnections: CONNECTIONS_FOR_EXAMPLE }),
     ],
   });
   return application;
