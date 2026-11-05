@@ -667,7 +667,13 @@ mod tests {
         fn only_a_tao_window_is_swapped_into_a_panel() {
             assert!(popover::can_swap_class("TaoWindow"));
             assert!(popover::can_swap_class("NSKVONotifying_TaoWindow"));
-            for other in ["NSKVONotifying_NSWindow", "NSWindow", "TaoWindowX", "NSKVONotifying_", ""] {
+            for other in [
+                "NSKVONotifying_NSWindow",
+                "NSWindow",
+                "TaoWindowX",
+                "NSKVONotifying_",
+                "",
+            ] {
                 assert!(!popover::can_swap_class(other), "{other}");
             }
         }
