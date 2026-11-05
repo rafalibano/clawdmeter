@@ -10,6 +10,7 @@
             type="button"
             class="tab"
             [class.active]="page.id === current()?.id"
+            [attr.data-page-id]="page.id"
             (click)="select(page.id)"
           >
             {{ page.title }}

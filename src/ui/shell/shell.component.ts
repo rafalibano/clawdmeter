@@ -1,5 +1,5 @@
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterRenderEffect, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
 import type { SettingsSessionError } from '../../application/session';
 import { formatUpdatedAgo } from './elapsed';
@@ -48,6 +48,12 @@ export class ShellComponent {
   });
 
   constructor() {
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    afterRenderEffect(() => {
+      const id = this.current()?.id;
+      if (!id || this.showingSettings()) return;
+      host.querySelector(`.tab[data-page-id="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    });
     const stop = this.clock.every(CLOCK_TICK_MS, () => this.now.set(this.clock.now()));
     inject(DestroyRef).onDestroy(stop);
   }
