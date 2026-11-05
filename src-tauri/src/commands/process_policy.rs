@@ -231,8 +231,6 @@ fn validate_claude(args: &[String]) -> CommandResult<()> {
     }
     let view: Vec<&str> = args.iter().map(String::as_str).collect();
     match view.as_slice() {
-        ["/login"] => Ok(()),
-        ["--resume", id] if is_uuid(id) => Ok(()),
         ["-p", prompt, ..] => validate_claude_print(prompt, &args[2..]),
         _ => Err(invalid("argumentos do claude não permitidos")),
     }
@@ -581,14 +579,24 @@ mod tests {
     }
 
     #[test]
-    fn hardening_flags_are_not_added_to_login_resume_or_gh() {
-        for (program, call) in [
-            ("claude", vec!["/login"]),
-            ("claude", vec!["--resume", SESSION]),
-            ("gh", vec!["auth", "token"]),
+    fn hardening_flags_are_not_added_to_gh() {
+        let call = args(&["auth", "token"]);
+        assert_eq!(prepare_invocation("gh", &call).unwrap(), call);
+    }
+
+    #[test]
+    fn process_spawn_never_prepares_login_resume_or_mcp_for_claude() {
+        for call in [
+            vec!["/login"],
+            vec!["/mcp"],
+            vec!["--resume", SESSION],
+            vec!["--resume", SESSION, "-p", "oi"],
+            vec!["--continue"],
         ] {
-            let call = args(&call);
-            assert_eq!(prepare_invocation(program, &call).unwrap(), call);
+            assert!(
+                prepare_invocation("claude", &args(&call)).is_err(),
+                "{call:?} deveria ser barrado"
+            );
         }
     }
 
@@ -640,9 +648,17 @@ mod tests {
     }
 
     #[test]
-    fn claude_accepts_login_and_resume() {
-        assert!(validate_invocation("claude", &args(&["/login"])).is_ok());
-        assert!(validate_invocation("claude", &args(&["--resume", SESSION])).is_ok());
+    fn claude_login_and_resume_only_run_through_the_terminal() {
+        for call in [vec!["/login"], vec!["/mcp"], vec!["--resume", SESSION]] {
+            assert!(
+                validate_invocation("claude", &args(&call)).is_err(),
+                "{call:?}"
+            );
+            assert!(
+                validate_terminal_invocation("claude", &args(&call)).is_ok(),
+                "{call:?}"
+            );
+        }
     }
 
     #[test]
