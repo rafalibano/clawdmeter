@@ -68,7 +68,7 @@ describe('busca', () => {
   it('monta a janela de 30 dias da busca de revisados', () => {
     const now = Date.UTC(2026, 10, 5, 12);
     expect(reviewedRecentQuery(now)).toBe(
-      'reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06 sort:updated-desc',
+      'reviewed-by:@me -author:@me is:pr archived:false is:closed closed:>=2026-10-06 sort:updated-desc',
     );
   });
 

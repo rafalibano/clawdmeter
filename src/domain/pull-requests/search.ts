@@ -13,7 +13,7 @@ function sinceDate(now: number, days: number): string {
 }
 
 export function reviewedRecentQuery(now: number, days: number = RECENT_REVIEW_DAYS): string {
-  return `reviewed-by:@me -author:@me is:pr is:closed closed:>=${sinceDate(now, days)} ${SORT}`;
+  return `reviewed-by:@me -author:@me is:pr archived:false is:closed closed:>=${sinceDate(now, days)} ${SORT}`;
 }
 
 export function reviewedAllQuery(now: number, days: number = RECENT_REVIEW_DAYS): string {

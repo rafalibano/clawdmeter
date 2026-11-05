@@ -108,7 +108,7 @@ describe('Reviews', () => {
     expect(gateway.calls[0]?.queries).toEqual({
       toReview: 'review-requested:@me is:open is:pr archived:false sort:updated-desc',
       reviewedOpen: 'reviewed-by:@me -author:@me is:open is:pr archived:false sort:updated-desc',
-      reviewedRecent: 'reviewed-by:@me -author:@me is:pr is:closed closed:>=2026-10-06 sort:updated-desc',
+      reviewedRecent: 'reviewed-by:@me -author:@me is:pr archived:false is:closed closed:>=2026-10-06 sort:updated-desc',
     });
     const [toReview, reviewed] = data.sections;
     expect(toReview).toMatchObject({ id: 'to-review', shown: 1, total: 1 });
