@@ -44,7 +44,7 @@ src/
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
-│  ├─ anthropic/      AnthropicUsageGateway (GET /api/oauth/usage)
+│  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: o GET /api/oauth/usage roda no Rust)
 │  ├─ claude-code/    TauriSessionDirectory (lê ~/.claude/sessions via plugin-fs)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
@@ -153,7 +153,7 @@ Ajustes tem uma seção **Conexões** com as conexões exigidas pelas páginas l
 | `notifications-unverifiable` (SO sem como informar) | Abrir ajustes do sistema (a linha mostra "Não verificável", nunca "Conectado") |
 | `unexpected` (rede etc.) | Tentar de novo |
 
-- **Claude:** lê a credencial do Claude Code (Keychain `Claude Code-credentials` no macOS; `~/.claude/.credentials.json` como fallback e no Windows). O Rust devolve só `accessToken`, `expiresAt` e o plano; o refresh token nunca sai do Rust e o app nunca faz refresh. Desconectar só para de usar a credencial, não apaga nada do Claude Code.
+- **Claude:** lê a credencial do Claude Code (Keychain `Claude Code-credentials` no macOS; `~/.claude/.credentials.json` como fallback e no Windows). O access token e o refresh token nunca saem do Rust: o webview só recebe `expiresAt` e o plano (`claude_credentials_status`) e o dado de usage (`claude_usage_fetch`); o app nunca faz refresh. Desconectar só para de usar a credencial, não apaga nada do Claude Code.
 - **GitHub:** `gh auth token` (o token não é copiado; a porta devolve `{ token }` ou `{ missing: 'not-installed' | 'not-logged-in' }` e a linha mostra o botão certo para cada motivo) → entrar pelo navegador (Device Flow) → PAT colado (os dois últimos ficam no cofre do SO). A validação confere escopos (`repo`, `read:org`) e o acesso à org `Mottu-ops`.
 - **Microsoft:** PKCE com listener em `127.0.0.1` (porta efêmera); o refresh token fica no cofre do SO. Escopos delegados `Calendars.Read` + `offline_access`; nenhum client secret.
 - **Notificações:** o plugin do Tauri sempre devolve `granted` no desktop, então o estado vem do command `notification_permission_state` (macOS: `UNUserNotificationCenter`, só no app empacotado; Windows: `ToastNotifier.Setting`; fora disso `unknown`). O app não pede a permissão pelo plugin: `denied` e `prompt` (nunca liberada) levam os dois a **Abrir ajustes do sistema**. Ao fim de uma run de skill o app envia uma notificação local (`notification:allow-notify`) só se essa conexão estiver `connected`.
@@ -164,15 +164,15 @@ Ajustes tem uma seção **Conexões** com as conexões exigidas pelas páginas l
 
 #### Commands Rust (`src-tauri/src/commands`)
 
-Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.json`, declarados em `build.rs`). Erros chegam ao TS como `{ kind, message }` e viram `ConnectionProblemError` (`keychain_denied`, `claude_code_missing`) ou `PlatformCommandError`.
+Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.json`, declarados em `build.rs`). Erros chegam ao TS como `{ kind, message }` e viram `ConnectionProblemError` (`keychain_denied`, `claude_code_missing`, `claude_expired`) ou `PlatformCommandError`. No Rust o tipo é `CommandError` (`thiserror`, com `From` para `io`, `keyring`, `reqwest`, `tauri` e `url`) e o `kind` é um destes: `keychain_denied`, `keychain`, `claude_code_missing`, `claude_expired`, `credential_malformed`, `program_not_allowed`, `program_not_found`, `invalid_argument`, `policy`, `spawn_failed`, `too_many_processes`, `timeout`, `state_mismatch`, `provider_error`, `cancelled`, `http`, `tray`, `io`. Commands que bloqueiam (`process_run`, `oauth_loopback_wait`, `process_kill`, `process_is_alive`, `secret_*`, `claude_*`, `notification_permission_state`) são `async fn` e rodam o trabalho em `spawn_blocking`, sem prender um worker do runtime.
 
 | Módulo | Commands | Observações |
 |---|---|---|
-| `secrets` | `secret_get/set/delete` | crate `keyring` (Keychain / Credential Manager), service `com.mottu.devpulse`; segredos acima de 1200 bytes são fatiados em `<key>`, `<key>#1`… (o Credential Manager limita o blob a 2560 bytes) |
-| `claude_credentials` | `claude_credentials_read` | só leitura |
-| `process` | `process_run/spawn/kill/is_alive` | só `claude` e `gh`, com argumentos validados por programa (`process_policy.rs`): `gh auth token [-h github.com]`; `claude -p <prompt> --output-format stream-json [--verbose] --max-budget-usd <n> [--allowedTools <lista>]` (a lista vai num único argumento separado por vírgula), `--resume <uuid>` e `/login`, sem `--dangerously-skip-permissions`, `--permission-mode`, `--add-dir` e `--mcp-config`; `cwd` só a pasta do usuário ou subpastas, e sem `cwd` vale a pasta do usuário (no Windows o prefixo `\\?\` do caminho canônico é removido); timeout encerra o grupo; `kill` só de filhos do app (pid desconhecido ou já encerrado é ignorado); ao sair do app (`RunEvent::Exit`) os filhos ainda vivos são mortos; eventos `process-output` e `process-exit` |
-| `oauth_loopback` | `oauth_loopback_listen/wait/cancel` | valida `state`, timeout, página de retorno local |
-| `terminal` | `terminal_run` | `claude`/`gh` com a mesma política por programa (`claude /login`, `/mcp`, `--resume <uuid>`; `gh auth login/refresh`) e argumentos sem metacaracteres de shell; aceita `cwd` (a pasta da run, validada como no `process`, sem aspas nem barra invertida); sem `cwd` abre na pasta do usuário |
+| `secrets` | `secret_get/set/delete` | crate `keyring` (Keychain / Credential Manager), service `com.mottu.devpulse`; só as chaves de `ALLOWED_SECRET_KEYS` (`github.token`, `microsoft.refresh-token`, espelhadas em `SECRET_KEYS` por um teste), qualquer outra dá `policy`; segredos acima de 1200 bytes são fatiados em `<key>`, `<key>#1`… (o Credential Manager limita o blob a 2560 bytes) |
+| `claude_credentials` | `claude_credentials_status`, `claude_usage_fetch` | lê a credencial do Claude Code (Keychain/arquivo) e faz o `GET https://api.anthropic.com/api/oauth/usage` (`anthropic-beta: oauth-2025-04-20`, timeout de 15 s, resposta até 256 KiB) com o `reqwest` do `tauri-plugin-http`; devolve só `{ expiresAt, subscriptionType }` ou o JSON de usage. Credencial vencida ou 401 dá `claude_expired`; Keychain negado, `claude_code_missing` e `credential_malformed` mantêm seus `kind`. O `allowlist` do `http:default` não tem mais `api.anthropic.com` |
+| `process` | `process_run/spawn/kill/is_alive` | só `claude` e `gh`, com argumentos validados por programa (`process_policy.rs`): `gh auth token [-h github.com]`; `claude -p <prompt> --output-format stream-json [--verbose] --max-budget-usd <n> [--allowedTools <lista>]` (a lista vai num único argumento separado por vírgula), `--resume <uuid>` e `/login`, sem `--dangerously-skip-permissions`, `--permission-mode`, `--add-dir` e `--mcp-config`; `cwd` só a pasta do usuário ou subpastas, e sem `cwd` vale a pasta do usuário (no Windows o prefixo `\\?\` do caminho canônico é removido); timeout encerra o grupo; `kill` só de filhos do app (pid desconhecido ou já encerrado é ignorado); ao sair do app (`RunEvent::Exit`) os filhos ainda vivos são mortos; no máximo 4 processos simultâneos (`too_many_processes`); `kill` de um pid que já está saindo é ignorado, porque o registry marca o pid como "saindo" sob o mesmo lock do `kill` antes do `wait()` fazer o reap (no Unix o aguardo usa `waitid(WNOWAIT)`, que deixa o zumbi até a marcação); a saída capturada em `process_run` é limitada a 1 MiB por stream (com marca `[saída truncada]`) e cada linha do stream a 64 KiB (com marca `…[linha truncada]`; um evento maior que isso do `stream-json` chega cortado e o parser o ignora); eventos `process-output` e `process-exit` |
+| `oauth_loopback` | `oauth_loopback_listen/wait/cancel` | valida `state`, timeout, página de retorno local; callback com `state` errado ou ausente recebe 400 e o listener continua esperando, só erro do provedor com `state` válido encerra |
+| `terminal` | `terminal_run` | `claude`/`gh` com a mesma política por programa (`claude /login`, `/mcp`, `--resume <uuid>`; `gh auth login/refresh`) e argumentos sem metacaracteres de shell; aceita `cwd` (a pasta da run, validada como no `process`, sem aspas nem barra invertida); sem `cwd` abre na pasta do usuário; o programa vai pelo caminho absoluto resolvido (o mesmo `resolve_program` do `process`), entre aspas simples como o `cwd` |
 | `notification_permission` | `notification_permission_state` | `granted`, `denied`, `prompt` ou `unknown` |
 | `open_external` | `open_url`, `open_system_settings` | só `https` e painéis conhecidos |
 
@@ -180,7 +180,7 @@ O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita COR
 
 ### Claude usage
 
-Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` lê o access token do Claude Code pela `ClaudeCredentialSource` e chama `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`) por `AnthropicUsageGateway`; o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
+Página `usage` (poll de 60 s, exige a conexão Claude). `LoadUsage` chama o `AnthropicUsageGateway`, que invoca o command `claude_usage_fetch`: o Rust lê a credencial do Claude Code e faz o `GET https://api.anthropic.com/api/oauth/usage` (header `anthropic-beta: oauth-2025-04-20`), então o token não chega ao TypeScript; o app nunca faz refresh. Token vencido ou 401 vira `claude-expired` na conexão Claude e a página mostra "Refazer login do Claude". Os campos lidos são `five_hour` e `seven_day` (`utilization`, `resets_at`); o parse ignora campos extras e janelas sem `utilization` válida.
 
 - **Histórico:** `usage-history.json` ao lado do `settings.json`. Pontos brutos por 7 dias; do 8º ao 30º dia, agregados em baldes de 15 min pelo máximo; nada passa de 30 dias (`domain/usage/retention.ts`). Fica em memória depois da primeira leitura e é gravado em série por arquivo temporário + `rename` (`fs:allow-rename` só em `$APPCONFIG`). Arquivo ilegível vira `usage-history.json.corrupt` e o histórico recomeça vazio, sem sobrescrever o original.
 - **Erro transitório:** se uma atualização falha (rede, 5xx), a página mantém o último dado e mostra o banner de erro por cima, com "Mostrando os últimos dados carregados".
@@ -201,7 +201,7 @@ A cada leitura do `LoadUsage` (e a cada falha) a porta `UsageIndicator` atualiza
 
 Página `sessions` (poll de 5 s, sem conexão). `TauriSessionDirectory` lê `<home>/.claude/sessions/*.json` (`homeDir()` do Tauri: `~` no macOS, `%USERPROFILE%` no Windows) e `LoadSessions` mantém só os pids vivos (`process_is_alive`, command Rust da F2). Cada sessão mostra nome (ou pasta), pasta curta, status (`busy`/`idle`/`shell`) e há quanto tempo está nele (`statusUpdatedAt`, senão `updatedAt`). Fica destacada a sessão `idle` há mais de 5 min ("Aguardando input há X") ou `busy` há mais de 30 min ("Ocupada há X"); os limiares estão em `DEFAULT_ATTENTION_CONFIG` (`domain/sessions/attention.ts`) e são injetados em `LoadSessions` pelo composition root.
 
-A capability dá ao plugin-fs só `exists` e `read-dir` em `$HOME/.claude/sessions` e `read-text-file` em `$HOME/.claude/sessions/*.json`; o allowlist do plugin-http inclui `https://api.anthropic.com` (todo HTTP passa pelo plugin, então o `connect-src` do CSP não lista hosts externos).
+A capability dá ao plugin-fs só `exists` e `read-dir` em `$HOME/.claude/sessions` e `read-text-file` em `$HOME/.claude/sessions/*.json`; o allowlist do plugin-http não inclui mais `https://api.anthropic.com` (a chamada de usage é feita pelo Rust; o resto do HTTP passa pelo plugin, então o `connect-src` do CSP não lista hosts externos).
 
 No modo demo as duas páginas usam dados falsos (histórico de 30 dias gerado por um modelo determinístico, cinco sessões em estados diferentes e uma morta). `?demo=claude:claude-expired` (e os demais cenários de conexão) mostra o estado de erro da página de usage com o botão de conserto.
 
@@ -298,7 +298,7 @@ O modo demo troca `composition-root.ts` por `composition-root.demo.ts` por `file
 
 ## Build e release
 
-- `.github/workflows/ci.yml`: em push na `main` e em PR, roda lint, typecheck, Vitest, build e `cargo test` em `macos-latest` e `windows-latest`.
+- `.github/workflows/ci.yml`: em push na `main` e em PR, roda lint, typecheck, Vitest, build, `cargo test`, `cargo fmt --check` e `cargo clippy --all-targets -- -D warnings` em `macos-latest` e `windows-latest`; um job `supply-chain` (ubuntu) roda `cargo audit` e `cargo deny check` (`src-tauri/deny.toml`: licenças permissivas, advisories e fontes só do crates.io).
 - `.github/workflows/release.yml`: em tag `v*`, gera `.dmg` universal (arm64 + x64, macOS 14+) e `.msi` (Windows 10+) com `tauri-apps/tauri-action` e anexa a um release em rascunho.
 
 Para publicar: ajuste a versão em `package.json` e `src-tauri/Cargo.toml` (o `tauri.conf.json` lê a versão do `package.json`), e crie a tag.
@@ -327,6 +327,12 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 1. Execute o `.msi`.
 2. O SmartScreen avisa "O Windows protegeu seu computador". Clique em **Mais informações** e depois em **Executar assim mesmo**.
 3. O ícone aparece na área de notificação (pode estar em "Mostrar ícones ocultos"). O app não aparece na barra de tarefas. Clique com o botão direito no ícone para sair.
+
+## Pendências de segurança (review de Rust)
+
+- **Dívida: tokens do GitHub e do Graph ainda cruzam o IPC.** O token do Claude já não sai do Rust (`claude_usage_fetch`), mas `secret_get` ainda devolve `github.token` e `microsoft.refresh-token` ao webview, que faz as chamadas ao GitHub e ao Microsoft Graph pelo `tauri-plugin-http`. Mover essas chamadas para o Rust (como foi feito no usage) é o passo seguinte; até lá `secret_*` só aceita essas duas chaves.
+- **Pendência S3 (macOS): leitura do Keychain via `/usr/bin/security`.** Se o usuário marcar "Sempre permitir", o acesso é concedido ao binário `security`, não ao Dev Pulse, e qualquer processo local passa a ler a credencial do Claude Code sem aviso. A correção é usar a API nativa (`security-framework`), que amarra o acesso à assinatura do app; hoje o app é assinado ad hoc (`signingIdentity: "-"`), então o acesso quebraria a cada build. Fica para quando houver identidade de assinatura real.
+- **Limite do allowlist de ferramentas:** o `claude` casa `Bash(git diff:*)` por prefixo, então flags de escrita do próprio subcomando (ex.: `git diff --output=<arquivo>`) não são barradas por esta lista.
 
 ## Limitações conhecidas
 
