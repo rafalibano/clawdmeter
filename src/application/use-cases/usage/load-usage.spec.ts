@@ -5,7 +5,13 @@ import { createEmptyHistory } from '../../../domain/usage';
 import { createConnections, type Connections } from '../../connections/create-connections';
 import { FakeClock } from '../../testing/fake-clock';
 import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
-import { FakeUsageGateway, FakeUsageHistoryStore, FakeUsageIndicator } from '../../testing/fake-usage-adapters';
+import {
+  FakeExternalUsageHistorySource,
+  FakeUsageGateway,
+  FakeUsageHistoryStore,
+  FakeUsageIndicator,
+} from '../../testing/fake-usage-adapters';
+import { ImportExternalUsageHistory } from './import-external-usage-history';
 import { LoadUsage } from './load-usage';
 
 const START = 1_800_000_000_000;
@@ -159,5 +165,64 @@ describe('LoadUsage e o indicador da bandeja', () => {
     expect(data.snapshot).toEqual(gateway.outcome);
     gateway.outcome = new Error('500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
+  });
+});
+
+describe('LoadUsage com histórico externo', () => {
+  let source: FakeExternalUsageHistorySource;
+  let withImport: LoadUsage;
+
+  beforeEach(() => {
+    source = new FakeExternalUsageHistorySource();
+    withImport = new LoadUsage(
+      world.prefs,
+      gateway,
+      history,
+      clock,
+      connections,
+      indicator,
+      new ImportExternalUsageHistory(source),
+    );
+  });
+
+  it('mescla os pontos externos ao histórico gravado, sem ciclo falso e já com previsão', async () => {
+    source.outcome = Array.from({ length: 6 }, (_, index) => ({
+      at: START - (6 - index) * 10 * MINUTE_MS,
+      fiveHour: 10 + index,
+      sevenDay: 5,
+    }));
+    const data = await withImport.execute();
+    expect(data.history.fiveHour).toHaveLength(7);
+    expect(history.current.fiveHour.filter((point) => point.imported)).toHaveLength(6);
+    expect(data.history.fiveHour.at(-1)).toEqual({ at: START, utilization: 20, resetsAt: START + 3_600_000 });
+    expect(data.forecasts.fiveHour.status).toBe('ready');
+  });
+
+  it('o ponto lido agora vence o externo colado nele', async () => {
+    source.outcome = [{ at: START - 30_000, fiveHour: 99, sevenDay: 99 }];
+    const data = await withImport.execute();
+    expect(data.history.fiveHour).toEqual([{ at: START, utilization: 20, resetsAt: START + 3_600_000 }]);
+  });
+
+  it('a retenção vale para os importados: mais de 30 dias fica de fora', async () => {
+    source.outcome = [{ at: START - 31 * DAY_MS, fiveHour: 50, sevenDay: 50 }];
+    const data = await withImport.execute();
+    expect(data.history.fiveHour).toHaveLength(1);
+  });
+
+  it('fonte que falha é ignorada em silêncio', async () => {
+    source.outcome = new Error('arquivo ilegível');
+    const data = await withImport.execute();
+    expect(data.history.fiveHour).toHaveLength(1);
+    expect(source.reads).toBe(1);
+  });
+
+  it('lê a fonte a cada carga e não duplica o que já importou', async () => {
+    source.outcome = [{ at: START - 20 * MINUTE_MS, fiveHour: 10, sevenDay: 5 }];
+    await withImport.execute();
+    await clock.advance(MINUTE_MS);
+    const data = await withImport.execute();
+    expect(source.reads).toBe(2);
+    expect(data.history.fiveHour).toHaveLength(3);
   });
 });

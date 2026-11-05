@@ -2,10 +2,11 @@ import { createApplication, type Application } from './application/application';
 import { GitHubTokenResolver } from './application/connections/github-token-resolver';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { LoadSessions, LoadUsage } from './application/use-cases';
+import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoCalendar,
+  DemoExternalUsageHistorySource,
   DemoNotifier,
   DemoProcessProbe,
   DemoPullRequestGateway,
@@ -65,6 +66,7 @@ export function createComposition(): Application {
           clock,
           connections,
           new DemoUsageIndicator(),
+          new ImportExternalUsageHistory(new DemoExternalUsageHistorySource()),
         ),
       }),
       createSessionsPage({

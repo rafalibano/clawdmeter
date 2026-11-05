@@ -19,7 +19,12 @@ export function retainPoints(points: readonly UsagePoint[], now: number): UsageP
     const start = Math.floor(point.at / AGGREGATE_BUCKET_MS) * AGGREGATE_BUCKET_MS;
     const current = buckets.get(start);
     if (current === undefined || point.utilization >= current.utilization) {
-      buckets.set(start, { at: start, utilization: point.utilization, resetsAt: point.resetsAt });
+      buckets.set(start, {
+        at: start,
+        utilization: point.utilization,
+        resetsAt: point.resetsAt,
+        ...(point.imported ? { imported: true as const } : {}),
+      });
     }
   }
   const aggregated = [...buckets.values()].sort((a, b) => a.at - b.at);

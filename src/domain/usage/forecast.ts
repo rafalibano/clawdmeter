@@ -32,6 +32,7 @@ export type UsageForecasts = Record<UsageWindowKind, Forecast>;
 
 function startsNewCycle(previous: UsagePoint, next: UsagePoint): boolean {
   if (next.utilization < previous.utilization - RESET_DROP_TOLERANCE) return true;
+  if (previous.imported || next.imported) return false;
   if (previous.resetsAt === null || next.resetsAt === null) return previous.resetsAt !== next.resetsAt;
   return Math.abs(next.resetsAt - previous.resetsAt) > RESET_AT_TOLERANCE_MS;
 }

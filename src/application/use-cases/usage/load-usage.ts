@@ -2,6 +2,7 @@ import { ConnectionProblemError } from '../../../domain/connections';
 import { buildForecasts, recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageForecasts, UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
+import type { ImportExternalUsageHistory } from './import-external-usage-history';
 import type {
   Clock,
   ConnectionPrefsStore,
@@ -27,6 +28,7 @@ export class LoadUsage {
     private readonly clock: Clock,
     private readonly connections: UsageConnections,
     private readonly indicator: UsageIndicator,
+    private readonly external?: ImportExternalUsageHistory,
   ) {}
 
   async execute(): Promise<UsageData> {
@@ -34,7 +36,9 @@ export class LoadUsage {
     const snapshot = await this.fetchSnapshot(now);
     this.indicate(snapshot, now);
     const stored = await this.historyStore.load();
-    const history = retainHistory(recordSnapshot(stored, snapshot, now), now);
+    const recorded = recordSnapshot(stored, snapshot, now);
+    const merged = (await this.external?.execute(recorded, now)) ?? recorded;
+    const history = retainHistory(merged, now);
     await this.historyStore.save(history);
     await this.recoverConnection();
     return { at: now, snapshot, history, forecasts: buildForecasts(history, snapshot, now) };

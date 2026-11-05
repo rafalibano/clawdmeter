@@ -5,6 +5,7 @@ export interface UsagePoint {
   at: number;
   utilization: number;
   resetsAt: number | null;
+  imported?: true;
 }
 
 export type UsageHistory = Record<UsageWindowKind, UsagePoint[]>;
@@ -32,17 +33,23 @@ export function recordSnapshot(history: UsageHistory, snapshot: UsageSnapshot, a
   return next;
 }
 
-type StoredPoint = [number, number, number | null];
+type StoredPoint = [number, number, number | null] | [number, number, number | null, 1];
 
 function parsePoints(raw: unknown): UsagePoint[] {
   if (!Array.isArray(raw)) return [];
   const points: UsagePoint[] = [];
   for (const entry of raw) {
     if (!Array.isArray(entry)) continue;
-    const [at, utilization, resetsAt] = entry as unknown[];
+    const [at, utilization, resetsAt, imported] = entry as unknown[];
     if (typeof at !== 'number' || typeof utilization !== 'number') continue;
     if (!Number.isFinite(at) || !Number.isFinite(utilization)) continue;
-    points.push({ at, utilization, resetsAt: typeof resetsAt === 'number' && Number.isFinite(resetsAt) ? resetsAt : null });
+    const point: UsagePoint = {
+      at,
+      utilization,
+      resetsAt: typeof resetsAt === 'number' && Number.isFinite(resetsAt) ? resetsAt : null,
+    };
+    if (imported === 1) point.imported = true;
+    points.push(point);
   }
   return points.sort((a, b) => a.at - b.at);
 }
@@ -55,7 +62,9 @@ export function parseHistory(raw: unknown): UsageHistory {
 
 export function serializeHistory(history: UsageHistory): unknown {
   const encode = (points: readonly UsagePoint[]): StoredPoint[] =>
-    points.map((point) => [point.at, point.utilization, point.resetsAt]);
+    points.map((point) =>
+      point.imported ? [point.at, point.utilization, point.resetsAt, 1] : [point.at, point.utilization, point.resetsAt],
+    );
   return {
     schemaVersion: HISTORY_SCHEMA_VERSION,
     fiveHour: encode(history.fiveHour),

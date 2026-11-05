@@ -43,6 +43,10 @@
       "allow": [{ "path": "$HOME/.claude/sessions/*.json" }]
     },
     {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$HOME/.config/claude-usage-bar/history.json" }]
+    },
+    {
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.github.com/*" },

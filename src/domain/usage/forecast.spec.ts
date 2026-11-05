@@ -108,6 +108,28 @@ describe('forecastWindow', () => {
     expect(currentCycle([...idle, ...active])).toHaveLength(3);
   });
 
+  it('ponto importado (sem resets_at) ao lado de ponto nosso não cria ciclo falso, nos dois sentidos', () => {
+    const imported = series(4, MINUTE_MS, (i) => 10 + i, null).map((point) => ({ ...point, imported: true as const }));
+    const earlier = (points: UsagePoint[]) => points.map((point) => ({ ...point, at: point.at - 10 * MINUTE_MS }));
+    const ours = series(4, MINUTE_MS, (i) => 14 + i, RESET);
+    const lateImported = imported.map((point) => ({ ...point, utilization: point.utilization + 10 }));
+    expect(currentCycle([...earlier(imported), ...ours])).toHaveLength(8);
+    expect(currentCycle([...earlier(ours), ...lateImported])).toHaveLength(8);
+  });
+
+  it('queda de utilização continua abrindo ciclo entre pontos importados', () => {
+    const before = series(4, MINUTE_MS, (i) => 90 + i, null).map((point) => ({ ...point, at: point.at - 10 * MINUTE_MS, imported: true as const }));
+    const after = series(4, MINUTE_MS, (i) => 2 + i, null).map((point) => ({ ...point, imported: true as const }));
+    expect(currentCycle([...before, ...after])).toHaveLength(4);
+  });
+
+  it('previsão usa pontos importados do ciclo atual', () => {
+    const imported = series(6, MINUTE_MS * 10, (i) => 10 + i * 2, null).map((point) => ({ ...point, imported: true as const }));
+    const ours = series(3, MINUTE_MS, (i) => 30 + i, RESET).map((point) => ({ ...point, at: point.at + 5 * MINUTE_MS }));
+    const forecast = forecastWindow('fiveHour', [...imported, ...ours], NOW + 5 * MINUTE_MS, RESET);
+    expect(forecast.status).toBe('ready');
+  });
+
   it('oscilação pequena de resets_at não conta como reset', () => {
     const points = series(10, MINUTE_MS, (i) => 10 + i).map((point, index) => ({ ...point, resetsAt: RESET + index * 100 }));
     expect(currentCycle(points)).toHaveLength(10);
