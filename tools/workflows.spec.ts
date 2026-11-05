@@ -43,6 +43,15 @@ describe('GitHub Actions workflows', () => {
     }
   });
 
+  it('cargo audit and deny also run weekly, without the build matrix', () => {
+    const text = read('ci.yml');
+    expect(text).toMatch(/schedule:\n\s+- cron: '\d+ \d+ \* \* \d'/);
+    expect(text).toContain("if: github.event_name != 'schedule'");
+    const supplyChain = text.slice(text.indexOf('supply-chain:'));
+    expect(supplyChain).not.toContain('if:');
+    expect(supplyChain).toContain('cargo audit');
+  });
+
   it('dependabot covers actions, cargo and npm every week', () => {
     const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8');
     for (const ecosystem of ['github-actions', 'cargo', 'npm']) {
