@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     {
+      "identifier": "fs:scope",
+      "deny": [{ "path": "$APPDATA/.migration" }, { "path": "$APPDATA/.migration/**" }]
+    },
+    {
       "identifier": "fs:allow-exists",
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },

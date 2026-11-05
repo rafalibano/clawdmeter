@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 interface Permission {
   identifier?: string;
   allow?: Array<{ url?: string; path?: string }>;
+  deny?: Array<{ path?: string }>;
 }
 
 const capability = JSON.parse(readFileSync(join(__dirname, '../src-tauri/capabilities/default.json'), 'utf8')) as {
@@ -39,6 +40,13 @@ describe('capability default', () => {
     );
     expect(rename).toHaveLength(1);
     expect((rename[0]?.allow ?? []).map((entry) => entry.path)).toEqual(['$APPCONFIG/**']);
+  });
+
+  it('denies every fs command access to the migration markers in $APPDATA/.migration', () => {
+    const global = capability.permissions.find(
+      (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:scope',
+    );
+    expect((global?.deny ?? []).map((entry) => entry.path)).toEqual(['$APPDATA/.migration', '$APPDATA/.migration/**']);
   });
 
   it('allows a local notification at the end of skill runs', () => {

@@ -1330,4 +1330,31 @@ mod tests {
             !raw.contains("APPCACHE") && !raw.contains("$APPLOCALDATA") && !raw.contains("$TEMP")
         );
     }
+
+    #[test]
+    fn the_webview_never_reaches_the_migration_markers() {
+        let capabilities: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/default.json")).unwrap();
+        let permissions = capabilities["permissions"].as_array().unwrap();
+        let allowed: Vec<&str> = permissions
+            .iter()
+            .filter_map(|permission| permission["allow"].as_array())
+            .flatten()
+            .filter_map(|entry| entry["path"].as_str())
+            .collect();
+        assert!(allowed.iter().all(|path| !path.starts_with("$APPDATA")));
+        let global = permissions
+            .iter()
+            .find(|permission| permission["identifier"] == "fs:scope")
+            .expect("global fs scope with the deny list");
+        let denied: Vec<&str> = global["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["path"].as_str())
+            .collect();
+        let state = format!("$APPDATA/{}", crate::legacy_migration::STATE_DIR);
+        assert!(denied.contains(&state.as_str()));
+        assert!(denied.contains(&format!("{state}/**").as_str()));
+    }
 }

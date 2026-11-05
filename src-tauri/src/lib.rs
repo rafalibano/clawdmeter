@@ -47,20 +47,30 @@ pub fn run() {
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir();
-            let migrated = config_dir.as_ref().ok().and_then(|dir| {
-                let legacy = legacy_migration::legacy_dir_for(dir)?;
-                Some(legacy_migration::migrate_config_dir(dir, &legacy))
-            });
+            let state_dir = app
+                .path()
+                .app_data_dir()
+                .map(|dir| legacy_migration::state_dir(&dir));
+            let migrated = config_dir
+                .as_ref()
+                .ok()
+                .zip(state_dir.as_ref().ok())
+                .and_then(|(dir, state)| {
+                    let legacy = legacy_migration::legacy_dir_for(dir)?;
+                    let marker = state.join(legacy_migration::CONFIG_MARKER);
+                    Some(legacy_migration::migrate_config_dir(dir, &legacy, &marker))
+                });
             if let Ok(dir) = app.path().app_log_dir() {
                 popover_log::init(dir);
             }
             if let Some(outcome) = migrated {
                 popover_log::write(&format!("legacy-config {outcome:?}"));
             }
-            if let Ok(dir) = config_dir {
-                commands::secrets::enable_legacy_migration(
-                    dir.join(legacy_migration::SECRETS_MARKER),
-                );
+            if let (Ok(config), Ok(state)) = (config_dir, state_dir) {
+                commands::secrets::enable_legacy_migration(commands::secrets::LegacyMarkers {
+                    done: state.join(legacy_migration::SECRETS_MARKER),
+                    previous: config.join(legacy_migration::SECRETS_MARKER),
+                });
             }
             popover_log::write(&format!("app-start version={}", app.package_info().version));
             platform::configure_app(app);
