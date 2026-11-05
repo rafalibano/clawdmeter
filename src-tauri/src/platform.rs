@@ -98,7 +98,7 @@ mod tests {
     fn usage_icon_matches_the_tray_shape_of_the_os() {
         let icon = usage_icon(Some(24.0), Some(51.0));
         if cfg!(target_os = "macos") {
-            assert_eq!((icon.width, icon.height), (116, 36));
+            assert_eq!((icon.width, icon.height), (128, 36));
         } else {
             assert_eq!((icon.width, icon.height), (32, 32));
         }

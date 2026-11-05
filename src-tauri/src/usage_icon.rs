@@ -6,21 +6,22 @@ const GLYPH_COLS: u32 = 4;
 const GLYPH_ROWS: u32 = 6;
 
 const WIDE_HEIGHT: u32 = 18;
-const WIDE_WIDTH: u32 = 58;
+const WIDE_WIDTH: u32 = 64;
 const ROW_HEIGHT: u32 = 9;
-const BAR_X: u32 = 33;
+const BAR_X: u32 = 39;
 const BAR_WIDTH: u32 = 24;
 const BAR_HEIGHT: u32 = 5;
-const LABEL_X: u32 = 21;
-const STAR_ARM: f64 = 8.0;
-const STAR_THICKNESS: f64 = 1.8;
-const STAR_RAYS: u32 = 8;
+const LABEL_X: u32 = 27;
+
+const MASCOT_CELL: u32 = 2;
+const MASCOT_COLS: u32 = 12;
+const MASCOT_ROWS: u32 = 8;
+const EYE_X_REACH: f64 = 0.9;
+const EYE_X_STROKE: f64 = 0.4;
+const SQUARE_EYE_X_REACH: f64 = 1.5;
+const SQUARE_EYE_X_STROKE: f64 = 0.8;
 
 const SQUARE_SIDE: u32 = 16;
-const SQUARE_MARGIN: u32 = 1;
-const SQUARE_BAR_HEIGHT: u32 = 6;
-const SQUARE_GAP: u32 = 2;
-const SQUARE_RADIUS: f64 = 2.0;
 
 const DASH_ON: u32 = 3;
 const DASH_PERIOD: u32 = 5;
@@ -28,6 +29,17 @@ const DASH_PERIOD: u32 = 5;
 const TEMPLATE_INK: [u8; 3] = [0, 0, 0];
 const SQUARE_FILL: [u8; 3] = [59, 130, 246];
 const SQUARE_EMPTY: [u8; 3] = [128, 128, 128];
+
+const MASCOT: [&str; MASCOT_ROWS as usize] = [
+    "..XXXXXXXX..",
+    "..XEXXXXEX..",
+    "XXXXXXXXXXXX",
+    "XXXXXXXXXXXX",
+    "..XXXXXXXX..",
+    "..XXXXXXXX..",
+    "..X.X..X.X..",
+    "..X.X..X.X..",
+];
 
 const GLYPH_5: [&str; 6] = ["XXXX", "X...", "XXX.", "...X", "X..X", ".XX."];
 const GLYPH_H: [&str; 6] = ["X...", "X...", "XXX.", "X..X", "X..X", "X..X"];
@@ -234,51 +246,111 @@ fn paint_label(canvas: &mut Canvas, text: &str, x: u32, y: u32, cell: u32) {
     }
 }
 
-fn distance_to_segment(px: f64, py: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let length_sq = dx * dx + dy * dy;
-    let t = if length_sq == 0.0 {
-        0.0
-    } else {
-        (((px - a.0) * dx + (py - a.1) * dy) / length_sq).clamp(0.0, 1.0)
-    };
-    ((px - (a.0 + t * dx)).powi(2) + (py - (a.1 + t * dy)).powi(2)).sqrt()
+#[derive(Clone, Copy)]
+struct Mascot {
+    x: f64,
+    y: f64,
+    cell: f64,
+    cross_reach: f64,
+    cross_half_stroke: f64,
+    cross_shift: f64,
 }
 
-fn paint_asterisk(canvas: &mut Canvas, scale: f64) {
-    let center = (
-        WIDE_HEIGHT as f64 / 2.0 * scale,
-        WIDE_HEIGHT as f64 / 2.0 * scale,
-    );
-    let arm = STAR_ARM * scale;
-    let radius = STAR_THICKNESS * scale / 2.0;
-    let rays: Vec<((f64, f64), (f64, f64))> = (0..STAR_RAYS / 2)
-        .map(|index| {
-            let angle = std::f64::consts::PI * index as f64 / (STAR_RAYS / 2) as f64;
-            let (dx, dy) = (angle.cos() * arm, angle.sin() * arm);
-            (
-                (center.0 - dx, center.1 - dy),
-                (center.0 + dx, center.1 + dy),
-            )
+impl Mascot {
+    fn bounds(&self) -> (f64, f64, f64, f64) {
+        (
+            self.x,
+            self.y,
+            self.x + MASCOT_COLS as f64 * self.cell,
+            self.y + MASCOT_ROWS as f64 * self.cell,
+        )
+    }
+
+    fn mark_at(&self, px: f64, py: f64) -> Option<u8> {
+        let col = ((px - self.x) / self.cell).floor();
+        let row = ((py - self.y) / self.cell).floor();
+        if col < 0.0 || row < 0.0 || col >= MASCOT_COLS as f64 || row >= MASCOT_ROWS as f64 {
+            return None;
+        }
+        Some(MASCOT[row as usize].as_bytes()[col as usize])
+    }
+
+    fn eye_centers(&self) -> Vec<(f64, f64)> {
+        let mut centers = Vec::new();
+        for (row, line) in MASCOT.iter().enumerate() {
+            for (col, mark) in line.bytes().enumerate() {
+                if mark == b'E' {
+                    centers.push((
+                        self.x + (col as f64 + 0.5) * self.cell + self.cross_shift,
+                        self.y + (row as f64 + 0.5) * self.cell + self.cross_shift,
+                    ));
+                }
+            }
+        }
+        centers
+    }
+
+    fn in_eye_cross(&self, eyes: &[(f64, f64)], px: f64, py: f64) -> bool {
+        let (reach, half_stroke) = (self.cross_reach, self.cross_half_stroke);
+        eyes.iter().any(|(cx, cy)| {
+            let (dx, dy) = (px - cx, py - cy);
+            dx.abs() <= reach
+                && dy.abs() <= reach
+                && (dx - dy).abs().min((dx + dy).abs()) / std::f64::consts::SQRT_2 <= half_stroke
         })
-        .collect();
-    let bounds = (
-        center.0 - arm - radius,
-        center.1 - arm - radius,
-        center.0 + arm + radius,
-        center.1 + arm + radius,
-    );
-    canvas.paint(bounds, TEMPLATE_INK, 1.0, |x, y| {
-        rays.iter()
-            .any(|(a, b)| distance_to_segment(x, y, *a, *b) <= radius)
-    });
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MascotStyle {
+    fill: [u8; 3],
+    empty: [u8; 3],
+    crossed_eyes: bool,
+}
+
+fn paint_mascot(canvas: &mut Canvas, mascot: Mascot, level: Option<f64>, style: &MascotStyle) {
+    let eyes = mascot.eye_centers();
+    let crossed = style.crossed_eyes;
+    let solid = |x: f64, y: f64| match mascot.mark_at(x, y) {
+        Some(b'X') => !(crossed && mascot.in_eye_cross(&eyes, x, y)),
+        Some(b'E') => crossed && !mascot.in_eye_cross(&eyes, x, y),
+        _ => false,
+    };
+    canvas.paint(mascot.bounds(), style.empty, TRACK_ALPHA, solid);
+    if let Some(value) = normalize_percent(level).filter(|v| *v > 0.0) {
+        let (_, top, _, bottom) = mascot.bounds();
+        let edge = bottom - (bottom - top) * value / 100.0;
+        canvas.paint(mascot.bounds(), style.fill, 1.0, |x, y| {
+            y >= edge && solid(x, y)
+        });
+    }
+}
+
+fn is_exhausted(five_hour: Option<f64>, seven_day: Option<f64>) -> bool {
+    [five_hour, seven_day]
+        .into_iter()
+        .any(|value| normalize_percent(value).is_some_and(|v| v >= 100.0))
 }
 
 pub fn render_usage_icon(five_hour: Option<f64>, seven_day: Option<f64>, scale: u32) -> UsageIcon {
     let scale = scale.max(1);
     let s = scale as f64;
     let mut canvas = Canvas::new(WIDE_WIDTH * scale, WIDE_HEIGHT * scale);
-    paint_asterisk(&mut canvas, s);
+    let cell = (MASCOT_CELL * scale) as f64;
+    let mascot = Mascot {
+        x: 0.0,
+        y: (WIDE_HEIGHT as f64 * s - MASCOT_ROWS as f64 * cell) / 2.0,
+        cell,
+        cross_reach: cell * EYE_X_REACH,
+        cross_half_stroke: cell * EYE_X_STROKE / 2.0,
+        cross_shift: 0.0,
+    };
+    let mascot_style = MascotStyle {
+        fill: TEMPLATE_INK,
+        empty: TEMPLATE_INK,
+        crossed_eyes: is_exhausted(five_hour, seven_day),
+    };
+    paint_mascot(&mut canvas, mascot, seven_day, &mascot_style);
     let style = Style {
         fill: TEMPLATE_INK,
         empty: TEMPLATE_INK,
@@ -309,27 +381,23 @@ pub fn render_usage_icon_square(
     scale: u32,
 ) -> UsageIcon {
     let scale = scale.max(1);
-    let s = scale as f64;
     let side = SQUARE_SIDE * scale;
     let mut canvas = Canvas::new(side, side);
-    let style = Style {
+    let cell = scale as f64;
+    let mascot = Mascot {
+        x: (side as f64 - MASCOT_COLS as f64 * cell) / 2.0,
+        y: (side as f64 - MASCOT_ROWS as f64 * cell) / 2.0,
+        cell,
+        cross_reach: SQUARE_EYE_X_REACH * cell / 2.0,
+        cross_half_stroke: SQUARE_EYE_X_STROKE * cell / 2.0,
+        cross_shift: cell / 4.0,
+    };
+    let style = MascotStyle {
         fill: SQUARE_FILL,
         empty: SQUARE_EMPTY,
-        radius: SQUARE_RADIUS * s,
-        stroke: s,
-        dash_on: DASH_ON as f64 * s,
-        dash_period: DASH_PERIOD as f64 * s,
+        crossed_eyes: is_exhausted(five_hour, seven_day),
     };
-    for (index, percent) in [five_hour, seven_day].into_iter().enumerate() {
-        let top = SQUARE_MARGIN + index as u32 * (SQUARE_BAR_HEIGHT + SQUARE_GAP);
-        let bar = Bar {
-            x: (SQUARE_MARGIN * scale) as f64,
-            y: (top * scale) as f64,
-            width: ((SQUARE_SIDE - 2 * SQUARE_MARGIN) * scale) as f64,
-            height: (SQUARE_BAR_HEIGHT * scale) as f64,
-        };
-        paint_bar(&mut canvas, bar, percent, &style);
-    }
+    paint_mascot(&mut canvas, mascot, seven_day, &style);
     canvas.finish()
 }
 
@@ -358,10 +426,10 @@ mod tests {
     #[test]
     fn wide_icon_has_dimensions_of_the_menu_bar_at_2x() {
         let icon = render_usage_icon(Some(24.0), Some(51.0), 2);
-        assert_eq!((icon.width, icon.height), (116, 36));
-        assert_eq!(icon.rgba.len(), 116 * 36 * 4);
+        assert_eq!((icon.width, icon.height), (128, 36));
+        assert_eq!(icon.rgba.len(), 128 * 36 * 4);
         let single = render_usage_icon(Some(24.0), Some(51.0), 1);
-        assert_eq!((single.width, single.height), (58, 18));
+        assert_eq!((single.width, single.height), (64, 18));
     }
 
     #[test]
@@ -460,16 +528,15 @@ mod tests {
     }
 
     #[test]
-    fn labels_and_asterisk_are_painted_opaque() {
+    fn labels_are_painted_opaque_between_mascot_and_bars() {
         let icon = render_usage_icon(Some(0.0), Some(0.0), SCALE);
-        let center = WIDE_HEIGHT * SCALE / 2;
-        assert_eq!(column(&icon, center, center), 255);
         let label_pixels = (LABEL_X * SCALE..BAR_X * SCALE - 2)
             .flat_map(|x| (0..icon.height).map(move |y| (x, y)))
             .filter(|(x, y)| column(&icon, *x, *y) == 255)
             .count();
         assert!(label_pixels > 40, "{label_pixels}");
-        let gutter = (WIDE_HEIGHT * SCALE + 1..LABEL_X * SCALE - 1)
+        let mascot_end = MASCOT_COLS * MASCOT_CELL * SCALE;
+        let gutter = (mascot_end..LABEL_X * SCALE)
             .flat_map(|x| (0..icon.height).map(move |y| (x, y)))
             .filter(|(x, y)| column(&icon, *x, *y) > 0)
             .count();
@@ -495,37 +562,212 @@ mod tests {
     }
 
     #[test]
-    fn square_icon_stacks_two_thick_bars_proportional_to_percent() {
-        let icon = render_usage_icon_square(Some(25.0), Some(75.0), 2);
-        let top_y = 8;
-        let bottom_y = 24;
-        let inner = (2 * SQUARE_MARGIN + 2..30).collect::<Vec<u32>>();
-        let filled = |y: u32| {
-            inner
-                .iter()
-                .filter(|x| column(&icon, **x, y) == 255)
-                .count()
+    fn square_icon_fills_the_mascot_from_the_bottom_in_blue() {
+        let icon = render_usage_icon_square(Some(10.0), Some(50.0), 2);
+        let cell = 2;
+        let (x0, y0) = (4, 8);
+        let sample = |row: u32| {
+            let at = (((y0 + row * cell + 1) * 32 + x0 + 4 * cell + 1) * 4) as usize;
+            [
+                icon.rgba[at],
+                icon.rgba[at + 1],
+                icon.rgba[at + 2],
+                icon.rgba[at + 3],
+            ]
         };
-        let (top, bottom) = (filled(top_y), filled(bottom_y));
-        assert!(top < bottom);
-        assert!(top.abs_diff(5) <= 1, "{top}");
-        assert!(bottom.abs_diff(19) <= 1, "{bottom}");
-        let gap_y = 16;
-        assert!((0..32).all(|x| column(&icon, x, gap_y) == 0));
-        let pixel = &icon.rgba[((top_y * 32 + 4) * 4) as usize..][..4];
-        assert_eq!(pixel, [SQUARE_FILL[0], SQUARE_FILL[1], SQUARE_FILL[2], 255]);
+        assert_eq!(
+            sample(7),
+            [SQUARE_FILL[0], SQUARE_FILL[1], SQUARE_FILL[2], 255]
+        );
+        assert_eq!(
+            sample(4),
+            [SQUARE_FILL[0], SQUARE_FILL[1], SQUARE_FILL[2], 255]
+        );
+        let empty = sample(3);
+        assert_eq!(empty[..3], SQUARE_EMPTY);
+        assert!((85..=95).contains(&empty[3]), "{empty:?}");
+        assert!((0..32).all(|x| column(&icon, x, 3) == 0 && column(&icon, x, 29) == 0));
     }
 
     #[test]
-    fn square_icon_without_data_is_dashed_outline() {
+    fn square_icon_marks_exhaustion_and_missing_data_on_the_mascot() {
         let none = render_usage_icon_square(None, None, 2);
         let zero = render_usage_icon_square(Some(0.0), Some(0.0), 2);
-        assert_ne!(none.rgba, zero.rgba);
-        assert_eq!(column(&none, 16, 8), 0);
+        let spent = render_usage_icon_square(Some(100.0), Some(0.0), 2);
+        assert_eq!(none.rgba, zero.rgba);
+        assert_ne!(spent.rgba, zero.rgba);
         assert_eq!(
             render_usage_icon_square(Some(400.0), Some(-5.0), 2),
             render_usage_icon_square(Some(100.0), Some(0.0), 2)
         );
+    }
+
+    fn mascot_cell_center(icon: &UsageIcon, col: u32, row: u32) -> u8 {
+        let cell = MASCOT_CELL * SCALE;
+        let top = (icon.height - MASCOT_ROWS * cell) / 2;
+        column(icon, col * cell + cell / 2, top + row * cell + cell / 2)
+    }
+
+    fn eye_cell(which: usize) -> (u32, u32) {
+        let mut eyes = Vec::new();
+        for (row, line) in MASCOT.iter().enumerate() {
+            for (col, mark) in line.bytes().enumerate() {
+                if mark == b'E' {
+                    eyes.push((col as u32, row as u32));
+                }
+            }
+        }
+        eyes[which]
+    }
+
+    fn eye_hole_pixels(icon: &UsageIcon, which: usize) -> Vec<(u32, u32)> {
+        let cell = MASCOT_CELL * SCALE;
+        let top = (icon.height - MASCOT_ROWS * cell) / 2;
+        let (col, row) = eye_cell(which);
+        let (x0, y0) = (col * cell, top + row * cell);
+        let margin = cell;
+        let mut holes = Vec::new();
+        for y in y0 - margin..y0 + cell + margin {
+            for x in x0 - margin..x0 + cell + margin {
+                if column(icon, x, y) == 0 {
+                    holes.push((x + margin - x0, y + margin - y0));
+                }
+            }
+        }
+        holes
+    }
+
+    #[test]
+    fn mascot_grid_matches_the_reference_silhouette() {
+        assert_eq!(MASCOT.len() as u32, MASCOT_ROWS);
+        assert!(MASCOT.iter().all(|line| line.len() as u32 == MASCOT_COLS));
+        let eyes = MASCOT
+            .iter()
+            .flat_map(|line| line.bytes())
+            .filter(|m| *m == b'E');
+        assert_eq!(eyes.count(), 2);
+        assert_eq!(MASCOT[2], MASCOT[3]);
+        assert_eq!(MASCOT[6], MASCOT[7]);
+        assert_eq!(MASCOT[2], "XXXXXXXXXXXX");
+        assert_eq!(MASCOT[6].matches('X').count(), 4);
+    }
+
+    #[test]
+    fn mascot_body_fills_from_the_bottom_in_proportion_to_the_weekly_percent() {
+        for percent in [0.0, 25.0, 50.0, 75.0, 100.0] {
+            let icon = render_usage_icon(Some(10.0), Some(percent), SCALE);
+            for row in 0..MASCOT_ROWS {
+                let alpha = mascot_cell_center(&icon, 4, row);
+                let filled = f64::from(row) >= f64::from(MASCOT_ROWS) * (1.0 - percent / 100.0);
+                if filled {
+                    assert_eq!(alpha, 255, "percent={percent} row={row}");
+                } else {
+                    assert!(
+                        (85..=95).contains(&alpha),
+                        "percent={percent} row={row} alpha={alpha}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mascot_fill_covers_arms_and_legs_at_the_same_height() {
+        let half = render_usage_icon(Some(10.0), Some(50.0), SCALE);
+        for (col, row) in [(0, 2), (0, 3), (11, 3)] {
+            assert!((85..=95).contains(&mascot_cell_center(&half, col, row)));
+        }
+        for (col, row) in [(2, 6), (9, 7), (4, 4)] {
+            assert_eq!(mascot_cell_center(&half, col, row), 255);
+        }
+        assert_eq!(mascot_cell_center(&half, 3, 7), 0);
+        let most = render_usage_icon(Some(10.0), Some(75.0), SCALE);
+        assert_eq!(mascot_cell_center(&most, 0, 2), 255);
+        assert_eq!(mascot_cell_center(&most, 11, 3), 255);
+        assert!((85..=95).contains(&mascot_cell_center(&most, 4, 1)));
+    }
+
+    #[test]
+    fn mascot_ignores_the_five_hour_value_until_it_runs_out() {
+        let width = MASCOT_COLS * MASCOT_CELL * SCALE;
+        let mascot_only = |icon: &UsageIcon| -> Vec<u8> {
+            (0..icon.height)
+                .flat_map(|y| (0..width).map(move |x| (x, y)))
+                .map(|(x, y)| column(icon, x, y))
+                .collect()
+        };
+        let low = mascot_only(&render_usage_icon(Some(5.0), Some(50.0), SCALE));
+        let high = mascot_only(&render_usage_icon(Some(99.0), Some(50.0), SCALE));
+        assert_eq!(low, high);
+    }
+
+    #[test]
+    fn mascot_without_data_is_fully_translucent_with_plain_eyes() {
+        let icon = render_usage_icon(None, None, SCALE);
+        for (col, row) in [(4, 0), (0, 2), (11, 3), (2, 6), (9, 7), (6, 4)] {
+            let alpha = mascot_cell_center(&icon, col, row);
+            assert!((85..=95).contains(&alpha), "{col},{row} alpha={alpha}");
+        }
+        assert_eq!(
+            eye_hole_pixels(&icon, 0).len() as u32,
+            MASCOT_CELL * MASCOT_CELL * SCALE * SCALE
+        );
+    }
+
+    #[test]
+    fn mascot_eyes_are_square_holes_below_the_limit() {
+        for percents in [
+            (Some(99.0), Some(99.0)),
+            (Some(0.0), None),
+            (None, Some(70.0)),
+        ] {
+            let icon = render_usage_icon(percents.0, percents.1, SCALE);
+            for which in 0..2 {
+                let cell = MASCOT_CELL * SCALE;
+                let holes = eye_hole_pixels(&icon, which);
+                assert_eq!(holes.len() as u32, cell * cell, "{percents:?}");
+                assert!(holes
+                    .iter()
+                    .all(|(x, y)| (cell..2 * cell).contains(x) && (cell..2 * cell).contains(y)));
+            }
+        }
+    }
+
+    #[test]
+    fn mascot_eyes_become_crosses_when_the_five_hour_limit_runs_out() {
+        let icon = render_usage_icon(Some(100.0), Some(10.0), SCALE);
+        assert_cross_eyes(&icon);
+    }
+
+    #[test]
+    fn mascot_eyes_become_crosses_when_the_weekly_limit_runs_out() {
+        let icon = render_usage_icon(Some(40.0), Some(100.0), SCALE);
+        assert_cross_eyes(&icon);
+        assert_cross_eyes(&render_usage_icon(Some(250.0), None, SCALE));
+    }
+
+    fn assert_cross_eyes(icon: &UsageIcon) {
+        let cell = MASCOT_CELL * SCALE;
+        let margin = cell;
+        let span = 2 * margin + cell - 1;
+        for which in 0..2 {
+            let holes = eye_hole_pixels(icon, which);
+            assert!(holes.len() as u32 > cell && (holes.len() as u32) < 3 * cell * cell / 2);
+            assert!(
+                holes.contains(&(margin - 1, margin - 1)),
+                "o X passa dos cantos do olho"
+            );
+            assert!(holes.contains(&(margin + 1, margin + 1)));
+            assert!(holes.contains(&(margin + 2, margin + 2)));
+            assert!(
+                !holes.contains(&(margin + 1, margin)),
+                "meio da borda superior e corpo"
+            );
+            assert!(!holes.contains(&(margin + 2, margin)));
+            assert!(holes
+                .iter()
+                .all(|(x, y)| holes.contains(&(span - x, *y)) && holes.contains(&(*x, span - y))));
+        }
     }
 
     #[test]
