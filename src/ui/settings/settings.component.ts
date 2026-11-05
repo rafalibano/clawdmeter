@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import {
   APP_LANGUAGES,
   THEME_MODES,
@@ -16,12 +16,14 @@ import { ACCENT_PRESETS, BACKGROUND_PRESETS, SERIES_PRESETS } from '../theme/acc
 import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
+import { SettingsSectionComponent } from './settings-section.component';
+import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { ConnectionsComponent } from './connections/connections.component';
 
 @Component({
   selector: 'cm-settings',
-  imports: [ColorPickerComponent, ConnectionsComponent],
+  imports: [ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
@@ -55,11 +57,13 @@ export class SettingsComponent {
   );
 
   protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
-  protected readonly seriesOpen = signal(false);
-
-  protected toggleSeries(): void {
-    this.seriesOpen.update((open) => !open);
-  }
+  protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
+  protected readonly projectionSummaryText = computed(() =>
+    projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
+  );
+  protected readonly appearanceSummaryText = computed(() =>
+    appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
+  );
 
   protected setSeriesColor(kind: keyof SeriesColorSettings, color: string | null): void {
     this.facade.update({ seriesColors: { [kind]: color } });

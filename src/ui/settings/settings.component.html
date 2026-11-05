@@ -1,5 +1,5 @@
-<section class="section">
-  <h2 class="heading">{{ i18n.t('settings.pages') }}</h2>
+<cm-settings-section name="pages" [heading]="i18n.t('settings.pages')">
+  <span summary>{{ pagesSummaryText() }}</span>
   @for (page of pageRows(); track page.id) {
     <label class="check">
       <input
@@ -13,12 +13,12 @@
       }
     </label>
   }
-</section>
+</cm-settings-section>
 
 <cm-connections />
 
-<section class="section">
-  <h2 class="heading">{{ i18n.t('settings.projection') }}</h2>
+<cm-settings-section name="projection" [heading]="i18n.t('settings.projection')">
+  <span summary>{{ projectionSummaryText() }}</span>
   <div class="field">
     <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.projection')">
       @for (method of projectionMethods; track method) {
@@ -37,10 +37,13 @@
     </div>
     <span class="hint">{{ i18n.t('settings.projection.hint') }}</span>
   </div>
-</section>
+</cm-settings-section>
 
-<section class="section">
-  <h2 class="heading">{{ i18n.t('settings.appearance') }}</h2>
+<cm-settings-section name="appearance" [heading]="i18n.t('settings.appearance')">
+  <span summary>
+    <span class="dot" [style.background]="settings().appearance.accentColor"></span>
+    {{ appearanceSummaryText() }}
+  </span>
 
   <div class="field">
     <span class="label">{{ i18n.t('settings.language') }}</span>
@@ -107,24 +110,14 @@
       }
     </div>
   </div>
-</section>
+</cm-settings-section>
 
-<section class="section" data-section="series-lines">
-  <button
-    type="button"
-    class="disclosure"
-    [attr.aria-expanded]="seriesOpen()"
-    (click)="toggleSeries()"
-  >
-    <span class="caret" aria-hidden="true">{{ seriesOpen() ? '▾' : '▸' }}</span>
-    <span class="disclosure-title">{{ i18n.t('settings.seriesLines') }}</span>
-    <span class="dots" aria-hidden="true">
-      @for (row of seriesRows(); track row.kind) {
-        <span class="dot" [style.background]="row.value"></span>
-      }
-    </span>
-  </button>
-  @if (seriesOpen()) {
+<cm-settings-section name="series-lines" [heading]="i18n.t('settings.seriesLines')">
+  <span summary>
+    @for (row of seriesRows(); track row.kind) {
+      <span class="dot" [style.background]="row.value"></span>
+    }
+  </span>
     @for (row of seriesRows(); track row.kind) {
       <div class="field" [attr.data-series]="row.kind">
         <span class="label">{{ i18n.t(row.labelKey) }}</span>
@@ -140,6 +133,4 @@
         </button>
       </div>
     }
-  }
-</section>
-
+</cm-settings-section>

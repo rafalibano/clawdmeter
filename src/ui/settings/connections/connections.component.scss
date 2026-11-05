@@ -2,19 +2,6 @@
   display: block;
 }
 
-.section {
-  margin-bottom: 20px;
-}
-
-.heading {
-  margin: 0 0 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--cm-muted);
-}
-
 .muted {
   margin: 0;
   color: var(--cm-muted);
@@ -157,4 +144,25 @@
   background: var(--cm-bg);
   color: var(--cm-fg);
   user-select: text;
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cm-muted);
+}
+
+.dot[data-dot='ok'] {
+  background: var(--cm-ok);
+}
+
+.dot[data-dot='attention'] {
+  background: var(--cm-warning);
 }

@@ -1,5 +1,12 @@
-<section class="section" [attr.aria-label]="i18n.t('connections.heading')">
-  <h2 class="heading">{{ i18n.t('connections.heading') }}</h2>
+<cm-settings-section name="connections" [heading]="i18n.t('connections.heading')" [defaultOpen]="needsAttention()">
+  <span summary class="dots">
+    @for (dot of dots(); track $index) {
+      <span class="dot" [attr.data-dot]="dot"></span>
+    }
+    @if (attentionText(); as text) {
+      <span>{{ text }}</span>
+    }
+  </span>
 
   @if (rows().length === 0) {
     <p class="muted">{{ i18n.t('connections.none') }}</p>
@@ -67,4 +74,4 @@
       }
     </article>
   }
-</section>
+</cm-settings-section>

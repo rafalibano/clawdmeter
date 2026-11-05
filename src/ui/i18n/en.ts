@@ -29,6 +29,7 @@ export const en: Record<MessageKey, string> = {
   'maintenance.title': 'Under maintenance',
   'maintenance.description': 'This page will be back soon.',
   'settings.pages': 'Pages',
+  'settings.pages.summary': '{active} of {total} active',
   'settings.appearance': 'Appearance',
   'settings.accent': 'Accent color',
   'settings.background': 'Popover background',
@@ -65,6 +66,7 @@ export const en: Record<MessageKey, string> = {
   'preset.black': 'Black',
 
   'connections.heading': 'Connections',
+  'connections.summary.attention': '{count} need attention',
   'connections.none': 'No connection needed by the active pages.',
   'connection.claude': 'Claude',
   'connection.github': 'GitHub',

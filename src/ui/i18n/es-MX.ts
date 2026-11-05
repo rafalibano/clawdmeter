@@ -29,6 +29,7 @@ export const esMX: Record<MessageKey, string> = {
   'maintenance.title': 'En mantenimiento',
   'maintenance.description': 'Esta página vuelve pronto.',
   'settings.pages': 'Páginas',
+  'settings.pages.summary': '{active} de {total} activas',
   'settings.appearance': 'Apariencia',
   'settings.accent': 'Color de énfasis',
   'settings.background': 'Fondo del popover',
@@ -65,6 +66,7 @@ export const esMX: Record<MessageKey, string> = {
   'preset.black': 'Negro',
 
   'connections.heading': 'Conexiones',
+  'connections.summary.attention': '{count} requieren atención',
   'connections.none': 'Ninguna conexión necesaria para las páginas activas.',
   'connection.claude': 'Claude',
   'connection.github': 'GitHub',

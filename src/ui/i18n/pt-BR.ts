@@ -39,6 +39,7 @@ export const ptBR = {
   'maintenance.title': 'Em manutenção',
   'maintenance.description': 'Esta página volta em breve.',
   'settings.pages': 'Páginas',
+  'settings.pages.summary': '{active} de {total} ativas',
   'settings.appearance': 'Aparência',
   'settings.accent': 'Cor de destaque',
   'settings.background': 'Fundo do popover',
@@ -75,6 +76,7 @@ export const ptBR = {
   'preset.black': 'Preto',
 
   'connections.heading': 'Conexões',
+  'connections.summary.attention': '{count} com atenção',
   'connections.none': 'Nenhuma conexão necessária pelas páginas ativas.',
   'connection.claude': 'Claude',
   'connection.github': 'GitHub',
