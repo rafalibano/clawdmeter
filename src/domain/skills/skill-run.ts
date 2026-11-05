@@ -125,6 +125,34 @@ export function runProblemMessage(run: SkillRun): string | null {
   return run.problem === 'mcp-unauthenticated' ? mcpProblemMessage(run.mcpNeedingAuth) : null;
 }
 
+export function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes === 0 ? `${seconds}s` : `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+export function formatCost(costUsd: number | null): string | null {
+  return costUsd === null ? null : `US$ ${costUsd.toFixed(2)}`;
+}
+
+export interface RunNotice {
+  title: string;
+  body: string;
+}
+
+const NOTICE_ERROR_CHARS = 140;
+
+export function runNotice(run: SkillRun): RunNotice | null {
+  if (run.status === 'running' || run.status === 'cancelled') return null;
+  const details = [formatCost(run.costUsd), formatDuration(runDurationMs(run, run.endedAt ?? run.startedAt))].filter(
+    (part): part is string => part !== null,
+  );
+  if (run.status === 'succeeded') return { title: `${run.name} concluída`, body: details.join(' · ') };
+  const reason = (run.error ?? '').trim().replace(/\s+/g, ' ').slice(0, NOTICE_ERROR_CHARS);
+  return { title: `${run.name} falhou`, body: [reason, ...details].filter((part) => part !== '').join(' · ') };
+}
+
 export function runDurationMs(run: SkillRun, now: number): number {
   return Math.max(0, (run.endedAt ?? now) - run.startedAt);
 }

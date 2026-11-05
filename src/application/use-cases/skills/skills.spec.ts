@@ -8,10 +8,12 @@ import {
   parseSkillsConfig,
   type SkillRun,
 } from '../../../domain/skills';
+import { createConnections } from '../../connections/create-connections';
 import { createSkills, type Skills } from '../../skills';
 import { FakeClock } from '../../testing/fake-clock';
-import { FakeTerminal, FakeUrlOpener } from '../../testing/fake-connection-adapters';
+import { FakeTerminal, FakeUrlOpener, createFakeConnectionWorld } from '../../testing/fake-connection-adapters';
 import {
+  FakeNotifier,
   FakeSkillRunStore,
   FakeSkillsConfigStore,
   FakeStreamingProcessRunner,
@@ -23,6 +25,9 @@ let terminal: FakeTerminal;
 let urls: FakeUrlOpener;
 let clock: FakeClock;
 let skills: Skills;
+let notifier: FakeNotifier;
+let world: ReturnType<typeof createFakeConnectionWorld>;
+let connections: ReturnType<typeof createConnections>;
 
 beforeEach(async () => {
   runner = new FakeStreamingProcessRunner();
@@ -31,9 +36,14 @@ beforeEach(async () => {
   urls = new FakeUrlOpener();
   clock = new FakeClock();
   await clock.advance(1_000_000);
+  notifier = new FakeNotifier();
+  world = createFakeConnectionWorld();
+  connections = createConnections(world.adapters, clock);
+  await connections.check.execute('notifications');
   skills = createSkills(
-    { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls },
+    { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier },
     clock,
+    connections,
   );
 });
 
@@ -154,6 +164,62 @@ describe('RunSkill', () => {
   });
 });
 
+describe('Notificação ao fim da run', () => {
+  async function conclude(lines: readonly string[], code: number): Promise<SkillRun> {
+    const { finished } = await skills.run.execute('acabativa');
+    feed(lines);
+    await clock.advance(5_000);
+    runner.processes[0]?.exit(code);
+    return finished;
+  }
+
+  it('sucesso notifica com o custo e a duração', async () => {
+    await conclude(SUCCESS_STREAM, 0);
+    expect(notifier.sent).toEqual([{ title: 'Acabativa concluída', body: 'US$ 0.12 · 5s' }]);
+  });
+
+  it('falha notifica com o motivo', async () => {
+    const { finished } = await skills.run.execute('acabativa');
+    runner.processes[0]?.stderr('Error: credencial inválida');
+    runner.processes[0]?.exit(1);
+    await finished;
+    expect(notifier.sent).toEqual([{ title: 'Acabativa falhou', body: 'Error: credencial inválida · 0s' }]);
+  });
+
+  it('cancelada não notifica', async () => {
+    const { run, finished } = await skills.run.execute('acabativa');
+    await skills.cancel.execute(run.id);
+    await finished;
+    expect(notifier.sent).toEqual([]);
+  });
+
+  it('com a conexão de notificações bloqueada não notifica', async () => {
+    world.notifications.state = 'denied';
+    await connections.check.execute('notifications');
+    await conclude(SUCCESS_STREAM, 0);
+    expect(notifier.sent).toEqual([]);
+  });
+
+  it('com o estado ainda desconhecido verifica a conexão antes de notificar', async () => {
+    const fresh = createConnections(world.adapters, clock);
+    const lazy = createSkills(
+      { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier },
+      clock,
+      fresh,
+    );
+    const { finished } = await lazy.run.execute('acabativa');
+    feed(SUCCESS_STREAM);
+    runner.processes[0]?.exit(0);
+    await finished;
+    expect(notifier.sent).toHaveLength(1);
+  });
+
+  it('falha ao notificar não trava a run', async () => {
+    notifier.fail = true;
+    expect((await conclude(SUCCESS_STREAM, 0)).status).toBe('succeeded');
+  });
+});
+
 describe('CancelSkillRun', () => {
   it('mata o processo e marca a run como cancelada', async () => {
     const { run, finished } = await skills.run.execute('acabativa');
@@ -224,7 +290,7 @@ describe('Continuar no terminal', () => {
     const config = new FakeSkillsConfigStore(
       parseSkillsConfig({ skills: [{ id: 'proj', name: 'Proj', prompt: '/proj', cwd: '/Users/dev/proj' }] }),
     );
-    const scoped = createSkills({ config, runs: store, runner, terminal, urls }, clock);
+    const scoped = createSkills({ config, runs: store, runner, terminal, urls, notifier }, clock, connections);
     const { run, finished } = await scoped.run.execute('proj');
     expect(runner.processes[0]?.spec.cwd).toBe('/Users/dev/proj');
     feed(SUCCESS_STREAM);

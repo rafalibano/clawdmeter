@@ -5,6 +5,7 @@ export * from './connection-prefs-store';
 export * from './github-auth';
 export * from './microsoft-authorizer';
 export * from './notification-permission';
+export * from './notifier';
 export * from './pull-request-gateway';
 export * from './secret-store';
 export * from './session-source';

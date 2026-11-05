@@ -8,7 +8,7 @@ import { FIX_FOR } from '../../domain/connections';
 import { RUN_FIX_FOR } from '../../domain/skills';
 import { createDemoConnectionAdapters } from './demo-adapters';
 import { DemoPullRequestGateway } from './demo-pull-requests';
-import { createDemoSkillAdapters } from './demo-skills';
+import { DemoNotifier, createDemoSkillAdapters } from './demo-skills';
 import { createDemoWorld } from './demo-world';
 
 beforeEach(() => vi.useFakeTimers());
@@ -27,7 +27,11 @@ function setup(search: string) {
     },
     clock,
   );
-  const skills = createSkills(createDemoSkillAdapters(world, { terminal: adapters.terminal, urls: adapters.urlOpener }), clock);
+  const skills = createSkills(
+    createDemoSkillAdapters(world, { terminal: adapters.terminal, urls: adapters.urlOpener, notifier: new DemoNotifier() }),
+    clock,
+    connections,
+  );
   return { world, connections, pullRequests, skills };
 }
 

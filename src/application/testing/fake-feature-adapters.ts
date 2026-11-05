@@ -1,5 +1,7 @@
 import { parseSkillsConfig, type SkillDefinition, type SkillRun } from '../../domain/skills';
 import type {
+  Notice,
+  Notifier,
   SkillRunStore,
   SkillsConfigStore,
   StreamingProcessHandle,
@@ -7,6 +9,16 @@ import type {
   StreamingProcessRunner,
   StreamingProcessSpec,
 } from '../ports';
+
+export class FakeNotifier implements Notifier {
+  readonly sent: Notice[] = [];
+  fail = false;
+
+  async notify(notice: Notice): Promise<void> {
+    if (this.fail) throw new Error('notificação recusada');
+    this.sent.push(notice);
+  }
+}
 
 export class FakeSkillsConfigStore implements SkillsConfigStore {
   constructor(public skills: SkillDefinition[] = parseSkillsConfig(null)) {}

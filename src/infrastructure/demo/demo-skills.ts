@@ -4,6 +4,8 @@ import type {
   StreamingProcessHandle,
   StreamingProcessHandlers,
   StreamingProcessRunner,
+  Notice,
+  Notifier,
   StreamingProcessSpec,
   TerminalLauncher,
   UrlOpener,
@@ -76,9 +78,17 @@ class DemoStreamingProcessRunner implements StreamingProcessRunner {
   }
 }
 
+export class DemoNotifier implements Notifier {
+  readonly sent: Notice[] = [];
+
+  async notify(notice: Notice): Promise<void> {
+    this.sent.push(notice);
+  }
+}
+
 export function createDemoSkillAdapters(
   world: DemoWorld,
-  shared: { terminal: TerminalLauncher; urls: UrlOpener },
+  shared: { terminal: TerminalLauncher; urls: UrlOpener; notifier: Notifier },
 ): SkillAdapters {
   return {
     config: new DemoSkillsConfig(),
@@ -86,5 +96,6 @@ export function createDemoSkillAdapters(
     runner: new DemoStreamingProcessRunner(world),
     terminal: shared.terminal,
     urls: shared.urls,
+    notifier: shared.notifier,
   };
 }

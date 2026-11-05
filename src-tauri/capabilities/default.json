@@ -49,6 +49,7 @@
       ]
     },
     "notification:allow-is-permission-granted",
+    "notification:allow-notify",
     "notification:allow-request-permission",
     "allow-secret-get",
     "allow-secret-set",

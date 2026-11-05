@@ -28,6 +28,7 @@ import {
   TauriCommands,
   TauriJsonFile,
   TauriNotificationPermission,
+  TauriNotifier,
   TauriOAuthLoopback,
   TauriProcessProbe,
   TauriProcessRunner,
@@ -90,16 +91,19 @@ export function createComposition(): Application {
     clock,
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
-    skills: createSkills(
-      {
-        config: new JsonSkillsConfigStore(new TauriJsonFile('skills.json')),
-        runs: new JsonSkillRunStore(new TauriJsonFile('runs.json')),
-        runner: new TauriStreamingProcessRunner(commands),
-        terminal: connectionAdapters.terminal,
-        urls,
-      },
-      clock,
-    ),
+    skills: ({ connections }) =>
+      createSkills(
+        {
+          config: new JsonSkillsConfigStore(new TauriJsonFile('skills.json')),
+          runs: new JsonSkillRunStore(new TauriJsonFile('runs.json')),
+          runner: new TauriStreamingProcessRunner(commands),
+          terminal: connectionAdapters.terminal,
+          urls,
+          notifier: new TauriNotifier(),
+        },
+        clock,
+        connections,
+      ),
     pages: ({ connections, skills }) => [
       createUsagePage({
         loadUsage: new LoadUsage(

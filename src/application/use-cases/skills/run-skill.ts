@@ -11,6 +11,7 @@ import {
 } from '../../../domain/skills';
 import type { Clock, SkillRunStore, SkillsConfigStore, StreamingProcessRunner } from '../../ports';
 import type { SkillRunBoard } from '../../skills/skill-run-board';
+import type { NotifyRunFinished } from './notify-run-finished';
 
 const STDERR_TAIL_CHARS = 2_000;
 
@@ -28,6 +29,7 @@ export class RunSkill {
     private readonly store: SkillRunStore,
     private readonly board: SkillRunBoard,
     private readonly clock: Clock,
+    private readonly notify: NotifyRunFinished,
   ) {}
 
   async execute(skillId: string): Promise<StartedRun> {
@@ -49,6 +51,7 @@ export class RunSkill {
       this.board.release(current.id);
       this.board.put(current);
       await this.store.save(trimHistory(this.board.finished().map(toStoredRun))).catch(() => undefined);
+      await this.notify.execute(current);
       settle(current);
     };
 

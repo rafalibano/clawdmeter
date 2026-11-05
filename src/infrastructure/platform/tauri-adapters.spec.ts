@@ -4,6 +4,7 @@ import { createFakeCommands, rejectWith } from '../testing/fakes';
 import { PlatformCommandError, toDomainError } from './tauri-commands';
 import { TauriClaudeCredentialSource } from './tauri-claude-credential-source';
 import { TauriNotificationPermission, toPermissionState } from './tauri-notification-permission';
+import { TauriNotifier } from './tauri-notifier';
 import { TauriOAuthLoopback } from './tauri-oauth-loopback';
 import { TauriProcessRunner } from './tauri-process-runner';
 import { TauriSecretStore } from './tauri-secret-store';
@@ -107,6 +108,14 @@ describe('TauriOAuthLoopback', () => {
       'oauth_loopback_cancel',
     ]);
     expect(calls[1]?.args).toEqual({ id: '1', expectedState: 'st', timeoutMs: 1000 });
+  });
+});
+
+describe('TauriNotifier', () => {
+  it('envia título e corpo pelo plugin', async () => {
+    const sent: Array<{ title: string; body: string }> = [];
+    await new TauriNotifier({ send: (notice) => sent.push(notice) }).notify({ title: 'Acabativa concluída', body: 'US$ 0.12 · 5s' });
+    expect(sent).toEqual([{ title: 'Acabativa concluída', body: 'US$ 0.12 · 5s' }]);
   });
 });
 

@@ -2,6 +2,8 @@ import {
   RUN_FIX_FOR,
   RUN_FIX_LABELS,
   RUN_PROBLEM_MESSAGES,
+  formatCost,
+  formatDuration,
   isResumableSession,
   runDurationMs,
   runProblemMessage,
@@ -41,16 +43,7 @@ const STATUS_LABELS: Record<RunStatus, string> = {
   cancelled: 'Cancelada',
 };
 
-export function formatDuration(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1_000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes === 0 ? `${seconds}s` : `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-}
-
-export function formatCost(costUsd: number | null): string | null {
-  return costUsd === null ? null : `US$ ${costUsd.toFixed(2)}`;
-}
+export { formatCost, formatDuration };
 
 export function toRunView(run: SkillRun, now: number): RunView {
   const problem =

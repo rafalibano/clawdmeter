@@ -1,7 +1,13 @@
+import { createConnections } from '../connections/create-connections';
 import type { Clock } from '../ports';
 import { createSkills, type Skills } from '../skills';
-import { FakeTerminal, FakeUrlOpener } from './fake-connection-adapters';
-import { FakeSkillRunStore, FakeSkillsConfigStore, FakeStreamingProcessRunner } from './fake-feature-adapters';
+import { FakeTerminal, FakeUrlOpener, createFakeConnectionWorld } from './fake-connection-adapters';
+import {
+  FakeNotifier,
+  FakeSkillRunStore,
+  FakeSkillsConfigStore,
+  FakeStreamingProcessRunner,
+} from './fake-feature-adapters';
 
 export function createFakeSkills(clock: Clock): Skills {
   return createSkills(
@@ -11,7 +17,9 @@ export function createFakeSkills(clock: Clock): Skills {
       runner: new FakeStreamingProcessRunner(),
       terminal: new FakeTerminal(),
       urls: new FakeUrlOpener(),
+      notifier: new FakeNotifier(),
     },
     clock,
+    createConnections(createFakeConnectionWorld().adapters, clock),
   );
 }

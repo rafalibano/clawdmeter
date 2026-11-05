@@ -315,11 +315,14 @@ describe('Notificações', () => {
     expect(after).toMatchObject({ problem: 'notifications-unverifiable' });
   });
 
-  it('ainda não pedidas -> Conectar pede a permissão', async () => {
+  it('ainda não pedidas (prompt) leva aos ajustes do sistema, sem pedir pelo plugin', async () => {
     world.notifications.state = 'prompt';
-    world.notifications.requestResult = 'granted';
-    expect(await connections.check.execute('notifications')).toEqual({ state: 'disconnected' });
-    expect(await connections.connect.execute('notifications')).toEqual({ state: 'connected' });
+    const status = await connections.check.execute('notifications');
+    expect(status).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
+    expect(fixLabel('notifications', status)).toBe('Abrir ajustes do sistema');
+    const after = await runFix('notifications', 'open-system-settings');
+    expect(world.systemSettings.notificationsOpened).toBe(1);
+    expect(after).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
   });
 
   it('não pode ser desconectada', async () => {

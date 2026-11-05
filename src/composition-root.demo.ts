@@ -7,6 +7,7 @@ import type { ConnectionId } from './domain/connections';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoCalendar,
+  DemoNotifier,
   DemoProcessProbe,
   DemoPullRequestGateway,
   DemoSessionDirectory,
@@ -47,10 +48,16 @@ export function createComposition(): Application {
     clock,
     settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('dev-pulse.settings')),
     connectionAdapters,
-    skills: createSkills(
-      createDemoSkillAdapters(world, { terminal: connectionAdapters.terminal, urls: connectionAdapters.urlOpener }),
-      clock,
-    ),
+    skills: ({ connections }) =>
+      createSkills(
+        createDemoSkillAdapters(world, {
+          terminal: connectionAdapters.terminal,
+          urls: connectionAdapters.urlOpener,
+          notifier: new DemoNotifier(),
+        }),
+        clock,
+        connections,
+      ),
     pages: ({ connections, skills }) => [
       createUsagePage({
         loadUsage: new LoadUsage(
