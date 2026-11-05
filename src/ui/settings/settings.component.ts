@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DEFAULT_ACCENT_COLOR, isPageEnabled, THEME_MODES, type ThemeMode } from '../../domain/settings';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ACCENT_PRESETS } from '../theme/accent-presets';
+import { ConnectionsComponent } from './connections/connections.component';
 
 const THEME_LABELS: Record<ThemeMode, string> = {
   light: 'Claro',
@@ -11,6 +12,7 @@ const THEME_LABELS: Record<ThemeMode, string> = {
 
 @Component({
   selector: 'dp-settings',
+  imports: [ConnectionsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

@@ -1,0 +1,135 @@
+:host {
+  display: block;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+.heading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dp-muted);
+}
+
+.muted {
+  margin: 0;
+  color: var(--dp-muted);
+}
+
+.conn {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--dp-border);
+  border-radius: 8px;
+  background: var(--dp-surface);
+}
+
+.conn[data-tone='error'] {
+  border-color: var(--dp-danger, #d9534f);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.icon {
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.icon[data-tone='ok'] {
+  color: var(--dp-ok, #2e9e5b);
+}
+
+.icon[data-tone='error'] {
+  color: var(--dp-danger, #d9534f);
+}
+
+.icon[data-tone='idle'],
+.icon[data-tone='busy'] {
+  color: var(--dp-muted);
+}
+
+.name {
+  font-weight: 600;
+}
+
+.summary {
+  margin-left: auto;
+  color: var(--dp-muted);
+  font-size: 12px;
+}
+
+.message {
+  margin: 6px 0 0;
+  color: var(--dp-muted);
+  font-size: 12px;
+}
+
+.message.error {
+  color: var(--dp-danger, #d9534f);
+}
+
+.actions,
+.pat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.btn {
+  padding: 4px 10px;
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn.primary {
+  border-color: var(--dp-accent);
+  background: var(--dp-accent);
+  color: var(--dp-accent-fg);
+}
+
+.btn.danger {
+  color: var(--dp-danger, #d9534f);
+}
+
+.device {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.user-code {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--dp-accent);
+  user-select: text;
+}
+
+.pat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  background: var(--dp-bg);
+  color: var(--dp-fg);
+  user-select: text;
+}

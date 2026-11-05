@@ -20,22 +20,29 @@ infrastructure ────────┘   (implementa as portas da applicatio
 src/
 ├─ domain/            TS puro: modelos e regras (settings, connections, ...)
 ├─ application/
-│  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, ...)
-│  ├─ use-cases/      um arquivo por caso de uso, um método execute()
+│  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, SecretStore, ...)
+│  ├─ use-cases/      um arquivo por caso de uso, um método execute() (connections/ tem os de conexão)
+│  ├─ connections/    ConnectionMonitor, ConnectionRunner e createConnections (liga casos de uso e adapters)
 │  ├─ pages/          PageModule (contrato) e PageRegistry
 │  ├─ scheduler/      PollingScheduler: só agenda páginas ligadas
 │  └─ testing/        fakes das portas, usados só nos testes
 ├─ infrastructure/
-│  ├─ persistence/    JsonSettingsStore, LocalStorageJsonFile
-│  └─ platform/       TauriJsonFile (appConfigDir + plugin fs), SystemClock
+│  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
+│  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
+│  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway
+│  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback)
+│  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
+│  └─ demo/           adapters fakes do modo demo, com cenários por query param
 ├─ ui/
 │  ├─ shell/          popover, rodapé "atualizado há Xs" e botão ⚙
-│  ├─ settings/       Ajustes: páginas, aparência
+│  ├─ settings/       Ajustes: páginas, conexões, aparência
 │  ├─ theme/          tokens CSS: destaque, fundo, claro/escuro/sistema
 │  └─ pages/          uma pasta por página
 ├─ composition-root.ts        DI manual com os adapters reais (Tauri)
 └─ composition-root.demo.ts   DI do modo demo no navegador (localStorage)
-src-tauri/            Rust: bandeja, janela do popover, plugins
+src-tauri/src/
+├─ commands/          camada fina de plataforma: secrets, claude_credentials, process, oauth_loopback, terminal, open_external
+└─ tray.rs, platform.rs   bandeja e popover
 ```
 
 ### Regras de camada
@@ -84,6 +91,56 @@ O botão ⚙ no canto inferior direito é o único acesso. Páginas (checkboxes 
 | Windows | `%APPDATA%\com.mottu.devpulse\settings.json` |
 
 O arquivo tem `schemaVersion`; versões antigas são migradas na leitura. Editar o arquivo à mão com o app aberto recarrega as configurações.
+
+### Conexões
+
+Ajustes tem uma seção **Conexões** com as conexões exigidas pelas páginas ligadas (`PageModule.requiredConnections`). Cada uma tem status e o botão de conserto do estado atual; toda conexão desconectável tem **Desconectar**.
+
+| Situação (`ConnectionProblem`) | Botão |
+|---|---|
+| `keychain-denied` | Refazer permissão |
+| `claude-expired` (401 ou token vencido) | Refazer login do Claude (abre o Terminal com `claude /login`) |
+| `claude-code-missing` | Instalar Claude Code |
+| `github-unauthorized` | Refazer login do GitHub |
+| `github-missing-scope` | Refazer permissões |
+| `github-org-access` (SSO/não-membro) | Autorizar na org |
+| `microsoft-expired` | Refazer login da Microsoft |
+| `notifications-blocked` | Abrir ajustes do sistema |
+| `unexpected` (rede etc.) | Tentar de novo |
+
+- **Claude:** lê a credencial do Claude Code (Keychain `Claude Code-credentials` no macOS; `~/.claude/.credentials.json` como fallback e no Windows). O Rust devolve só `accessToken`, `expiresAt` e o plano; o refresh token nunca sai do Rust e o app nunca faz refresh. Desconectar só para de usar a credencial, não apaga nada do Claude Code.
+- **GitHub:** `gh auth token` (o token não é copiado) → Device Flow → PAT colado (os dois últimos ficam no cofre do SO). A validação confere escopos (`repo`, `read:org`) e o acesso à org `Mottu-ops`.
+- **Microsoft:** PKCE com listener em `127.0.0.1` (porta efêmera); o refresh token fica no cofre do SO. A agenda entra na F4.
+- **Notificações:** permissão do sistema; bloqueada leva aos ajustes do SO.
+- Preferências não secretas (método do GitHub, conta Microsoft, Claude ligado) ficam em `connections.json` ao lado do `settings.json`.
+
+`client_id` do GitHub OAuth App e do Entra ID são placeholders em `src/infrastructure/config/auth-config.ts` (`REPLACE_WITH_…`); enquanto forem placeholders, Device Flow e login Microsoft falham com estado `unexpected` explicando o que falta. Um 401 de gateway (ex.: Claude usage) marca a conexão com `connections.report.execute(id, problem)`.
+
+#### Commands Rust (`src-tauri/src/commands`)
+
+Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.json`, declarados em `build.rs`). Erros chegam ao TS como `{ kind, message }` e viram `ConnectionProblemError` (`keychain_denied`, `claude_code_missing`) ou `PlatformCommandError`.
+
+| Módulo | Commands | Observações |
+|---|---|---|
+| `secrets` | `secret_get/set/delete` | crate `keyring` (Keychain / Credential Manager), service `com.mottu.devpulse` |
+| `claude_credentials` | `claude_credentials_read` | só leitura |
+| `process` | `process_run/spawn/kill/is_alive` | só `claude` e `gh`; `kill` só de filhos do app; eventos `process-output` e `process-exit` |
+| `oauth_loopback` | `oauth_loopback_listen/wait/cancel` | valida `state`, timeout, página de retorno local |
+| `terminal` | `terminal_run` | `claude`/`gh` com argumentos sem metacaracteres de shell |
+| `open_external` | `open_url`, `open_system_settings` | só `https` e painéis conhecidos |
+
+O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita CORS do WebView), com allowlist de URLs na capability.
+
+### Modo demo: cenários de conexão
+
+`yarn dev:web` abre o app com adapters fakes. O query param `demo` escolhe o estado inicial de cada conexão (`id:valor`, separados por vírgula); clicar nos botões de conserto muda o estado como no app real.
+
+```
+http://127.0.0.1:4200/?demo=claude:claude-expired,github:github-org-access
+http://127.0.0.1:4200/?demo=errors
+```
+
+Valores: `ok` (padrão do Claude e das notificações), `disconnected`, qualquer `ConnectionProblem` da tabela, e `github:ok` / `microsoft:ok`. `errors` liga um erro em cada conexão. No demo, o token `ghp_…` é aceito como PAT válido.
 
 ## Comandos
 
