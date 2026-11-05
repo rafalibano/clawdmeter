@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::home::home_dir;
-use super::process_policy::{validate_cwd, validate_invocation, validate_program};
+use super::process_policy::{prepare_invocation, validate_cwd, validate_program};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
 const MAX_RUN_TIMEOUT_MS: u64 = 120_000;
@@ -206,7 +206,7 @@ pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
 }
 
 fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandResult<Command> {
-    validate_invocation(program, args)?;
+    let argv = prepare_invocation(program, args)?;
     let home = home_dir();
     let effective = cwd
         .map(str::to_string)
@@ -214,7 +214,7 @@ fn build_command(program: &str, args: &[String], cwd: Option<&str>) -> CommandRe
     let dir = validate_cwd(effective.as_deref(), home.as_deref())?;
     let mut command = Command::new(resolve_program(program)?);
     command
-        .args(args)
+        .args(&argv)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

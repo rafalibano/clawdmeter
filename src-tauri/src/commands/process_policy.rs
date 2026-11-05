@@ -25,6 +25,18 @@ const DENIED_CLAUDE_FLAGS: &[&str] = &[
     "--permission-mode",
     "--add-dir",
     "--mcp-config",
+    "--settings",
+    "--setting-sources",
+    "--strict-mcp-config",
+    "--disallowedTools",
+    "--disallowed-tools",
+];
+const CLAUDE_HARDENING_ARGS: [&str; 5] = [
+    "--setting-sources",
+    "user",
+    "--strict-mcp-config",
+    "--disallowedTools",
+    "Write,Edit,MultiEdit,NotebookEdit",
 ];
 
 fn invalid(message: impl Into<String>) -> CommandError {
@@ -63,12 +75,27 @@ pub fn validate_invocation(program: &str, args: &[String]) -> CommandResult<()> 
     }
 }
 
+pub fn prepare_invocation(program: &str, args: &[String]) -> CommandResult<Vec<String>> {
+    validate_invocation(program, args)?;
+    let mut argv = args.to_vec();
+    let is_print = validate_program(program)? == "claude"
+        && args.first().map(String::as_str) == Some("-p");
+    if is_print {
+        argv.extend(CLAUDE_HARDENING_ARGS.iter().map(|arg| arg.to_string()));
+    }
+    Ok(argv)
+}
+
 pub fn validate_terminal_invocation(program: &str, args: &[String]) -> CommandResult<()> {
     validate_args(args)?;
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match validate_program(program)? {
-        "gh" => validate_gh_terminal(args),
-        _ if args.len() == 1 && args[0] == "/mcp" => Ok(()),
-        _ => validate_claude(args),
+        "gh" => validate_gh_terminal(&args),
+        _ => match args.as_slice() {
+            ["/login"] | ["/mcp"] => Ok(()),
+            ["--resume", id] if is_uuid(id) => Ok(()),
+            _ => Err(invalid("argumentos do claude não permitidos")),
+        },
     }
 }
 
@@ -96,9 +123,8 @@ fn is_scope_list(value: &str) -> bool {
         })
 }
 
-fn validate_gh_terminal(args: &[String]) -> CommandResult<()> {
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    match args.as_slice() {
+fn validate_gh_terminal(args: &[&str]) -> CommandResult<()> {
+    match args {
         ["auth", "login", flag, GH_HOST, "-w"] if is_host_flag(flag) => Ok(()),
         ["auth", "refresh", "-s", scopes] if is_scope_list(scopes) => Ok(()),
         ["auth", "refresh", flag, GH_HOST, "-s", scopes]
@@ -420,6 +446,88 @@ mod tests {
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
 
+    const HARDENING: [&str; 5] = [
+        "--setting-sources",
+        "user",
+        "--strict-mcp-config",
+        "--disallowedTools",
+        "Write,Edit,MultiEdit,NotebookEdit",
+    ];
+
+    #[test]
+    fn rust_appends_the_hardening_flags_to_the_final_claude_print_argv() {
+        let from_ts = [
+            "-p",
+            "/acabativa",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--max-budget-usd",
+            "2",
+            "--allowedTools",
+            "Read(./**),Grep,Bash(gh pr diff:*)",
+        ];
+        let argv = prepare_invocation("claude", &args(&from_ts)).unwrap();
+        let expected: Vec<&str> = from_ts.iter().chain(HARDENING.iter()).copied().collect();
+        assert_eq!(argv, args(&expected));
+        let without_tools = prepare_invocation(
+            "claude",
+            &args(&[
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+            ]),
+        )
+        .unwrap();
+        assert!(without_tools.ends_with(&args(&HARDENING)));
+    }
+
+    #[test]
+    fn hardening_flags_are_not_added_to_login_resume_or_gh() {
+        for (program, call) in [
+            ("claude", vec!["/login"]),
+            ("claude", vec!["--resume", SESSION]),
+            ("gh", vec!["auth", "token"]),
+        ] {
+            let call = args(&call);
+            assert_eq!(prepare_invocation(program, &call).unwrap(), call);
+        }
+    }
+
+    #[test]
+    fn the_webview_cannot_pass_the_hardening_flags_itself() {
+        let base = [
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "1",
+        ];
+        for extra in [
+            vec!["--setting-sources", "user,project"],
+            vec!["--setting-sources", "user"],
+            vec!["--strict-mcp-config"],
+            vec!["--disallowedTools", "Write"],
+            vec!["--disallowed-tools", "Write"],
+            vec!["--settings", "{}"],
+            vec!["--setting-sources=project"],
+        ] {
+            let call: Vec<&str> = base.iter().chain(extra.iter()).copied().collect();
+            assert!(prepare_invocation("claude", &args(&call)).is_err(), "{extra:?}");
+        }
+    }
+
+    #[test]
+    fn prepare_invocation_still_applies_the_regular_policy() {
+        assert!(prepare_invocation("claude", &args(&["-p", "oi"])).is_err());
+        assert!(prepare_invocation("rm", &args(&["-p", "oi"])).is_err());
+        assert!(prepare_invocation("gh", &args(&["api", "/user"])).is_err());
+    }
+
     #[test]
     fn claude_accepts_login_and_resume() {
         assert!(validate_invocation("claude", &args(&["/login"])).is_ok());
@@ -636,6 +744,22 @@ mod tests {
         assert!(validate_terminal_invocation("claude", &args(&["/mcp", "extra"])).is_err());
         assert!(validate_invocation("claude", &args(&["/mcp"])).is_err());
         assert!(validate_terminal_invocation("bash", &args(&["-c", "x"])).is_err());
+    }
+
+    #[test]
+    fn terminal_never_runs_claude_in_print_mode() {
+        let print = [
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "1",
+        ];
+        assert!(validate_invocation("claude", &args(&print)).is_ok());
+        assert!(validate_terminal_invocation("claude", &args(&print)).is_err());
+        assert!(validate_terminal_invocation("claude", &args(&["--resume", "x"])).is_err());
+        assert!(validate_terminal_invocation("claude", &args(&["--version"])).is_err());
     }
 
     struct TempTree {
