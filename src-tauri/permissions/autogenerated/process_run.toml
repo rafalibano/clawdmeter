@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-process-run"
+description = "Enables the process_run command without any pre-configured scope."
+commands.allow = ["process_run"]
+
+[[permission]]
+identifier = "deny-process-run"
+description = "Denies the process_run command without any pre-configured scope."
+commands.deny = ["process_run"]

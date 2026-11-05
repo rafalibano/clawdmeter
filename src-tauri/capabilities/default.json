@@ -25,6 +25,30 @@
       "identifier": "fs:allow-watch",
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },
-    "fs:allow-unwatch"
+    "fs:allow-unwatch",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.github.com/*" },
+        { "url": "https://github.com/login/*" },
+        { "url": "https://login.microsoftonline.com/*" }
+      ]
+    },
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "allow-secret-get",
+    "allow-secret-set",
+    "allow-secret-delete",
+    "allow-claude-credentials-read",
+    "allow-process-run",
+    "allow-process-spawn",
+    "allow-process-kill",
+    "allow-process-is-alive",
+    "allow-oauth-loopback-listen",
+    "allow-oauth-loopback-wait",
+    "allow-oauth-loopback-cancel",
+    "allow-terminal-run",
+    "allow-open-url",
+    "allow-open-system-settings"
   ]
 }
