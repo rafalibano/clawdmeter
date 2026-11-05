@@ -7,6 +7,8 @@ export interface UsageGateway {
 export interface UsageHistoryStore {
   load(): Promise<UsageHistory>;
   save(history: UsageHistory): Promise<void>;
+  importedAt(): Promise<number | null>;
+  markImported(at: number): Promise<void>;
 }
 
 export interface ExternalUsageHistorySource {

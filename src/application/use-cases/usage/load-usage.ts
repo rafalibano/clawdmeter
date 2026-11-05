@@ -1,7 +1,7 @@
 import { CodedError } from '../../../domain/coded-error';
 import { ConnectionProblemError } from '../../../domain/connections';
-import { buildForecasts, recordSnapshot, retainHistory } from '../../../domain/usage';
-import type { UsageForecasts, UsageHistory, UsageSnapshot } from '../../../domain/usage';
+import { recordSnapshot, retainHistory } from '../../../domain/usage';
+import type { UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
 import type { ImportExternalUsageHistory } from './import-external-usage-history';
 import type {
@@ -16,7 +16,6 @@ export interface UsageData {
   at: number;
   snapshot: UsageSnapshot;
   history: UsageHistory;
-  forecasts: UsageForecasts;
 }
 
 export type UsageConnections = Pick<Connections, 'monitor' | 'check' | 'report'>;
@@ -38,11 +37,19 @@ export class LoadUsage {
     this.indicate(snapshot, now);
     const stored = await this.historyStore.load();
     const recorded = recordSnapshot(stored, snapshot, now);
-    const merged = (await this.external?.execute(recorded, now)) ?? recorded;
-    const history = retainHistory(merged, now);
+    const imported = await this.migrateExternal(recorded, now);
+    const history = retainHistory(imported.history, now);
     await this.historyStore.save(history);
+    if (imported.markAt !== null) await this.historyStore.markImported(imported.markAt);
     await this.recoverConnection();
-    return { at: now, snapshot, history, forecasts: buildForecasts(history, snapshot, now) };
+    return { at: now, snapshot, history };
+  }
+
+  private async migrateExternal(history: UsageHistory, now: number): Promise<{ history: UsageHistory; markAt: number | null }> {
+    if (this.external === undefined) return { history, markAt: null };
+    const previous = await this.historyStore.importedAt();
+    const outcome = await this.external.execute(history, previous, now);
+    return { history: outcome.history, markAt: previous === null ? outcome.importedAt : null };
   }
 
   private async fetchSnapshot(now: number): Promise<UsageSnapshot> {

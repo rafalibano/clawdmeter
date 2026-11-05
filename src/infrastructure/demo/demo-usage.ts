@@ -132,7 +132,17 @@ export class DemoUsageGateway implements UsageGateway {
 }
 
 export class DemoUsageHistoryStore implements UsageHistoryStore {
+  private imported: number | null = null;
+
   constructor(private history: UsageHistory) {}
+
+  async importedAt(): Promise<number | null> {
+    return this.imported;
+  }
+
+  async markImported(at: number): Promise<void> {
+    this.imported = at;
+  }
 
   async load(): Promise<UsageHistory> {
     return this.history;

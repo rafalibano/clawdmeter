@@ -83,7 +83,6 @@ describe('modelo de usage do demo', () => {
       new DemoUsageIndicator(),
     );
     const data = await load.execute();
-    expect(data.forecasts.fiveHour.status).toBe('ready');
     expect(data.history.fiveHour.length).toBeGreaterThan(5_000);
   });
 });

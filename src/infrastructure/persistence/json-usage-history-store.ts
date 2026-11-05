@@ -5,6 +5,7 @@ import type { AtomicJsonFile } from './json-file';
 export class JsonUsageHistoryStore implements UsageHistoryStore {
   private loading: Promise<UsageHistory> | null = null;
   private writing: Promise<void> = Promise.resolve();
+  private imported: number | null = null;
 
   constructor(private readonly file: AtomicJsonFile) {}
 
@@ -19,9 +20,20 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
     return this.loading;
   }
 
+  async importedAt(): Promise<number | null> {
+    await this.load();
+    return this.imported;
+  }
+
+  async markImported(at: number): Promise<void> {
+    const history = await this.load();
+    this.imported = at;
+    await this.save(history);
+  }
+
   save(history: UsageHistory): Promise<void> {
     this.loading = Promise.resolve(history);
-    const body = JSON.stringify(serializeHistory(history));
+    const body = JSON.stringify({ ...(serializeHistory(history) as object), claudeUsageBarImportedAt: this.imported });
     const write = this.writing.then(() => this.file.writeAtomic(body));
     this.writing = write.catch(() => undefined);
     return write;
@@ -33,6 +45,8 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
     try {
       const raw: unknown = JSON.parse(text);
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('formato inesperado');
+      const marker = (raw as Record<string, unknown>)['claudeUsageBarImportedAt'];
+      this.imported = typeof marker === 'number' && Number.isFinite(marker) ? marker : null;
       return parseHistory(raw);
     } catch {
       await this.file.quarantine().catch(() => undefined);

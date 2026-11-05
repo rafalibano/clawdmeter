@@ -126,4 +126,21 @@ describe('JsonUsageHistoryStore', () => {
     await store.save(history);
     expect(file.text).not.toBeNull();
   });
+
+  it('o marcador da migração do ClaudeUsageBar sobrevive a salvar e reiniciar', async () => {
+    const file = new MemoryFile();
+    const store = new JsonUsageHistoryStore(file);
+    expect(await store.importedAt()).toBeNull();
+    await store.save({ fiveHour: [{ at: 1, utilization: 1, resetsAt: null }], sevenDay: [] });
+    await store.markImported(5_000);
+    await store.save({ fiveHour: [{ at: 2, utilization: 2, resetsAt: null }], sevenDay: [] });
+    const reopened = new JsonUsageHistoryStore(file);
+    expect(await reopened.importedAt()).toBe(5_000);
+    expect((await reopened.load()).fiveHour).toHaveLength(1);
+  });
+
+  it('arquivo antigo sem marcador volta null', async () => {
+    const file = new MemoryFile(JSON.stringify({ schemaVersion: 1, fiveHour: [], sevenDay: [] }));
+    expect(await new JsonUsageHistoryStore(file).importedAt()).toBeNull();
+  });
 });

@@ -42,7 +42,10 @@ export class FakeUsageIndicator implements UsageIndicator {
 export class FakeUsageHistoryStore implements UsageHistoryStore {
   saved: UsageHistory[] = [];
 
-  constructor(public current: UsageHistory = createEmptyHistory()) {}
+  constructor(
+    public current: UsageHistory = createEmptyHistory(),
+    public imported: number | null = null,
+  ) {}
 
   async load(): Promise<UsageHistory> {
     return this.current;
@@ -51,6 +54,14 @@ export class FakeUsageHistoryStore implements UsageHistoryStore {
   async save(history: UsageHistory): Promise<void> {
     this.current = history;
     this.saved.push(history);
+  }
+
+  async importedAt(): Promise<number | null> {
+    return this.imported;
+  }
+
+  async markImported(at: number): Promise<void> {
+    this.imported = at;
   }
 }
 

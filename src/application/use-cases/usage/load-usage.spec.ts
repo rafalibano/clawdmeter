@@ -43,10 +43,9 @@ describe('LoadUsage', () => {
     expect(history.saved).toHaveLength(1);
     expect(history.current.fiveHour).toEqual([{ at: START, utilization: 20, resetsAt: START + 3_600_000 }]);
     expect(history.current.sevenDay).toHaveLength(1);
-    expect(data.forecasts.fiveHour).toEqual({ status: 'collecting' });
   });
 
-  it('acumula o histórico entre leituras e passa a prever com 3 pontos', async () => {
+  it('acumula o histórico entre leituras', async () => {
     for (let minute = 0; minute < 3; minute++) {
       gateway.outcome = {
         fiveHour: { utilization: 20 + minute * 2, resetsAt: START + 3_600_000 },
@@ -57,7 +56,6 @@ describe('LoadUsage', () => {
     }
     const data = await loadUsage.execute();
     expect(data.history.fiveHour).toHaveLength(4);
-    expect(data.forecasts.fiveHour.status).toBe('ready');
   });
 
   it('aplica a retenção: pontos com mais de 30 dias saem do histórico gravado', async () => {
@@ -73,7 +71,6 @@ describe('LoadUsage', () => {
     gateway.outcome = { fiveHour: { utilization: 5, resetsAt: null }, sevenDay: null };
     const data = await loadUsage.execute();
     expect(data.history.sevenDay).toEqual([]);
-    expect(data.forecasts.sevenDay.status).toBe('collecting');
   });
 
   it('401 vira problema de conexão do Claude com o botão "Refazer login do Claude"', async () => {
@@ -168,9 +165,16 @@ describe('LoadUsage e o indicador da bandeja', () => {
   });
 });
 
-describe('LoadUsage com histórico externo', () => {
+describe('LoadUsage com histórico externo (migração única)', () => {
   let source: FakeExternalUsageHistorySource;
   let withImport: LoadUsage;
+
+  const externalPoints = () =>
+    Array.from({ length: 6 }, (_, index) => ({
+      at: START - (6 - index) * 10 * MINUTE_MS,
+      fiveHour: 10 + index,
+      sevenDay: 5,
+    }));
 
   beforeEach(() => {
     source = new FakeExternalUsageHistorySource();
@@ -185,17 +189,63 @@ describe('LoadUsage com histórico externo', () => {
     );
   });
 
-  it('mescla os pontos externos ao histórico gravado, sem ciclo falso e já com previsão', async () => {
-    source.outcome = Array.from({ length: 6 }, (_, index) => ({
-      at: START - (6 - index) * 10 * MINUTE_MS,
-      fiveHour: 10 + index,
-      sevenDay: 5,
-    }));
+  it('na primeira carga mescla os pontos externos, sem ciclo falso, e grava o marcador', async () => {
+    source.outcome = externalPoints();
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(7);
     expect(history.current.fiveHour.filter((point) => point.imported)).toHaveLength(6);
     expect(data.history.fiveHour.at(-1)).toEqual({ at: START, utilization: 20, resetsAt: START + 3_600_000 });
-    expect(data.forecasts.fiveHour.status).toBe('ready');
+    expect(history.imported).toBe(START);
+  });
+
+  it('depois de importar nunca mais lê o arquivo', async () => {
+    source.outcome = [{ at: START - 20 * MINUTE_MS, fiveHour: 10, sevenDay: 5 }];
+    await withImport.execute();
+    await clock.advance(MINUTE_MS);
+    source.outcome = [{ at: START - 10 * MINUTE_MS, fiveHour: 11, sevenDay: 6 }];
+    const data = await withImport.execute();
+    expect(source.reads).toBe(1);
+    expect(data.history.fiveHour).toHaveLength(3);
+    expect(history.imported).toBe(START);
+  });
+
+  it('quem já tem ponto importado é marcado sem ler a fonte', async () => {
+    history.current = {
+      fiveHour: [{ at: START - 3 * DAY_MS, utilization: 10, resetsAt: null, imported: true }],
+      sevenDay: [],
+    };
+    source.outcome = externalPoints();
+    const data = await withImport.execute();
+    expect(source.reads).toBe(0);
+    expect(history.imported).toBe(START);
+    expect(data.history.fiveHour).toHaveLength(2);
+  });
+
+  it('marcador existente impede a leitura, mesmo sem pontos importados no histórico', async () => {
+    history.imported = START - DAY_MS;
+    source.outcome = externalPoints();
+    const data = await withImport.execute();
+    expect(source.reads).toBe(0);
+    expect(history.imported).toBe(START - DAY_MS);
+    expect(data.history.fiveHour).toHaveLength(1);
+  });
+
+  it('arquivo ausente (fonte vazia) também conclui a migração', async () => {
+    await withImport.execute();
+    await withImport.execute();
+    expect(source.reads).toBe(1);
+    expect(history.imported).toBe(START);
+  });
+
+  it('fonte que falha é ignorada em silêncio e tenta de novo na próxima carga', async () => {
+    source.outcome = new Error('arquivo ilegível');
+    const data = await withImport.execute();
+    expect(data.history.fiveHour).toHaveLength(1);
+    expect(history.imported).toBeNull();
+    source.outcome = externalPoints();
+    await withImport.execute();
+    expect(source.reads).toBe(2);
+    expect(history.imported).toBe(START);
   });
 
   it('o ponto lido agora vence o externo colado nele', async () => {
@@ -208,21 +258,5 @@ describe('LoadUsage com histórico externo', () => {
     source.outcome = [{ at: START - 31 * DAY_MS, fiveHour: 50, sevenDay: 50 }];
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(1);
-  });
-
-  it('fonte que falha é ignorada em silêncio', async () => {
-    source.outcome = new Error('arquivo ilegível');
-    const data = await withImport.execute();
-    expect(data.history.fiveHour).toHaveLength(1);
-    expect(source.reads).toBe(1);
-  });
-
-  it('lê a fonte a cada carga e não duplica o que já importou', async () => {
-    source.outcome = [{ at: START - 20 * MINUTE_MS, fiveHour: 10, sevenDay: 5 }];
-    await withImport.execute();
-    await clock.advance(MINUTE_MS);
-    const data = await withImport.execute();
-    expect(source.reads).toBe(2);
-    expect(data.history.fiveHour).toHaveLength(3);
   });
 });
