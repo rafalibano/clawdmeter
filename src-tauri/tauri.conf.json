@@ -11,7 +11,7 @@
   },
   "app": {
     "withGlobalTauri": false,
-    "macOSPrivateApi": false,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -19,6 +19,7 @@
         "width": 380,
         "height": 520,
         "decorations": false,
+        "transparent": true,
         "resizable": false,
         "skipTaskbar": true,
         "alwaysOnTop": true,
