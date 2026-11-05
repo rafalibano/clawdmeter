@@ -5,6 +5,7 @@ export * from './tauri-fetch';
 export * from './tauri-json-file';
 export * from './tauri-notification-permission';
 export * from './tauri-oauth-loopback';
+export * from './tauri-process-probe';
 export * from './tauri-process-runner';
 export * from './tauri-secret-store';
 export * from './tauri-system-actions';
