@@ -193,7 +193,7 @@ describe('TauriUsageIndicator', () => {
     await indicator.update({ fiveHour: null, sevenDay: { utilization: 5, resetsAt: null } }, NOW);
     await indicator.update(null, NOW);
     expect(calls[0]?.args).toMatchObject({ fiveHour: null, sevenDay: 5 });
-    expect(calls[1]?.args).toEqual({ fiveHour: null, sevenDay: null, tooltip: 'Dev Pulse · usage indisponível' });
+    expect(calls[1]?.args).toEqual({ fiveHour: null, sevenDay: null, tooltip: 'ClawdMeter · usage indisponível' });
   });
 
   it('propaga o erro do command', async () => {

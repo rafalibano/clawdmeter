@@ -100,7 +100,7 @@ export const en: Record<MessageKey, string> = {
   'note.authorize-org': 'Authorize the token for the org and click "Check again".',
   'note.ask-invite': 'Ask for an invite to the {org} org and click "Check again".',
   'note.enable-notifications': 'Allow notifications and click "Check again".',
-  'note.notifications-not-authorized': 'The system has not allowed Dev Pulse notifications yet. Allow them in the system settings.',
+  'note.notifications-not-authorized': 'The system has not allowed ClawdMeter notifications yet. Allow them in the system settings.',
   'note.missing-scopes': 'Missing: {scopes}',
 
   'action.connect': 'Connect',
@@ -215,7 +215,7 @@ export const en: Record<MessageKey, string> = {
 
   'notice.run.succeeded': '{name} completed',
   'notice.run.failed': '{name} failed',
-  'tooltip.unavailable': 'Dev Pulse · usage unavailable',
+  'tooltip.unavailable': 'ClawdMeter · usage unavailable',
   'tooltip.noData': '{label}: no data',
   'tooltip.resets': 'resets {when}',
 };

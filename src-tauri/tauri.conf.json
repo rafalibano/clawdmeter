@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Dev Pulse",
+  "productName": "ClawdMeter",
   "version": "../package.json",
   "identifier": "com.mottu.devpulse",
   "build": {
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Dev Pulse",
+        "title": "ClawdMeter",
         "width": 380,
         "height": 520,
         "decorations": false,

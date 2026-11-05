@@ -50,7 +50,7 @@ jobs:
         with:
           tauriScript: yarn tauri
           tagName: ${{ github.ref_name }}
-          releaseName: Dev Pulse ${{ github.ref_name }}
+          releaseName: ClawdMeter ${{ github.ref_name }}
           releaseBody: Instalação e aviso de app não assinado no README.
           releaseDraft: true
           prerelease: false

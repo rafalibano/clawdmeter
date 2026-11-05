@@ -6,13 +6,13 @@ const NOW = Date.UTC(2026, 10, 5, 12, 0);
 const UTC = 'UTC';
 const PT: UsageTooltipTexts = {
   locale: 'pt-BR',
-  unavailable: 'Dev Pulse · usage indisponível',
+  unavailable: 'ClawdMeter · usage indisponível',
   noData: (label) => `${label}: sem dado`,
   resets: (when) => `reseta ${when}`,
 };
 const EN: UsageTooltipTexts = {
   locale: 'en-US',
-  unavailable: 'Dev Pulse · usage unavailable',
+  unavailable: 'ClawdMeter · usage unavailable',
   noData: (label) => `${label}: no data`,
   resets: (when) => `resets ${when}`,
 };
@@ -50,12 +50,12 @@ describe('describeUsageTooltip', () => {
   });
 
   it('sem snapshot (erro ou desconectado) avisa que o usage está indisponível', () => {
-    expect(describeUsageTooltip(null, NOW, PT, UTC)).toBe('Dev Pulse · usage indisponível');
+    expect(describeUsageTooltip(null, NOW, PT, UTC)).toBe('ClawdMeter · usage indisponível');
   });
 
   it('segue a língua: textos e dia da semana em inglês', () => {
     const snapshot = { fiveHour: { utilization: 10, resetsAt: NOW + DAY_MS }, sevenDay: null };
     expect(describeUsageTooltip(snapshot, NOW, EN, UTC)).toBe('5h: 10% · resets fri 12:00 | 7d: no data');
-    expect(describeUsageTooltip(null, NOW, EN, UTC)).toBe('Dev Pulse · usage unavailable');
+    expect(describeUsageTooltip(null, NOW, EN, UTC)).toBe('ClawdMeter · usage unavailable');
   });
 });

@@ -1,4 +1,4 @@
-# Dev Pulse
+# ClawdMeter
 
 App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (Usage, Sessões, PRs, Reviews, Agenda e Skills).
 
@@ -203,7 +203,7 @@ A cada leitura do `LoadUsage` (e a cada falha) a porta `UsageIndicator` atualiza
 
 - **macOS:** ícone largo (template, só o alfa conta) com o mascote pixel (grade 12×8 em `usage_icon.rs`, olhos como furos) à esquerda e duas linhas `5h`/`7d` com barra arredondada: trecho preenchido opaco, vazio a 35%. O mascote enche de baixo para cima conforme o `7d` (0% todo a 35%, 100% todo opaco) e, quando o `5h` ou o `7d` chega a 100% (sem limite), os olhos viram um X. A `tray-icon` fixa a altura do ícone em 18 pt, então o render é 128×36 px (@2x), pixel a pixel nessa altura.
 - **Windows:** o ícone da bandeja é quadrado, então vai a variante 32×32 (16×16 em @1x) só com o mascote (enche com o `7d`, olhos em X quando um dos limites estoura; azul preenchido, cinza vazio, legível em barra clara e escura). Barras e números ficam no tooltip: `5h: 24% · reseta 14:09 | 7d: 51% · reseta seg 05:39` (`domain/usage/usage-tooltip.ts`).
-- **Sem dado** (janela ausente, Claude desconectado, token vencido ou erro de leitura): mascote todo a 35% com olhos normais e barras com contorno tracejado (no Windows, só o mascote translúcido); o tooltip vira `Dev Pulse · usage indisponível`. Percentuais fora de 0–100 são limitados no Rust.
+- **Sem dado** (janela ausente, Claude desconectado, token vencido ou erro de leitura): mascote todo a 35% com olhos normais e barras com contorno tracejado (no Windows, só o mascote translúcido); o tooltip vira `ClawdMeter · usage indisponível`. Percentuais fora de 0–100 são limitados no Rust.
 - **Antes da primeira leitura** (e com a página Usage desligada) vale o ícone padrão do app (`tray-template.png` no macOS, ícone da janela no Windows); o render com o mascote só aparece depois de uma tentativa de leitura.
 - Os fontes ficam em `src-tauri/src/usage_icon.rs` (mascote em matriz de caracteres; fonte bitmap 4×6 embutida para `5`, `h`, `7`, `d`; sem fontes do sistema e sem dependência de imagem). `cargo run --example render_usage_preview` (em `src-tauri/`) regrava os PNGs de `docs/tray-preview/`.
 
@@ -332,17 +332,19 @@ Para publicar: ajuste a versão em `package.json` e `src-tauri/Cargo.toml` (o `t
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+> O `identifier` do bundle (`com.mottu.devpulse`), o serviço do Keychain e a pasta de configuração mantêm o nome legado de propósito: renomear apagaria ajustes, histórico e logins já salvos. O crate (`dev-pulse` / `dev_pulse_lib`) também segue com o nome antigo.
+
 ## Instalação
 
 Os instaladores ainda não são assinados (sem Apple Developer ID e sem Authenticode), então os sistemas mostram um aviso na primeira abertura.
 
 ### macOS (14 ou superior)
 
-1. Abra o `.dmg` e arraste **Dev Pulse** para Aplicativos.
+1. Abra o `.dmg` e arraste **ClawdMeter** para Aplicativos.
 2. Na primeira abertura, o Gatekeeper bloqueia o app. Abra **Ajustes do Sistema > Privacidade e Segurança** e clique em **Abrir Mesmo Assim**; ou rode:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
+xattr -dr com.apple.quarantine "/Applications/ClawdMeter.app"
 ```
 
 3. O ícone aparece na barra de menu. O app não aparece no Dock. Clique com o botão direito no ícone para sair.
@@ -360,7 +362,7 @@ xattr -dr com.apple.quarantine "/Applications/Dev Pulse.app"
 ## Pendências de segurança (review de Rust)
 
 - **Dívida: tokens do GitHub e do Graph ainda cruzam o IPC.** O token do Claude já não sai do Rust (`claude_usage_fetch`), mas `secret_get` ainda devolve `github.token` e `microsoft.refresh-token` ao webview, que faz as chamadas ao GitHub e ao Microsoft Graph pelo `tauri-plugin-http`. Mover essas chamadas para o Rust (como foi feito no usage) é o passo seguinte; até lá `secret_*` só aceita essas duas chaves.
-- **Pendência S3 (macOS): leitura do Keychain via `/usr/bin/security`.** Se o usuário marcar "Sempre permitir", o acesso é concedido ao binário `security`, não ao Dev Pulse, e qualquer processo local passa a ler a credencial do Claude Code sem aviso. A correção é usar a API nativa (`security-framework`), que amarra o acesso à assinatura do app; hoje o app é assinado ad hoc (`signingIdentity: "-"`), então o acesso quebraria a cada build. Fica para quando houver identidade de assinatura real.
+- **Pendência S3 (macOS): leitura do Keychain via `/usr/bin/security`.** Se o usuário marcar "Sempre permitir", o acesso é concedido ao binário `security`, não ao ClawdMeter, e qualquer processo local passa a ler a credencial do Claude Code sem aviso. A correção é usar a API nativa (`security-framework`), que amarra o acesso à assinatura do app; hoje o app é assinado ad hoc (`signingIdentity: "-"`), então o acesso quebraria a cada build. Fica para quando houver identidade de assinatura real.
 - **Limite do allowlist de ferramentas:** o `claude` casa `Bash(gh pr diff:*)` e os demais padrões `gh` por prefixo; a lista só contém subcomandos do `gh` sem flag de escrita em arquivo, mas uma versão futura do `gh` que acrescente uma flag assim a reabriria.
 
 ## Limitações conhecidas

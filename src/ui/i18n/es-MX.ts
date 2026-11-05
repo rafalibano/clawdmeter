@@ -100,7 +100,7 @@ export const esMX: Record<MessageKey, string> = {
   'note.authorize-org': 'Autoriza el token en la org y haz clic en "Verificar de nuevo".',
   'note.ask-invite': 'Pide la invitación a la org {org} y haz clic en "Verificar de nuevo".',
   'note.enable-notifications': 'Permite las notificaciones y haz clic en "Verificar de nuevo".',
-  'note.notifications-not-authorized': 'El sistema aún no permite las notificaciones de Dev Pulse. Permítelas en los ajustes del sistema.',
+  'note.notifications-not-authorized': 'El sistema aún no permite las notificaciones de ClawdMeter. Permítelas en los ajustes del sistema.',
   'note.missing-scopes': 'Faltan: {scopes}',
 
   'action.connect': 'Conectar',
@@ -215,7 +215,7 @@ export const esMX: Record<MessageKey, string> = {
 
   'notice.run.succeeded': '{name} completada',
   'notice.run.failed': '{name} falló',
-  'tooltip.unavailable': 'Dev Pulse · usage no disponible',
+  'tooltip.unavailable': 'ClawdMeter · usage no disponible',
   'tooltip.noData': '{label}: sin dato',
   'tooltip.resets': 'se reinicia {when}',
 };

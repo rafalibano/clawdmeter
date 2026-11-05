@@ -156,7 +156,7 @@ pub fn evaluate_callback(target: &str, expected_state: &str) -> CommandResult<Ca
 
 fn page(status: &str, title: &str) -> String {
     let body = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>Dev Pulse</title><body style=\"font-family:-apple-system,Segoe UI,sans-serif;text-align:center;margin-top:20vh\"><h2>{title}</h2><p>Você já pode fechar esta janela.</p></body>"
+        "<!doctype html><meta charset=\"utf-8\"><title>ClawdMeter</title><body style=\"font-family:-apple-system,Segoe UI,sans-serif;text-align:center;margin-top:20vh\"><h2>{title}</h2><p>Você já pode fechar esta janela.</p></body>"
     );
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{body}",

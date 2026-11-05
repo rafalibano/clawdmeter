@@ -110,7 +110,7 @@ export const ptBR = {
   'note.authorize-org': 'Autorize o token na org e clique em "Verificar de novo".',
   'note.ask-invite': 'Peça o convite para a org {org} e clique em "Verificar de novo".',
   'note.enable-notifications': 'Libere as notificações e clique em "Verificar de novo".',
-  'note.notifications-not-authorized': 'O sistema ainda não liberou as notificações do Dev Pulse. Libere nos ajustes do sistema.',
+  'note.notifications-not-authorized': 'O sistema ainda não liberou as notificações do ClawdMeter. Libere nos ajustes do sistema.',
   'note.missing-scopes': 'Faltam: {scopes}',
 
   'action.connect': 'Conectar',
@@ -225,7 +225,7 @@ export const ptBR = {
 
   'notice.run.succeeded': '{name} concluída',
   'notice.run.failed': '{name} falhou',
-  'tooltip.unavailable': 'Dev Pulse · usage indisponível',
+  'tooltip.unavailable': 'ClawdMeter · usage indisponível',
   'tooltip.noData': '{label}: sem dado',
   'tooltip.resets': 'reseta {when}',
 } as const satisfies Record<Required, string> & Record<string, string>;

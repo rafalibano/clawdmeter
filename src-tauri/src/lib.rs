@@ -51,7 +51,7 @@ pub fn run() {
         })
         .on_window_event(tray::on_window_event)
         .build(tauri::generate_context!())
-        .expect("erro ao iniciar o Dev Pulse")
+        .expect("erro ao iniciar o ClawdMeter")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 app.state::<ProcessRegistry>().terminate_all();

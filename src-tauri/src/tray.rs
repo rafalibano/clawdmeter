@@ -78,7 +78,7 @@ pub fn prepare_popover(app: &AppHandle) {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, QUIT_ID, "Sair do Dev Pulse", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, QUIT_ID, "Sair do ClawdMeter", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&quit])?;
 
     let icon = if platform::TRAY_ICON_IS_TEMPLATE {
@@ -92,7 +92,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(platform::TRAY_ICON_IS_TEMPLATE)
-        .tooltip("Dev Pulse")
+        .tooltip("ClawdMeter")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
