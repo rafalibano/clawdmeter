@@ -45,7 +45,7 @@ impl Rect {
         }
     }
 
-    fn contains(&self, point: Point) -> bool {
+    pub fn contains(&self, point: Point) -> bool {
         point.x >= self.x && point.x < self.max_x() && point.y >= self.y && point.y < self.max_y()
     }
 }

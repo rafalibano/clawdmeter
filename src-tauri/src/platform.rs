@@ -1,6 +1,9 @@
+use crate::popover_dismiss::HideReason;
 use crate::usage_icon::{self, UsageIcon};
 
 pub const REOPEN_GUARD_MS: u64 = 250;
+
+pub const HIDE_ON_BLUR: bool = cfg!(not(target_os = "macos"));
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClickAction {
@@ -9,10 +12,10 @@ pub enum ClickAction {
     Ignore,
 }
 
-pub fn click_action(visible: bool, ms_since_blur_hide: u64) -> ClickAction {
+pub fn click_action(visible: bool, ms_since_auto_hide: u64) -> ClickAction {
     if visible {
         ClickAction::Hide
-    } else if ms_since_blur_hide <= REOPEN_GUARD_MS {
+    } else if ms_since_auto_hide <= REOPEN_GUARD_MS {
         ClickAction::Ignore
     } else {
         ClickAction::Show
@@ -30,11 +33,13 @@ pub fn configure_app(_app: &mut tauri::App) {}
 #[cfg(target_os = "macos")]
 mod popover {
     use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol};
-    use objc2::{define_class, ffi, ClassType, MainThreadOnly};
+    use objc2::{define_class, ffi, msg_send, sel, ClassType, MainThreadOnly};
     use objc2_app_kit::{
         NSPanel, NSPopUpMenuWindowLevel, NSResponder, NSWindow, NSWindowCollectionBehavior,
         NSWindowLevel, NSWindowStyleMask,
     };
+
+    use crate::popover_log as log;
 
     define_class!(
         #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
@@ -99,20 +104,241 @@ mod popover {
         window.downcast_ref::<NSPanel>()
     }
 
+    fn prevent_activation(panel: &NSPanel) -> bool {
+        // AppKit only syncs NonactivatingPanel to the window server at init; tauri-nspanel calls this private setter too.
+        if !panel.respondsToSelector(sel!(_setPreventsActivation:)) {
+            return false;
+        }
+        let _: () = unsafe { msg_send![panel, _setPreventsActivation: true] };
+        true
+    }
+
+    fn pin_to_active_space(window: &NSWindow) {
+        window.setCollectionBehavior(merge_behavior(window.collectionBehavior()));
+        window.setLevel(window_level());
+        window.setCanHide(false);
+    }
+
     pub fn apply(window: &NSWindow) {
         if let Some(panel) = into_panel(window) {
             panel.setStyleMask(style_mask(panel.styleMask()));
+            let prevents = prevent_activation(panel);
             panel.setFloatingPanel(true);
             panel.setBecomesKeyOnlyIfNeeded(false);
             panel.setHidesOnDeactivate(false);
+            log::write(&format!("panel-class ok prevents_activation={prevents}"));
+        } else {
+            log::write(&format!(
+                "panel-class failed class={}",
+                window.class().name().to_string_lossy()
+            ));
         }
-        window.setCollectionBehavior(merge_behavior(window.collectionBehavior()));
-        window.setLevel(window_level());
+        pin_to_active_space(window);
     }
 
     pub fn show(window: &NSWindow) {
+        pin_to_active_space(window);
         window.orderFrontRegardless();
         window.makeKeyWindow();
+    }
+
+    pub fn describe(window: &NSWindow) -> String {
+        let frame = window.frame();
+        format!(
+            "frame=({:.0},{:.0},{:.0}x{:.0}) level={} behavior={:#x} on_active_space={} visible={} key={}",
+            frame.origin.x,
+            frame.origin.y,
+            frame.size.width,
+            frame.size.height,
+            window.level(),
+            window.collectionBehavior().0,
+            window.isOnActiveSpace(),
+            window.isVisible(),
+            window.isKeyWindow()
+        )
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod dismiss {
+    use std::cell::{Cell, RefCell};
+    use std::ptr::{self, NonNull};
+    use std::rc::Rc;
+
+    use block2::RcBlock;
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyObject, NSObjectProtocol, ProtocolObject};
+    use objc2::Message;
+    use objc2_app_kit::{
+        NSEvent, NSEventMask, NSRunningApplication, NSWindow, NSWorkspace,
+        NSWorkspaceDidActivateApplicationNotification,
+    };
+    use objc2_foundation::{NSNotification, NSOperationQueue};
+
+    use crate::popover_dismiss::{self as rules, Decision, HideReason, Session, Trigger};
+    use crate::popover_geometry::{Point, Rect};
+    use crate::popover_log as log;
+
+    const ESCAPE_KEY_CODE: u16 = 53;
+
+    struct Monitors {
+        clicks: Option<Retained<AnyObject>>,
+        escape: Option<Retained<AnyObject>>,
+        activation: Retained<ProtocolObject<dyn NSObjectProtocol>>,
+    }
+
+    thread_local! {
+        static ACTIVE: RefCell<Option<Monitors>> = const { RefCell::new(None) };
+        static TRAY_ICON: Cell<Option<Rect>> = const { Cell::new(None) };
+    }
+
+    pub fn remember_tray_icon(icon: Option<Rect>) {
+        TRAY_ICON.set(icon);
+    }
+
+    fn frontmost() -> Option<Retained<NSRunningApplication>> {
+        NSWorkspace::sharedWorkspace().frontmostApplication()
+    }
+
+    fn describe_app(app: Option<&NSRunningApplication>) -> String {
+        app.map_or_else(
+            || "none".to_owned(),
+            |app| {
+                let bundle = app
+                    .bundleIdentifier()
+                    .map_or_else(|| "?".to_owned(), |id| id.to_string());
+                format!("{}:{bundle}", app.processIdentifier())
+            },
+        )
+    }
+
+    fn defer(on_dismiss: Rc<dyn Fn(HideReason)>, reason: HideReason) {
+        let block = RcBlock::new(move || on_dismiss(reason));
+        // Removing a monitor frees its block, so the hide must not run inside the monitor handler.
+        unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
+    }
+
+    fn evaluator(
+        window: &NSWindow,
+        session: Session,
+        on_dismiss: Rc<dyn Fn(HideReason)>,
+    ) -> Rc<dyn Fn(Trigger) -> bool> {
+        let window = window.retain();
+        let dismissed = Cell::new(false);
+        Rc::new(move |trigger| {
+            if dismissed.get() {
+                return false;
+            }
+            let frame = window.frame();
+            let panel = Rect::new(
+                frame.origin.x,
+                frame.origin.y,
+                frame.size.width,
+                frame.size.height,
+            );
+            match rules::decide(&session, rules::now_ms(), panel, trigger) {
+                Decision::Dismiss(reason) => {
+                    dismissed.set(true);
+                    defer(on_dismiss.clone(), reason);
+                    true
+                }
+                Decision::Ignore(why) => {
+                    log::write(&format!("dismiss-ignored trigger={trigger:?} why={why}"));
+                    false
+                }
+            }
+        })
+    }
+
+    pub fn install(window: &NSWindow, on_dismiss: Rc<dyn Fn(HideReason)>) {
+        remove();
+        let front = frontmost();
+        let session = Session {
+            shown_at_ms: rules::now_ms(),
+            frontmost_pid: front.as_ref().map(|app| app.processIdentifier()),
+            own_pid: Some(NSRunningApplication::currentApplication().processIdentifier()),
+            tray_icon: TRAY_ICON.get(),
+        };
+        log::write(&format!(
+            "monitors-install frontmost={} tray_icon={:?}",
+            describe_app(front.as_deref()),
+            session.tray_icon
+        ));
+        let evaluate = evaluator(window, session, on_dismiss);
+
+        let on_click = evaluate.clone();
+        let clicks_block = RcBlock::new(move |_event: NonNull<NSEvent>| {
+            let location = NSEvent::mouseLocation();
+            on_click(Trigger::Click(Point {
+                x: location.x,
+                y: location.y,
+            }));
+        });
+        let clicks = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
+            NSEventMask::LeftMouseDown | NSEventMask::RightMouseDown | NSEventMask::OtherMouseDown,
+            &clicks_block,
+        );
+
+        let on_key = evaluate.clone();
+        let escape_block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
+            let key = unsafe { event.as_ref() }.keyCode();
+            if key == ESCAPE_KEY_CODE && on_key(Trigger::Escape) {
+                ptr::null_mut()
+            } else {
+                event.as_ptr()
+            }
+        });
+        let escape = unsafe {
+            NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+                NSEventMask::KeyDown,
+                &escape_block,
+            )
+        };
+
+        let activation_block = RcBlock::new(move |_notification: NonNull<NSNotification>| {
+            let app = frontmost();
+            log::write(&format!("app-activated {}", describe_app(app.as_deref())));
+            if let Some(app) = app {
+                evaluate(Trigger::AppActivated(app.processIdentifier()));
+            }
+        });
+        let activation = unsafe {
+            NSWorkspace::sharedWorkspace()
+                .notificationCenter()
+                .addObserverForName_object_queue_usingBlock(
+                    Some(NSWorkspaceDidActivateApplicationNotification),
+                    None,
+                    Some(&NSOperationQueue::mainQueue()),
+                    &activation_block,
+                )
+        };
+
+        log::write(&format!(
+            "monitors-installed clicks={} escape={}",
+            clicks.is_some(),
+            escape.is_some()
+        ));
+        ACTIVE.set(Some(Monitors {
+            clicks,
+            escape,
+            activation,
+        }));
+    }
+
+    pub fn remove() -> bool {
+        let Some(monitors) = ACTIVE.take() else {
+            return false;
+        };
+        for monitor in [monitors.clicks, monitors.escape].into_iter().flatten() {
+            unsafe { NSEvent::removeMonitor(&monitor) };
+        }
+        let observer: &AnyObject = monitors.activation.as_ref();
+        unsafe {
+            NSWorkspace::sharedWorkspace()
+                .notificationCenter()
+                .removeObserver(observer)
+        };
+        true
     }
 }
 
@@ -147,6 +373,7 @@ mod placement {
     use objc2_foundation::{NSPoint, NSRect};
 
     use crate::popover_geometry::{self as geometry, PhysicalRect, Point, Rect, Screen};
+    use crate::popover_log as log;
 
     fn rect(frame: NSRect) -> Rect {
         Rect::new(
@@ -171,13 +398,11 @@ mod placement {
         }
     }
 
-    pub fn apply(window: &NSWindow, icon: Option<PhysicalRect>) {
+    pub fn apply(window: &NSWindow, icon: Option<PhysicalRect>) -> Option<Rect> {
         let mtm = MainThreadMarker::from(window);
         let ns_screens = NSScreen::screens(mtm);
         let screens: Vec<Screen> = ns_screens.iter().map(|s| screen(&s)).collect();
-        let Some(primary) = screens.first() else {
-            return;
-        };
+        let primary = screens.first()?;
         let main = NSScreen::mainScreen(mtm)
             .and_then(|main| ns_screens.iter().position(|s| s == main))
             .unwrap_or(0);
@@ -187,14 +412,20 @@ mod placement {
             y: mouse.y,
         };
         let placement = geometry::locate(icon, Some(pointer), primary.frame.height, &screens, main);
+        let target = &screens[placement.screen];
         let size = window.frame().size;
-        let origin = geometry::popover_origin(
+        let origin = geometry::popover_origin(placement.icon, target, size.width, size.height);
+        log::write(&format!(
+            "position screen={} frame={:?} visible={:?} icon={:?} origin=({:.0},{:.0})",
+            placement.screen,
+            target.frame,
+            target.visible_frame,
             placement.icon,
-            &screens[placement.screen],
-            size.width,
-            size.height,
-        );
+            origin.x,
+            origin.y
+        ));
         window.setFrameOrigin(NSPoint::new(origin.x, origin.y));
+        placement.icon
     }
 }
 
@@ -210,7 +441,9 @@ pub fn position_popover(window: &tauri::WebviewWindow, icon: Option<tauri::Rect>
             height: size.height,
         }
     });
-    on_ns_window(window, move |ns_window| placement::apply(ns_window, icon));
+    on_ns_window(window, move |ns_window| {
+        dismiss::remember_tray_icon(placement::apply(ns_window, icon));
+    });
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -226,15 +459,49 @@ pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect
 }
 
 #[cfg(target_os = "macos")]
-pub fn show_popover(window: &tauri::WebviewWindow) {
-    on_ns_window(window, popover::show);
+const SHOW_PROBE_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+
+#[cfg(target_os = "macos")]
+pub fn show_popover(
+    window: &tauri::WebviewWindow,
+    on_dismiss: impl Fn(HideReason) + Send + 'static,
+) {
+    use crate::popover_log as log;
+
+    on_ns_window(window, move |ns_window| {
+        popover::show(ns_window);
+        log::write(&format!("show {}", popover::describe(ns_window)));
+        dismiss::install(ns_window, std::rc::Rc::new(on_dismiss));
+    });
+    let target = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(SHOW_PROBE_DELAY);
+        on_ns_window(&target, |ns_window| {
+            log::write(&format!("show+100ms {}", popover::describe(ns_window)));
+        });
+    });
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn show_popover(window: &tauri::WebviewWindow) {
+pub fn show_popover(
+    window: &tauri::WebviewWindow,
+    _on_dismiss: impl Fn(HideReason) + Send + 'static,
+) {
     let _ = window.show();
     let _ = window.set_focus();
 }
+
+#[cfg(target_os = "macos")]
+pub fn release_popover(window: &tauri::WebviewWindow) {
+    on_ns_window(window, |_| {
+        if dismiss::remove() {
+            crate::popover_log::write("monitors-removed");
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn release_popover(_window: &tauri::WebviewWindow) {}
 
 #[cfg(target_os = "macos")]
 pub const TRAY_ICON_IS_TEMPLATE: bool = true;
@@ -351,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn click_right_after_blur_hide_is_ignored() {
+    fn click_right_after_auto_hide_is_ignored() {
         assert_eq!(click_action(false, 50), ClickAction::Ignore);
         assert_eq!(click_action(false, REOPEN_GUARD_MS), ClickAction::Ignore);
     }

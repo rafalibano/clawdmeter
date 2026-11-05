@@ -1,5 +1,4 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
@@ -10,32 +9,52 @@ use tauri_plugin_global_shortcut::{
 };
 
 use crate::platform::{self, ClickAction};
+use crate::popover_dismiss::{now_ms, HideReason};
+use crate::popover_log as log;
 use crate::usage_icon;
 
 const MAIN_WINDOW: &str = "main";
 const QUIT_ID: &str = "quit";
 const TRAY_ID: &str = "main";
 
-static LAST_BLUR_HIDE_MS: AtomicU64 = AtomicU64::new(0);
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| {
-            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
-        })
-}
+static LAST_AUTO_HIDE_MS: AtomicU64 = AtomicU64::new(0);
 
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
     if window.label() != MAIN_WINDOW {
         return;
     }
-    if let WindowEvent::Focused(false) = event {
-        if window.is_visible().unwrap_or(false) {
-            LAST_BLUR_HIDE_MS.store(now_ms(), Ordering::SeqCst);
-            let _ = window.hide();
+    if let WindowEvent::Focused(focused) = event {
+        log::write(&format!("focus {focused}"));
+        if platform::HIDE_ON_BLUR && !focused && window.is_visible().unwrap_or(false) {
+            hide_popover(window.app_handle(), HideReason::Blur);
         }
     }
+}
+
+fn hide_popover(app: &AppHandle, reason: HideReason) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        return;
+    };
+    platform::release_popover(&window);
+    if reason.guards_reopen() {
+        LAST_AUTO_HIDE_MS.store(now_ms(), Ordering::SeqCst);
+    }
+    log::write(&format!("hide reason={}", reason.as_str()));
+    let _ = window.hide();
+}
+
+fn describe_icon(icon: Option<Rect>) -> String {
+    icon.map_or_else(
+        || "none".to_owned(),
+        |rect| {
+            let position = rect.position.to_physical::<f64>(1.0);
+            let size = rect.size.to_physical::<f64>(1.0);
+            format!(
+                "({:.0},{:.0},{:.0}x{:.0})",
+                position.x, position.y, size.width, size.height
+            )
+        },
+    )
 }
 
 fn toggle_popover(app: &AppHandle, icon: Option<Rect>) {
@@ -43,15 +62,19 @@ fn toggle_popover(app: &AppHandle, icon: Option<Rect>) {
         return;
     };
     let visible = window.is_visible().unwrap_or(false);
-    let since_blur = now_ms().saturating_sub(LAST_BLUR_HIDE_MS.load(Ordering::SeqCst));
-    match platform::click_action(visible, since_blur) {
-        ClickAction::Hide => {
-            let _ = window.hide();
-        }
+    let since_auto_hide = now_ms().saturating_sub(LAST_AUTO_HIDE_MS.load(Ordering::SeqCst));
+    let action = platform::click_action(visible, since_auto_hide);
+    log::write(&format!(
+        "tray-click rect={} visible={visible} since_auto_hide_ms={since_auto_hide} action={action:?}",
+        describe_icon(icon)
+    ));
+    match action {
+        ClickAction::Hide => hide_popover(app, HideReason::Toggle),
         ClickAction::Show => {
             platform::prepare_popover(&window);
             platform::position_popover(&window, icon);
-            platform::show_popover(&window);
+            let handle = app.clone();
+            platform::show_popover(&window, move |reason| hide_popover(&handle, reason));
         }
         ClickAction::Ignore => {}
     }

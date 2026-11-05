@@ -1,7 +1,9 @@
 mod commands;
 mod platform;
+mod popover_dismiss;
 #[cfg(any(target_os = "macos", test))]
 mod popover_geometry;
+mod popover_log;
 mod tray;
 pub mod usage_icon;
 
@@ -43,6 +45,10 @@ pub fn run() {
             commands::tray_usage::tray_set_usage,
         ])
         .setup(|app| {
+            if let Ok(dir) = app.path().app_log_dir() {
+                popover_log::init(dir);
+            }
+            popover_log::write(&format!("app-start version={}", app.package_info().version));
             platform::configure_app(app);
             tray::create(app.handle())?;
             tray::prepare_popover(app.handle());
