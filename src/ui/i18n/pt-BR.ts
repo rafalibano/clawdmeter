@@ -30,7 +30,7 @@ export const ptBR = {
 
   'page.usage': 'Uso',
   'page.sessions': 'Sessões',
-  'page.prs': 'PRs',
+  'page.prs': 'Pull Requests',
   'page.reviews': 'Reviews',
   'page.teams': 'Agenda',
   'page.skills': 'Skills',

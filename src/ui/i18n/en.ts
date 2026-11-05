@@ -20,7 +20,7 @@ export const en: Record<MessageKey, string> = {
 
   'page.usage': 'Usage',
   'page.sessions': 'Sessions',
-  'page.prs': 'PRs',
+  'page.prs': 'Pull Requests',
   'page.reviews': 'Reviews',
   'page.teams': 'Agenda',
   'page.skills': 'Skills',

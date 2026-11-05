@@ -8,7 +8,7 @@ export const PULL_REQUESTS_POLL_MS = 5 * 60_000;
 export function createPullRequestsPage(deps: { pullRequests: PullRequests }): PageModule<PullRequestsData> {
   return {
     id: PULL_REQUESTS_PAGE.id,
-    title: 'PRs',
+    title: 'Pull Requests',
     requiredConnections: ['github'],
     pollIntervalMs: PULL_REQUESTS_POLL_MS,
     load: () => deps.pullRequests.loadMine.execute(),

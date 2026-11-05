@@ -20,7 +20,7 @@ export const esMX: Record<MessageKey, string> = {
 
   'page.usage': 'Uso',
   'page.sessions': 'Sesiones',
-  'page.prs': 'PRs',
+  'page.prs': 'Pull Requests',
   'page.reviews': 'Reviews',
   'page.teams': 'Agenda',
   'page.skills': 'Skills',
