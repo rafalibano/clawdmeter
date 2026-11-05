@@ -89,9 +89,17 @@ mod popover {
             && PopoverPanel::class().instance_size() == window_size
     }
 
+    pub const TAO_WINDOW_CLASS: &str = "TaoWindow";
+
+    pub fn can_swap_class(name: &str) -> bool {
+        name == TAO_WINDOW_CLASS
+    }
+
     fn into_panel(window: &NSWindow) -> Option<&NSPanel> {
         if !window.isKindOfClass(PopoverPanel::class()) {
-            if !panel_shares_window_layout()
+            // A KVO subclass (NSKVONotifying_TaoWindow) or another wrapper would be lost by the swap.
+            if !can_swap_class(&window.class().name().to_string_lossy())
+                || !panel_shares_window_layout()
                 || window.class().instance_size() < PopoverPanel::class().instance_size()
             {
                 return None;
@@ -175,11 +183,15 @@ mod dismiss {
     };
     use objc2_foundation::{NSNotification, NSOperationQueue};
 
-    use crate::popover_dismiss::{self as rules, Decision, HideReason, Session, Trigger};
+    use crate::popover_dismiss::{
+        self as rules, Decision, HideReason, Session, ShowEpoch, Trigger,
+    };
     use crate::popover_geometry::{Point, Rect};
     use crate::popover_log as log;
 
     const ESCAPE_KEY_CODE: u16 = 53;
+
+    static SHOWS: ShowEpoch = ShowEpoch::new();
 
     struct Monitors {
         clicks: Option<Retained<AnyObject>>,
@@ -212,8 +224,14 @@ mod dismiss {
         )
     }
 
-    fn defer(on_dismiss: Rc<dyn Fn(HideReason)>, reason: HideReason) {
-        let block = RcBlock::new(move || on_dismiss(reason));
+    fn defer(on_dismiss: Rc<dyn Fn(HideReason)>, reason: HideReason, epoch: u64) {
+        let block = RcBlock::new(move || {
+            if SHOWS.is_current(epoch) {
+                on_dismiss(reason);
+            } else {
+                log::write("dismiss-stale");
+            }
+        });
         // Removing a monitor frees its block, so the hide must not run inside the monitor handler.
         unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
     }
@@ -225,6 +243,7 @@ mod dismiss {
     ) -> Rc<dyn Fn(Trigger) -> bool> {
         let window = window.retain();
         let dismissed = Cell::new(false);
+        let epoch = SHOWS.begin();
         Rc::new(move |trigger| {
             if dismissed.get() {
                 return false;
@@ -239,7 +258,7 @@ mod dismiss {
             match rules::decide(&session, rules::monotonic_ms(), panel, trigger) {
                 Decision::Dismiss(reason) => {
                     dismissed.set(true);
-                    defer(on_dismiss.clone(), reason);
+                    defer(on_dismiss.clone(), reason, epoch);
                     true
                 }
                 Decision::Ignore(why) => {
@@ -259,11 +278,13 @@ mod dismiss {
             own_pid: Some(NSRunningApplication::currentApplication().processIdentifier()),
             tray_icon: TRAY_ICON.get(),
         };
-        log::write(&format!(
-            "monitors-install frontmost={} tray_icon={:?}",
-            describe_app(front.as_deref()),
-            session.tray_icon
-        ));
+        log::debug(|| {
+            format!(
+                "monitors-install frontmost={} tray_icon={:?}",
+                describe_app(front.as_deref()),
+                session.tray_icon
+            )
+        });
         let evaluate = evaluator(window, session, on_dismiss);
 
         let on_click = evaluate.clone();
@@ -297,7 +318,7 @@ mod dismiss {
 
         let activation_block = RcBlock::new(move |_notification: NonNull<NSNotification>| {
             let app = frontmost();
-            log::write(&format!("app-activated {}", describe_app(app.as_deref())));
+            log::debug(|| format!("app-activated {}", describe_app(app.as_deref())));
             if let Some(app) = app {
                 evaluate(Trigger::AppActivated(app.processIdentifier()));
             }
@@ -415,15 +436,17 @@ mod placement {
         let target = &screens[placement.screen];
         let size = window.frame().size;
         let origin = geometry::popover_origin(placement.icon, target, size.width, size.height);
-        log::write(&format!(
-            "position screen={} frame={:?} visible={:?} icon={:?} origin=({:.0},{:.0})",
-            placement.screen,
-            target.frame,
-            target.visible_frame,
-            placement.icon,
-            origin.x,
-            origin.y
-        ));
+        log::debug(|| {
+            format!(
+                "position screen={} frame={:?} visible={:?} icon={:?} origin=({:.0},{:.0})",
+                placement.screen,
+                target.frame,
+                target.visible_frame,
+                placement.icon,
+                origin.x,
+                origin.y
+            )
+        });
         window.setFrameOrigin(NSPoint::new(origin.x, origin.y));
         placement.icon
     }
@@ -538,16 +561,18 @@ pub fn show_popover(
 
     on_ns_window(window, move |ns_window| {
         popover::show(ns_window);
-        log::write(&format!("show {}", popover::describe(ns_window)));
+        log::debug(|| format!("show {}", popover::describe(ns_window)));
         dismiss::install(ns_window, std::rc::Rc::new(on_dismiss));
     });
-    let target = window.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(SHOW_PROBE_DELAY);
-        on_ns_window(&target, |ns_window| {
-            log::write(&format!("show+100ms {}", popover::describe(ns_window)));
+    if cfg!(debug_assertions) {
+        let target = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(SHOW_PROBE_DELAY);
+            on_ns_window(&target, |ns_window| {
+                log::write(&format!("show+100ms {}", popover::describe(ns_window)));
+            });
         });
-    });
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -635,6 +660,14 @@ mod tests {
             assert!(!merged.contains(Behavior::FullScreenPrimary));
             assert!(!merged.contains(Behavior::Transient));
             assert!(!merged.contains(Behavior::MoveToActiveSpace));
+        }
+
+        #[test]
+        fn only_a_plain_tao_window_is_swapped_into_a_panel() {
+            assert!(popover::can_swap_class("TaoWindow"));
+            for other in ["NSKVONotifying_TaoWindow", "NSWindow", "TaoWindowX", ""] {
+                assert!(!popover::can_swap_class(other), "{other}");
+            }
         }
 
         #[test]
