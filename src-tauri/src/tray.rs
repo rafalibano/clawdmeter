@@ -49,8 +49,7 @@ fn toggle_popover(app: &AppHandle) {
         ClickAction::Show => {
             platform::prepare_popover(&window);
             let _ = window.move_window_constrained(Position::TrayCenter);
-            let _ = window.show();
-            let _ = window.set_focus();
+            platform::show_popover(&window);
         }
         ClickAction::Ignore => {}
     }

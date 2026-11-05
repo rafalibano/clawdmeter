@@ -29,9 +29,31 @@ pub fn configure_app(_app: &mut tauri::App) {}
 
 #[cfg(target_os = "macos")]
 mod popover {
+    use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol};
+    use objc2::{define_class, ffi, ClassType, MainThreadOnly};
     use objc2_app_kit::{
-        NSPopUpMenuWindowLevel, NSWindow, NSWindowCollectionBehavior, NSWindowLevel,
+        NSPanel, NSPopUpMenuWindowLevel, NSResponder, NSWindow, NSWindowCollectionBehavior,
+        NSWindowLevel, NSWindowStyleMask,
     };
+
+    define_class!(
+        #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "DevPulsePopoverPanel"]
+        pub struct PopoverPanel;
+
+        impl PopoverPanel {
+            #[unsafe(method(canBecomeKeyWindow))]
+            fn can_become_key_window(&self) -> bool {
+                true
+            }
+
+            #[unsafe(method(canBecomeMainWindow))]
+            fn can_become_main_window(&self) -> bool {
+                false
+            }
+        }
+    );
 
     pub fn collection_behavior() -> NSWindowCollectionBehavior {
         NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -52,27 +74,82 @@ mod popover {
             | collection_behavior()
     }
 
+    pub fn style_mask(current: NSWindowStyleMask) -> NSWindowStyleMask {
+        current | NSWindowStyleMask::NonactivatingPanel
+    }
+
+    pub fn panel_shares_window_layout() -> bool {
+        let window_size = NSWindow::class().instance_size();
+        NSPanel::class().instance_size() == window_size
+            && PopoverPanel::class().instance_size() == window_size
+    }
+
+    fn into_panel(window: &NSWindow) -> Option<&NSPanel> {
+        if !window.isKindOfClass(PopoverPanel::class()) {
+            if !panel_shares_window_layout()
+                || window.class().instance_size() < PopoverPanel::class().instance_size()
+            {
+                return None;
+            }
+            let object: *const NSWindow = window;
+            unsafe {
+                ffi::object_setClass(object.cast_mut().cast::<AnyObject>(), PopoverPanel::class())
+            };
+        }
+        window.downcast_ref::<NSPanel>()
+    }
+
     pub fn apply(window: &NSWindow) {
+        if let Some(panel) = into_panel(window) {
+            panel.setStyleMask(style_mask(panel.styleMask()));
+            panel.setFloatingPanel(true);
+            panel.setBecomesKeyOnlyIfNeeded(false);
+            panel.setHidesOnDeactivate(false);
+        }
         window.setCollectionBehavior(merge_behavior(window.collectionBehavior()));
         window.setLevel(window_level());
+    }
+
+    pub fn show(window: &NSWindow) {
+        window.orderFrontRegardless();
+        window.makeKeyWindow();
     }
 }
 
 #[cfg(target_os = "macos")]
-pub fn prepare_popover(window: &tauri::WebviewWindow) {
-    let _ = window.set_visible_on_all_workspaces(true);
+fn on_ns_window(
+    window: &tauri::WebviewWindow,
+    action: impl FnOnce(&objc2_app_kit::NSWindow) + Send + 'static,
+) {
     let target = window.clone();
     let _ = window.run_on_main_thread(move || {
         if let Ok(ptr) = target.ns_window() {
             if !ptr.is_null() {
-                popover::apply(unsafe { &*ptr.cast::<objc2_app_kit::NSWindow>() });
+                action(unsafe { &*ptr.cast::<objc2_app_kit::NSWindow>() });
             }
         }
     });
 }
 
+#[cfg(target_os = "macos")]
+pub fn prepare_popover(window: &tauri::WebviewWindow) {
+    let _ = window.set_visible_on_all_workspaces(true);
+    on_ns_window(window, popover::apply);
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn prepare_popover(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "macos")]
+pub fn show_popover(window: &tauri::WebviewWindow) {
+    on_ns_window(window, popover::show);
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn show_popover(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 
 #[cfg(target_os = "macos")]
 pub const TRAY_ICON_IS_TEMPLATE: bool = true;
@@ -138,6 +215,42 @@ mod tests {
             assert!(!merged.contains(Behavior::FullScreenPrimary));
             assert!(!merged.contains(Behavior::Transient));
             assert!(!merged.contains(Behavior::MoveToActiveSpace));
+        }
+
+        #[test]
+        fn panel_swap_keeps_the_window_memory_layout() {
+            assert!(popover::panel_shares_window_layout());
+        }
+
+        #[test]
+        fn popover_panel_is_an_nspanel_overriding_key_and_main() {
+            use objc2::{sel, ClassType};
+            use objc2_app_kit::NSPanel;
+
+            let panel = popover::PopoverPanel::class();
+            assert_eq!(panel.superclass(), Some(NSPanel::class()));
+            for selector in [sel!(canBecomeKeyWindow), sel!(canBecomeMainWindow)] {
+                let own = panel
+                    .instance_method(selector)
+                    .map(|m| m.implementation() as *const ());
+                let inherited = NSPanel::class()
+                    .instance_method(selector)
+                    .map(|m| m.implementation() as *const ());
+                assert!(own.is_some());
+                assert_ne!(own, inherited);
+            }
+        }
+
+        #[test]
+        fn style_mask_adds_nonactivating_and_keeps_existing_bits() {
+            use objc2_app_kit::NSWindowStyleMask as Mask;
+
+            let current = Mask::Borderless | Mask::Miniaturizable;
+            let mask = popover::style_mask(current);
+            assert!(mask.contains(Mask::NonactivatingPanel));
+            assert!(mask.contains(Mask::Miniaturizable));
+            assert!(!mask.contains(Mask::Titled));
+            assert_eq!(popover::style_mask(mask), mask);
         }
 
         #[test]
