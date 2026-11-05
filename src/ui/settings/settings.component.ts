@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
   APP_LANGUAGES,
   THEME_MODES,
@@ -16,6 +16,7 @@ import { ACCENT_PRESETS, BACKGROUND_PRESETS, SERIES_PRESETS } from '../theme/acc
 import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
+import { seriesLineRows } from './series-lines';
 import { ConnectionsComponent } from './connections/connections.component';
 
 @Component({
@@ -52,6 +53,13 @@ export class SettingsComponent {
   protected readonly seriesValues = computed(() =>
     seriesLineColors(this.settings().appearance.accentColor, this.theme.resolved(), this.settings().seriesColors),
   );
+
+  protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
+  protected readonly seriesOpen = signal(false);
+
+  protected toggleSeries(): void {
+    this.seriesOpen.update((open) => !open);
+  }
 
   protected setSeriesColor(kind: keyof SeriesColorSettings, color: string | null): void {
     this.facade.update({ seriesColors: { [kind]: color } });
