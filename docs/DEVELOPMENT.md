@@ -1,110 +1,110 @@
-# Desenvolvimento
+# Development
 
-Guia para quem quer rodar, alterar e empacotar o ClawdMeter. Para instalar e usar, veja o [README](../README.md). Detalhes técnicos em [ARCHITECTURE.md](ARCHITECTURE.md) e [SECURITY.md](SECURITY.md).
+Guide for those who want to run, change and package ClawdMeter. To install and use it, see the [README](../README.md). Technical details in [ARCHITECTURE.md](ARCHITECTURE.md) and [SECURITY.md](SECURITY.md).
 
-## Pré-requisitos
+## Prerequisites
 
-- macOS 14 ou superior
-- Node 22 e Yarn 1
-- Rust 1.99.1 via [rustup](https://rustup.rs): o `rust-toolchain.toml` na raiz fixa a versão, o rustup instala sozinho na primeira vez que o `cargo` roda
+- macOS 14 or later
+- Node 22 and Yarn 1
+- Rust 1.99.1 via [rustup](https://rustup.rs): the `rust-toolchain.toml` at the root pins the version, and rustup installs it on its own the first time `cargo` runs
 - Xcode Command Line Tools: `xcode-select --install`
 
-## Comandos
+## Commands
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `yarn install` | instala as dependências |
-| `yarn dev:web` | só o Angular no navegador (http://127.0.0.1:4200), sem Tauri, com adapters fakes e cenários `?demo=` |
-| `yarn tauri dev` (ou `yarn dev`) | app completo |
-| `yarn lint` | ESLint, incluindo as regras de camada |
-| `yarn typecheck` | `tsc` no app e nos testes |
-| `yarn test` | Vitest (domain, application, infrastructure, ui e o lint de arquitetura) |
-| `yarn build` | build de produção do Angular em `dist/clawdmeter/browser` (exigido antes do `cargo test`) |
-| `yarn build:demo` | build do modo demo (`fileReplacements` para `composition-root.demo.ts`) |
-| `yarn test:rust` | `cargo test` em `src-tauri` |
-| `cargo clippy --all-targets -- -D warnings` | lint do Rust (rode em `src-tauri/`) |
-| `cargo fmt --check` | formatação do Rust (rode em `src-tauri/`) |
-| `cargo deny check` | licenças, advisories e fontes das dependências (`src-tauri/deny.toml`) |
-| `CI=true yarn tauri build --bundles dmg` | gera o `.dmg` em `src-tauri/target/release/bundle/dmg/` |
+| `yarn install` | installs the dependencies |
+| `yarn dev:web` | Angular only, in the browser (http://127.0.0.1:4200), without Tauri, with fake adapters and `?demo=` scenarios |
+| `yarn tauri dev` (or `yarn dev`) | the full app |
+| `yarn lint` | ESLint, including the layer rules |
+| `yarn typecheck` | `tsc` on the app and on the tests |
+| `yarn test` | Vitest (domain, application, infrastructure, ui and the architecture lint) |
+| `yarn build` | Angular production build in `dist/clawdmeter/browser` (required before `cargo test`) |
+| `yarn build:demo` | demo mode build (`fileReplacements` to `composition-root.demo.ts`) |
+| `yarn test:rust` | `cargo test` in `src-tauri` |
+| `cargo clippy --all-targets -- -D warnings` | Rust lint (run in `src-tauri/`) |
+| `cargo fmt --check` | Rust formatting (run in `src-tauri/`) |
+| `cargo deny check` | licenses, advisories and sources of the dependencies (`src-tauri/deny.toml`) |
+| `CI=true yarn tauri build --bundles dmg` | generates the `.dmg` in `src-tauri/target/release/bundle/dmg/` |
 
-O modo demo troca `composition-root.ts` por `composition-root.demo.ts` por `fileReplacements` do Angular (configuração `demo`). O popover tem largura fixa de 380 px nos dois modos.
+Demo mode swaps `composition-root.ts` for `composition-root.demo.ts` through Angular's `fileReplacements` (the `demo` configuration). The popover has a fixed width of 380 px in both modes.
 
-## Modo demo: cenários de conexão
+## Demo mode: connection scenarios
 
-`yarn dev:web` abre o app com adapters fakes. O query param `demo` escolhe o estado inicial de cada conexão (`id:valor`, separados por vírgula); clicar nos botões de conserto muda o estado como no app real.
+`yarn dev:web` opens the app with fake adapters. The `demo` query param picks the initial state of each connection (`id:value`, comma-separated); clicking the fix buttons changes the state as in the real app. The demo opens in English; `?lang=pt-BR` or `?lang=es-MX` switches the language before boot.
 
 ```
 http://127.0.0.1:4200/?demo=claude:claude-expired,github:github-org-access
 http://127.0.0.1:4200/?demo=errors
 ```
 
-A agenda do demo usa só títulos genéricos (Daily do time, 1:1, Planejamento) ancorados no horário atual; `microsoft:microsoft-expired` e `microsoft:unexpected` exercitam os estados de erro da página.
+The demo agenda uses only generic titles (Team daily, 1:1, Planning) anchored to the current time; `microsoft:microsoft-expired` and `microsoft:unexpected` exercise the page's error states.
 
-Valores: `ok` (padrão do Claude e das notificações), `disconnected`, qualquer `ConnectionProblem` da tabela, e `github:ok` / `microsoft:ok`. `errors` liga um erro em cada conexão. No demo, o token `ghp_…` é aceito como PAT válido.
+Values: `ok` (default for Claude and notifications), `disconnected`, any `ConnectionProblem` from the table, and `github:ok` / `microsoft:ok`. `errors` turns on an error in each connection. In the demo, the `ghp_…` token is accepted as a valid PAT.
 
-Estados do GitHub desconectado: `?demo=github:gh-not-installed` (GitHub CLI não encontrado: **Instalar GitHub CLI**, **Entrar pelo navegador** e o link **Colar token**) e `?demo=github:gh-not-logged-in` (gh instalado sem login: **Conectar GitHub CLI**, que abre o Terminal com `gh auth login -h github.com -w`, depois **Verificar de novo**). Sem parâmetro o demo parte de `gh-not-logged-in`. Em **Colar token**, o link **Criar token no GitHub** abre a página de novo token com os escopos `repo` e `read:org`.
+Disconnected GitHub states: `?demo=github:gh-not-installed` (GitHub CLI not found: **Install GitHub CLI**, **Sign in through the browser** and the **Paste token** link) and `?demo=github:gh-not-logged-in` (gh installed without login: **Connect GitHub CLI**, which opens Terminal with `gh auth login -h github.com -w`, then **Check again**). Without the parameter the demo starts from `gh-not-logged-in`. Under **Paste token**, the **Create token on GitHub** link opens the new token page with the `repo` and `read:org` scopes.
 
-PRs e Reviews no demo precisam do GitHub conectado: use `?demo=github:ok` (os repos são genéricos, `acme/*`). Os problemas do GitHub (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) também aparecem nas duas páginas, e o botão de conserto resolve. A página Skills roda uma run simulada com stream; `?demo=skills:mcp-needs-auth` e `?demo=skills:claude-code-missing` mostram os problemas de run com **Reconectar MCP** e **Instalar Claude Code**. Usage e Sessões mostram dados falsos (histórico de 30 dias de um modelo determinístico e cinco sessões); `?demo=claude:claude-expired` mostra o erro da página de usage com o botão de conserto, e `?demo=notifications:disconnected` mostra o estado `prompt` das notificações (leva aos ajustes do sistema).
+PRs and Reviews in the demo need GitHub connected: use `?demo=github:ok` (the repos are generic, `acme/*`). The GitHub problems (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) also show up on both pages, and the fix button resolves them. The Skills page runs a simulated run with a stream; `?demo=skills:mcp-needs-auth` and `?demo=skills:claude-code-missing` show the run problems with **Reconnect MCP** and **Install Claude Code**. Usage and Sessions show fake data (a 30-day history from a deterministic model and five sessions); `?demo=claude:claude-expired` shows the usage page error with the fix button, and `?demo=notifications:disconnected` shows the `prompt` state of notifications (it leads to the system settings).
 
-## Estrutura e camadas
+## Structure and layers
 
-Clean architecture. As dependências apontam para dentro; a diferença entre SOs fica só na infraestrutura.
+Clean architecture. Dependencies point inward; the difference between operating systems stays in the infrastructure only.
 
 ```
 ui (Angular)  ─►  application  ─►  domain
                        ▲
-infrastructure ────────┘   (implementa as portas da application)
+infrastructure ────────┘   (implements the application ports)
        │
-       └─► Tauri (plugins e commands em src-tauri/)
+       └─► Tauri (plugins and commands in src-tauri/)
 ```
 
 ```
 src/
-├─ domain/            TS puro: modelos e regras (settings, connections, usage, sessions, pull-requests, skills, calendar, ...)
+├─ domain/            pure TS: models and rules (settings, connections, usage, sessions, pull-requests, skills, calendar, ...)
 ├─ application/
-│  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, SecretStore, ...)
-│  ├─ use-cases/      um arquivo por caso de uso, um método execute() (connections/ tem os de conexão)
-│  ├─ connections/    ConnectionMonitor, ConnectionRunner e createConnections (liga casos de uso e adapters)
-│  ├─ pull-requests/  createPullRequests, GitHubSession e o dado das páginas PRs/Reviews
-│  ├─ skills/         createSkills e SkillRunBoard (runs ao vivo e histórico)
-│  ├─ pages/          PageModule (contrato) e PageRegistry
-│  ├─ scheduler/      PollingScheduler: só agenda páginas ligadas
-│  └─ testing/        fakes das portas, usados só nos testes
+│  ├─ ports/          interfaces that the infrastructure implements (SettingsStore, Clock, SecretStore, ...)
+│  ├─ use-cases/      one file per use case, one execute() method (connections/ has the connection ones)
+│  ├─ connections/    ConnectionMonitor, ConnectionRunner and createConnections (wires use cases and adapters)
+│  ├─ pull-requests/  createPullRequests, GitHubSession and the data of the PRs/Reviews pages
+│  ├─ skills/         createSkills and SkillRunBoard (live runs and history)
+│  ├─ pages/          PageModule (contract) and PageRegistry
+│  ├─ scheduler/      PollingScheduler: only schedules enabled pages
+│  └─ testing/        fakes of the ports, used only in tests
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
-│  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
-│  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: o GET /api/oauth/usage roda no Rust)
-│  ├─ claude-code/    TauriSessionDirectory (lê ~/.claude/sessions via plugin-fs)
-│  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (lê só ~/.config/claude-usage-bar/history.json)
+│  ├─ platform/       Tauri adapters (invoke, plugins): vault, Claude credential, processes, OAuth loopback, notifications
+│  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: the GET /api/oauth/usage runs in Rust)
+│  ├─ claude-code/    TauriSessionDirectory (reads ~/.claude/sessions through plugin-fs)
+│  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (reads only ~/.config/claude-usage-bar/history.json)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway
 │  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
-│  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
-│  └─ demo/           adapters fakes do modo demo, com cenários por query param
+│  ├─ config/         auth-config.ts: GitHub and Microsoft client_id (placeholders)
+│  └─ demo/           fake adapters of the demo mode, with scenarios by query param
 ├─ ui/
-│  ├─ shell/          popover, rodapé "atualizado há Xs" e botão ⚙
-│  ├─ settings/       Ajustes: páginas, conexões, aparência
-│  ├─ theme/          snapshot dos tokens --me-* do DS Mottu, vars --cm-*, destaque, fundo, claro/escuro/sistema
-│  └─ pages/          uma pasta por página
-├─ composition-root.ts        DI manual com os adapters reais (Tauri)
-└─ composition-root.demo.ts   DI do modo demo no navegador (localStorage)
+│  ├─ shell/          popover, "updated Xs ago" footer and ⚙ button
+│  ├─ settings/       Settings: pages, connections, appearance
+│  ├─ theme/          snapshot of the Mottu DS `--me-*` tokens, `--cm-*` vars, accent, background, light/dark/system
+│  └─ pages/          one folder per page
+├─ composition-root.ts        manual DI with the real (Tauri) adapters
+└─ composition-root.demo.ts   DI of the demo mode in the browser (localStorage)
 src-tauri/src/
-├─ commands/          camada fina de plataforma: secrets, claude_credentials, process, oauth_loopback, terminal, open_external
-└─ tray.rs, platform.rs   bandeja e popover
-└─ usage_icon.rs          renderizador puro (RGBA) do ícone de usage da bandeja
+├─ commands/          thin platform layer: secrets, claude_credentials, process, oauth_loopback, terminal, open_external
+└─ tray.rs, platform.rs   tray and popover
+└─ usage_icon.rs          pure (RGBA) renderer of the tray usage icon
 ```
 
-### Regras de camada
+### Layer rules
 
-1. `domain` não importa nada de fora do próprio `domain`.
-2. `application` importa só `domain` e as próprias portas; sem `@angular/*` e sem `@tauri-apps/*`.
-3. `infrastructure` implementa portas; nunca é importada pela `ui`.
-4. A `ui` chama casos de uso; nunca chama `fetch` (nem `window.fetch`/`globalThis.fetch`), `HttpClient` (`@angular/common/http`), `invoke` ou plugin do Tauri.
-5. As regras 1 a 4 são verificadas pelo `yarn lint` (`eslint-plugin-boundaries` + `no-restricted-imports`). `tools/architecture-lint.spec.ts` prova que cada violação é barrada.
-6. Detecção de SO (`navigator.platform`, `window.navigator.*`, `process.platform`, `@tauri-apps/plugin-os`) só existe no `composition-root` (`src/*.ts`) e em `src-tauri/`.
+1. `domain` imports nothing from outside `domain` itself.
+2. `application` imports only `domain` and its own ports; no `@angular/*` and no `@tauri-apps/*`.
+3. `infrastructure` implements ports; it is never imported by the `ui`.
+4. The `ui` calls use cases; it never calls `fetch` (nor `window.fetch`/`globalThis.fetch`), `HttpClient` (`@angular/common/http`), `invoke` or a Tauri plugin.
+5. Rules 1 to 4 are checked by `yarn lint` (`eslint-plugin-boundaries` + `no-restricted-imports`). `tools/architecture-lint.spec.ts` proves that each violation is blocked.
+6. OS detection (`navigator.platform`, `window.navigator.*`, `process.platform`, `@tauri-apps/plugin-os`) only exists in the `composition-root` (`src/*.ts`) and in `src-tauri/`.
 
-### Como adicionar uma página
+### How to add a page
 
-1. Crie `src/ui/pages/<nome>/` com o componente e um `PageModule`:
+1. Create `src/ui/pages/<name>/` with the component and a `PageModule`:
 
 ```ts
 export const USAGE_PAGE = pageRef<UsageData>('usage');
@@ -121,19 +121,19 @@ export function createUsagePage(deps: { clock: Clock }): PageModule<UsageData> {
 }
 ```
 
-2. Registre em `composition-root.ts` (e em `composition-root.demo.ts`, com adapters fakes) adicionando uma linha em `pages`. `pages` aceita a lista direta ou uma função que recebe `{ connections, skills }` da própria aplicação (as páginas que reportam problema de conexão usam essa forma). `createApplication` também recebe `skills`, pronto ou como função `({ connections }) => Skills` (as skills notificam o fim da run usando o estado da conexão de notificações):
+2. Register it in `composition-root.ts` (and in `composition-root.demo.ts`, with fake adapters) by adding a line to `pages`. `pages` accepts the list directly or a function that receives `{ connections, skills }` from the application itself (the pages that report connection problems use this form). `createApplication` also receives `skills`, ready or as a function `({ connections }) => Skills` (skills notify the end of a run using the state of the notifications connection):
 
 ```ts
 pages: [createUsagePage({ clock })],
 ```
 
-Checkbox em Ajustes, polling e exigência de conexão saem do `PageRegistry`. Fonte de dado nova = uma porta em `application/ports` + um adapter em `infrastructure/`. O componente lê o resultado tipado com `PageStateService.of(USAGE_PAGE)`; quem assina o scheduler depois recebe o último resultado de cada página, então páginas sem polling (`pollIntervalMs: null`) não perdem o primeiro update.
+The checkbox in Settings, the polling and the connection requirement come from the `PageRegistry`. A new data source = a port in `application/ports` + an adapter in `infrastructure/`. The component reads the typed result with `PageStateService.of(USAGE_PAGE)`; whoever subscribes to the scheduler later receives the latest result of each page, so pages without polling (`pollIntervalMs: null`) do not miss the first update.
 
-`PageComponent` é `new () => unknown`: o componente injeta dependências com `inject()`, não pelo construtor.
+`PageComponent` is `new () => unknown`: the component injects dependencies with `inject()`, not through the constructor.
 
-## Publicar uma versão
+## Publishing a version
 
-Para publicar: ajuste a versão em `package.json` e `src-tauri/Cargo.toml` (o `tauri.conf.json` lê a versão do `package.json`), e crie a tag.
+To publish: bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`), and create the tag.
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0

@@ -1,67 +1,67 @@
 # ClawdMeter
 
-O ClawdMeter é um app de barra de menu para macOS que mostra, num clique, quanto você já usou do Claude Code e o que está acontecendo no seu dia de trabalho: o consumo das janelas de 5 horas e de 7 dias com projeção até o reset, as sessões abertas do Claude Code, seus Pull Requests e os Reviews que esperam por você. Tudo roda no seu computador, sem servidor da Mottu no meio.
+ClawdMeter is a menu bar app for macOS that shows, in one click, how much of Claude Code you have used and what is happening in your workday: consumption of the 5-hour and 7-day windows with a projection up to the reset, your open Claude Code sessions, your Pull Requests and the Reviews waiting for you. Everything runs on your computer, with no Mottu server in the middle.
 
-![Aba Uso do ClawdMeter](docs/images/uso.png)
+![ClawdMeter Usage tab](docs/images/usage.png)
 
-## O que ele mostra
+## What it shows
 
-| Aba | O que mostra |
+| Tab | What it shows |
 |---|---|
-| Uso | barras do consumo de 5h e 7d, com uma marca no % projetado até o reset, e um gráfico do histórico (1h, 6h, 1d, 7d, 30d ou o ciclo semanal) |
-| Sessões | as sessões abertas do Claude Code e as que estão esperando você |
-| Pull Requests | seus PRs abertos, agrupados por repositório, com CI, review, conflito e idade |
-| Reviews | PRs para você revisar e os que você já revisou |
+| Usage | bars for the 5h and 7d consumption, with a mark at the projected % at the reset, and a history chart (1h, 6h, 1d, 7d, 30d or the weekly cycle) |
+| Sessions | the open Claude Code sessions and the ones waiting for you |
+| Pull Requests | your open PRs, grouped by repository, with CI, review, conflict and age |
+| Reviews | PRs for you to review and the ones you already reviewed |
 
-As abas **Skills** (rodar skills do Claude Code) e **Agenda** (reuniões do Outlook/Teams) estão em manutenção e vêm desligadas.
+The **Skills** (run Claude Code skills) and **Agenda** (Outlook/Teams meetings) tabs are under maintenance and come turned off.
 
-## Instalação (macOS 14 ou superior)
+## Installation (macOS 14 or later)
 
-1. Abra o arquivo `ClawdMeter_0.1.0_aarch64.dmg` e arraste o **ClawdMeter** para a pasta **Aplicativos**.
-2. O app ainda não é assinado pela Apple, então o macOS bloqueia a primeira abertura. Abra o **Terminal** e rode:
+1. Open the `ClawdMeter_0.1.0_aarch64.dmg` file and drag **ClawdMeter** into the **Applications** folder.
+2. The app is not signed by Apple yet, so macOS blocks the first launch. Open **Terminal** and run:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/ClawdMeter.app"
    ```
 
-3. Abra o ClawdMeter pela pasta Aplicativos. O ícone do mascote aparece na barra de menu (o app não aparece no Dock).
-4. Na primeira abertura o macOS pergunta se o ClawdMeter pode usar o Keychain para ler a credencial do Claude Code. Clique em **Permitir**.
+3. Open ClawdMeter from the Applications folder. The mascot icon appears in the menu bar (the app does not appear in the Dock).
+4. On first launch macOS asks whether ClawdMeter may use the Keychain to read the Claude Code credential. Click **Allow**.
 
-O `.dmg` é para Macs com chip Apple (M1 ou mais novo). Você precisa ter o Claude Code instalado e com login feito.
+The `.dmg` is for Macs with an Apple chip (M1 or newer). You need Claude Code installed and signed in.
 
-## Primeiros passos
+## Getting started
 
-- Clique no ícone do mascote na barra de menu para abrir o painel. Se o ícone estiver escondido, use o atalho **Ctrl + Option + D**.
-- Clique na engrenagem (⚙) no canto inferior direito para abrir os **Ajustes**: abas ligadas, conexões, método de projeção, idioma, cores e tema claro/escuro.
-- Para ver Pull Requests e Reviews, conecte o GitHub em **Ajustes > Conexões**. Há três jeitos: usar o `gh` CLI que já está logado no seu Mac, entrar pelo navegador ou colar um token de acesso.
-- Para sair do app, clique com o botão direito no ícone da barra de menu.
+- Click the mascot icon in the menu bar to open the panel. If the icon is hidden, use the **Ctrl + Option + D** shortcut.
+- Click the gear (⚙) in the bottom right corner to open **Settings**: enabled tabs, connections, projection method, language, colors and light/dark theme. The app opens in English; pick Português (Brasil) or Español (México) under Settings > Language.
+- To see Pull Requests and Reviews, connect GitHub in **Settings > Connections**. There are three ways: use the `gh` CLI that is already signed in on your Mac, sign in through the browser, or paste an access token.
+- To quit the app, right-click the menu bar icon.
 
-![Ajustes do ClawdMeter](docs/images/ajustes.png)
+![ClawdMeter Settings](docs/images/settings.png)
 
-## Privacidade e segurança
+## Privacy and security
 
-Tudo fica no seu computador. Não existe servidor do ClawdMeter, nada é enviado para a Mottu e não há telemetria.
+Everything stays on your computer. There is no ClawdMeter server, nothing is sent to Mottu and there is no telemetry.
 
-O que o app lê:
+What the app reads:
 
-- **A credencial do Claude Code**, só para leitura, no Keychain do macOS. O app nunca a renova, nunca a grava em outro lugar e ela não sai da camada nativa do app.
-- **`~/.claude/sessions`**, para listar suas sessões abertas do Claude Code.
-- **O histórico de uso**, que o próprio app guarda em `~/Library/Application Support/com.mottu.clawdmeter`, junto com seus ajustes.
+- **The Claude Code credential**, read-only, from the macOS Keychain. The app never refreshes it, never writes it anywhere else and it never leaves the app's native layer.
+- **`~/.claude/sessions`**, to list your open Claude Code sessions.
+- **The usage history**, which the app itself keeps in `~/Library/Application Support/com.mottu.clawdmeter`, along with your settings.
 
-Com quem o app conversa pela internet, e só com estes:
+Who the app talks to over the internet, and only these:
 
-- `api.anthropic.com`: seu consumo do Claude.
-- `api.github.com`: seus PRs e Reviews.
-- `graph.microsoft.com`: a agenda (aba em manutenção).
+- `api.anthropic.com`: your Claude consumption.
+- `api.github.com`: your PRs and Reviews.
+- `graph.microsoft.com`: the agenda (tab under maintenance).
 
-O token do GitHub, se você usar um, fica no Keychain. As skills, quando voltarem, só poderão rodar uma lista fechada de comandos de leitura.
+The GitHub token, if you use one, is kept in the Keychain. Skills, when they come back, will only be able to run a closed list of read commands.
 
-Detalhes técnicos: [docs/SECURITY.md](docs/SECURITY.md).
+Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
-## Desinstalar
+## Uninstall
 
-1. Feche o app (botão direito no ícone da barra de menu > Sair) e apague **ClawdMeter** da pasta Aplicativos.
-2. Apague as pastas do app:
+1. Quit the app (right-click the menu bar icon > Quit) and delete **ClawdMeter** from the Applications folder.
+2. Delete the app folders:
 
    ```bash
    rm -rf "$HOME/Library/Application Support/com.mottu.clawdmeter" \
@@ -69,27 +69,27 @@ Detalhes técnicos: [docs/SECURITY.md](docs/SECURITY.md).
           "$HOME/Library/Caches/com.mottu.clawdmeter"
    ```
 
-3. Abra o app **Acesso às Chaves** (Keychain Access), busque por `com.mottu.clawdmeter` e apague os itens encontrados. A credencial do Claude Code não é do ClawdMeter e deve ficar.
+3. Open the **Keychain Access** app, search for `com.mottu.clawdmeter` and delete the items found. The Claude Code credential does not belong to ClawdMeter and must stay.
 
-## Problemas comuns
+## Common problems
 
-- **"Limite de consultas da Anthropic" (erro 429):** a Anthropic limita a frequência da consulta de uso. O app espera sozinho e tenta de novo, mostrando os últimos dados enquanto isso. Não precisa fazer nada.
-- **O painel não aparece com outro app em tela cheia:** é uma limitação conhecida do macOS. Se acontecer, mande o arquivo `~/Library/Logs/com.mottu.clawdmeter/popover.log` para quem mantém o app.
-- **O ícone sumiu da barra de menu:** em Macs com notch, o macOS pode esconder ícones quando a barra está cheia. Use o atalho **Ctrl + Option + D** para abrir o painel.
-- **"Refazer login do Claude":** o login do Claude Code venceu. Rode `claude /login` no Terminal (ou use o botão do próprio app).
+- **"Anthropic rate limit" (error 429):** Anthropic limits how often usage can be queried. The app waits on its own and tries again, showing the latest data in the meantime. You do not need to do anything.
+- **The panel does not show up over another full-screen app:** this is a known macOS limitation. If it happens, send the `~/Library/Logs/com.mottu.clawdmeter/popover.log` file to whoever maintains the app.
+- **The icon disappeared from the menu bar:** on Macs with a notch, macOS may hide icons when the bar is full. Use the **Ctrl + Option + D** shortcut to open the panel.
+- **"Sign in to Claude again":** the Claude Code login has expired. Run `claude /login` in Terminal (or use the app's own button).
 
 ## Windows
 
-Existe uma versão para Windows no código, mas ela ainda não foi validada em um computador Windows. Por enquanto o suporte oficial é só macOS.
+There is a Windows version in the code, but it has not been validated on a Windows computer yet. For now, official support is macOS only.
 
-## Para quem desenvolve
+## For developers
 
-Pré-requisitos, comandos, estrutura de pastas e como contribuir: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Arquitetura: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Histórico de versões: [CHANGELOG.md](CHANGELOG.md).
+Prerequisites, commands, folder structure and how to contribute: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Version history: [CHANGELOG.md](CHANGELOG.md).
 
-## Licença e créditos
+## License and credits
 
-Uso interno Mottu. O repositório não tem licença pública e não deve ser distribuído fora da empresa.
+Mottu internal use. The repository has no public license and must not be distributed outside the company.
 
-- O comportamento do gráfico de uso tem como referência o ClaudeUsageBar (licença BSD-2-Clause).
-- O mascote é da Anthropic e é usado apenas internamente.
-- Construído com Tauri 2, Angular 19 e Apache ECharts; as demais dependências estão em `package.json` e `src-tauri/Cargo.toml`.
+- The usage chart behavior is based on ClaudeUsageBar (BSD-2-Clause license).
+- The mascot belongs to Anthropic and is used internally only.
+- Built with Tauri 2, Angular 19 and Apache ECharts; the remaining dependencies are listed in `package.json` and `src-tauri/Cargo.toml`.
