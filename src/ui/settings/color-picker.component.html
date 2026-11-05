@@ -1,0 +1,28 @@
+<div class="swatches" role="group" [attr.aria-label]="label()">
+  @for (preset of presets(); track preset.color) {
+    <button
+      type="button"
+      class="swatch"
+      [class.selected]="value() === preset.color"
+      [style.background]="preset.color"
+      [attr.aria-label]="preset.name"
+      [attr.aria-pressed]="value() === preset.color"
+      [title]="preset.name"
+      (click)="pick(preset.color)"
+    ></button>
+  }
+  <input
+    type="text"
+    class="hex"
+    maxlength="7"
+    spellcheck="false"
+    autocomplete="off"
+    placeholder="#rrggbb"
+    [class.invalid]="invalid()"
+    [attr.aria-label]="label() + ' em hexadecimal'"
+    [attr.aria-invalid]="invalid()"
+    [value]="text()"
+    (input)="type($event)"
+    (blur)="settle()"
+  />
+</div>

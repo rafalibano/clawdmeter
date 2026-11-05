@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
@@ -127,6 +129,21 @@ describe('lint de arquitetura', () => {
         `import { SystemClock } from './infrastructure/platform/system-clock';\nimport { createExamplePage } from './ui/pages/example/example.page';\nexport const x = [SystemClock, createExamplePage];\n`,
       );
       expect(rules).toEqual([]);
+    });
+  });
+
+  describe('regra 7: popover não pode perder o foco', () => {
+    function sourcesUnder(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return sourcesUnder(path);
+        return /\.(html|ts)$/.test(entry.name) && !entry.name.endsWith('.spec.ts') ? [path] : [];
+      });
+    }
+
+    it('a ui não usa input type=color (o seletor nativo fecha o popover por blur)', () => {
+      const offenders = sourcesUnder('src/ui').filter((path) => /type\s*=\s*["']color["']/.test(readFileSync(path, 'utf8')));
+      expect(offenders).toEqual([]);
     });
   });
 });
