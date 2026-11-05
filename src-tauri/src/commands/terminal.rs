@@ -30,10 +30,12 @@ pub fn validate_terminal_args(args: &[String]) -> CommandResult<()> {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn quote_path(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy())
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn shell_line(program: &Path, args: &[String]) -> String {
     std::iter::once(quote_path(program))
         .chain(args.iter().cloned())
@@ -68,6 +70,7 @@ pub fn validate_terminal_cwd(
     Ok(resolved)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn shell_line_in(cwd: Option<&Path>, program: &Path, args: &[String]) -> String {
     let line = shell_line(program, args);
     match cwd {
@@ -76,6 +79,7 @@ pub fn shell_line_in(cwd: Option<&Path>, program: &Path, args: &[String]) -> Str
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn osascript_args(line: &str) -> Vec<String> {
     vec![
         "-e".into(),

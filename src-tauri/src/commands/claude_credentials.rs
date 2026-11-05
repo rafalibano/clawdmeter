@@ -86,6 +86,7 @@ pub fn parse_credentials(raw: &str) -> CommandResult<ClaudeCredential> {
     })
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, PartialEq, Eq)]
 pub enum KeychainOutcome {
     Missing,
@@ -93,6 +94,7 @@ pub enum KeychainOutcome {
     Failed,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn classify_security_failure(exit_code: Option<i32>, stderr: &str) -> KeychainOutcome {
     let text = stderr.to_lowercase();
     if exit_code == Some(44) || text.contains("could not be found") {
