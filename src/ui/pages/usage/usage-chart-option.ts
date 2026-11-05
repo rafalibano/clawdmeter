@@ -1,11 +1,13 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import { DAY_MS } from '../../../domain/time';
+import { EXHAUSTION_LEVEL } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
-import type { UsageChartModel, WindowSeries } from './usage-chart-model';
+import { BASE_AXIS_MAX, CYCLE_MS, type UsageChartModel, type WindowSeries } from './usage-chart-model';
 import type { UsageTone } from './usage-tone';
 
-const AXIS_MAX = 100;
+const COMPACT_AXIS_MAX = 200;
+const REFERENCE_ALPHA = 0.4;
 
 function fade(colors: SeriesColors) {
   return {
@@ -33,9 +35,14 @@ function markers(model: UsageChartModel, palette: ChartPalette) {
           lineStyle: { color: palette.series[window.kind].marker, type: 'dashed', width: 1 },
           label: { show: false },
         }));
+  const reference =
+    model.yMax > BASE_AXIS_MAX
+      ? [{ yAxis: EXHAUSTION_LEVEL, lineStyle: { color: withAlpha(palette.danger, REFERENCE_ALPHA), type: 'solid', width: 1 }, label: { show: false } }]
+      : [];
   return [
     { xAxis: model.now, lineStyle: { color: palette.now, type: 'dashed', width: 1 }, label: { show: false } },
     ...resets,
+    ...reference,
   ];
 }
 
@@ -78,12 +85,51 @@ function trendSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) 
   };
 }
 
+function projectionDate(at: number, l: Localizer): string {
+  return `${l.axisTick(at, CYCLE_MS)} ${l.clock(at)}`;
+}
+
+function daysSeries(window: WindowSeries, palette: ChartPalette, l: Localizer) {
+  const colors = palette.series[window.kind];
+  return {
+    name: l.t('usage.trend', { label: window.label }),
+    type: 'scatter',
+    symbolSize: 6,
+    z: 4,
+    data: window.days.map((day, index) => {
+      const color = toneColor(day.tone, colors, palette);
+      const edge = index === window.days.length - 1 ? { align: 'right', offset: [6, 0] } : {};
+      return {
+        value: [day.at, day.value],
+        itemStyle: { color },
+        label: { show: day.labeled, formatter: `${Math.round(day.value)}%`, color, ...edge },
+      };
+    }),
+    label: { position: 'top', distance: 3, fontSize: 9, fontFamily: palette.fontFamily },
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: { value: [number, number] }) =>
+        `${projectionDate(params.value[0], l)}<br/>${l.t('usage.projected', { value: Math.round(params.value[1]) })}`,
+    },
+  };
+}
+
+function yAxisLabel(model: UsageChartModel, palette: ChartPalette) {
+  const expanded = model.yMax > BASE_AXIS_MAX;
+  return {
+    color: palette.muted,
+    fontSize: 10,
+    formatter: (value: number) => (expanded && value === EXHAUSTION_LEVEL ? `{reference|${value}%}` : `${value}%`),
+    rich: { reference: { color: withAlpha(palette.danger, 0.85), fontSize: 10, fontWeight: 600 } },
+  };
+}
+
 export function buildChartOption(model: UsageChartModel, palette: ChartPalette, l: Localizer): EChartsCoreOption {
   const lineWidth = model.rangeMs > DAY_MS ? 1.5 : 2;
   return {
     animation: false,
     textStyle: { fontFamily: palette.fontFamily },
-    grid: { left: 6, right: 34, top: 10, bottom: 22 },
+    grid: { left: 6, right: 34, top: model.cycle ? 18 : 10, bottom: 22 },
     xAxis: {
       type: 'time',
       min: model.xMin,
@@ -102,11 +148,11 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
       type: 'value',
       position: 'right',
       min: 0,
-      max: AXIS_MAX,
-      interval: 25,
+      max: model.yMax,
+      interval: model.yMax > COMPACT_AXIS_MAX ? 50 : 25,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: palette.muted, fontSize: 10, formatter: '{value}%' },
+      axisLabel: yAxisLabel(model, palette),
       splitLine: { lineStyle: { color: palette.grid, type: 'dashed', width: 1 } },
     },
     tooltip: {
@@ -124,6 +170,7 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
     series: [
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
       ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette, l)])),
+      ...model.windows.flatMap((window) => (window.days.length === 0 ? [] : [daysSeries(window, palette, l)])),
     ],
   };
 }

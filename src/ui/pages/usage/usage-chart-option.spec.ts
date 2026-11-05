@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { usageRange, type Forecast } from '../../../domain/usage';
+import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
+import { usageRange, type Forecast, type UsagePoint } from '../../../domain/usage';
 import { chartPalette } from '../../theme/chart-palette';
 import { Localizer } from '../../i18n';
-import { buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
+import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
 import { buildChartOption as buildOption } from './usage-chart-option';
 
 const PT = new Localizer('pt-BR');
@@ -60,16 +60,51 @@ describe('buildChartModel', () => {
     expect(trend?.[1]?.[1]).toBeCloseTo(29 + (40 * HOUR_MS * FUTURE_SHARE) / (4 * HOUR_MS), 5);
   });
 
-  it('tendência que estoura termina em 100% no horário do estouro', () => {
+  it('tendência que passa de 100% continua inteira, sem corte em 100%', () => {
     const exhaustsAt = NOW + 10 * MINUTE_MS;
-    const model = buildChartModel(inputs(ready(300, exhaustsAt)), usageRange('6h'), NOW);
-    expect(model.windows[0]!.trend?.[1]).toEqual([exhaustsAt, 100]);
+    const model = buildChartModel(inputs(ready(600, exhaustsAt)), usageRange('6h'), NOW);
+    const end = model.windows[0]!.trend![1]!;
+    expect(end[0]).toBe(model.xMax);
+    expect(end[1]).toBeCloseTo(29 + (571 * 0.9) / 4, 5);
+  });
+
+  it('tendência acima do teto de 300% termina onde cruza 300%', () => {
+    const model = buildChartModel(inputs(ready(5000)), usageRange('6h'), NOW);
+    const end = model.windows[0]!.trend![1]!;
+    expect(end[1]).toBe(300);
+    expect(end[0]).toBeLessThan(model.xMax);
+    expect(model.yMax).toBe(300);
   });
 
   it('reset antes da borda: a tendência termina no reset', () => {
     const forecast = ready(40);
     const near = { ...forecast, trend: { ...(forecast as { trend: object }).trend, toAt: NOW + 5 * MINUTE_MS, toValue: 31 } } as Forecast;
     expect(buildChartModel(inputs(near), usageRange('30d'), NOW).windows[0]!.trend?.[1]).toEqual([NOW + 5 * MINUTE_MS, 31]);
+  });
+});
+
+describe('escala do eixo y', () => {
+  it('sem projeção acima de 100% o eixo é 0–100', () => {
+    expect(axisMaxFor([])).toBe(100);
+    expect(axisMaxFor([40, 100])).toBe(100);
+    expect(buildChartModel(inputs(ready(60), ready(70)), usageRange('1h'), NOW).yMax).toBe(100);
+  });
+
+  it('acima de 100% sobe para o próximo múltiplo de 25 acima do máximo', () => {
+    expect(axisMaxFor([100.5])).toBe(125);
+    expect(axisMaxFor([124])).toBe(125);
+    expect(axisMaxFor([125])).toBe(150);
+    expect(axisMaxFor([180])).toBe(200);
+  });
+
+  it('o teto é 300%', () => {
+    expect(axisMaxFor([299])).toBe(300);
+    expect(axisMaxFor([900])).toBe(300);
+  });
+
+  it('o máximo vem do trecho desenhado da tendência', () => {
+    expect(buildChartModel(inputs(ready(600)), usageRange('6h'), NOW).yMax).toBe(175);
+    expect(buildChartModel(inputs(ready(600)), usageRange('1h'), NOW).yMax).toBe(100);
   });
 });
 
@@ -128,7 +163,7 @@ describe('buildChartOption', () => {
     expect(dark.series[1]!.lineStyle.color).toBe('#a9a9a9');
   });
 
-  it('marcas: sem linha de 100%, só "agora" e os resets dentro do eixo', () => {
+  it('marcas: sem linha de 100% quando o eixo é 0–100, só "agora" e os resets dentro do eixo', () => {
     const marks = option.series[0]!.markLine!.data;
     expect(marks.some((mark) => mark.yAxis !== undefined)).toBe(false);
     expect(marks.some((mark) => mark.xAxis === NOW)).toBe(true);
@@ -136,6 +171,42 @@ describe('buildChartOption', () => {
     const wide = buildChartOption(buildChartModel(inputs(ready(60)), usageRange('30d'), NOW), palette) as unknown as typeof option;
     const resets = wide.series[0]!.markLine!.data.filter((mark) => mark.xAxis !== undefined && mark.xAxis > NOW);
     expect(resets.map((mark) => mark.xAxis)).toEqual([NOW + 4 * HOUR_MS, NOW + 3 * 24 * HOUR_MS]);
+  });
+
+  describe('eixo expandido', () => {
+    const expanded = buildChartOption(buildChartModel(inputs(ready(600)), usageRange('6h'), NOW), palette) as unknown as typeof option & {
+      yAxis: { axisLabel: { formatter: (value: number) => string; rich: { reference: { color: string } } } };
+    };
+
+    it('o eixo y vai até o máximo projetado, de 25 em 25', () => {
+      expect(expanded.yAxis).toMatchObject({ min: 0, max: 175, interval: 25 });
+      expect([0, 25, 50, 75, 100, 125, 150, 175].map(expanded.yAxis.axisLabel.formatter)).toEqual([
+        '0%',
+        '25%',
+        '50%',
+        '75%',
+        '{reference|100%}',
+        '125%',
+        '150%',
+        '175%',
+      ]);
+    });
+
+    it('linha de referência sólida e sutil em 100%', () => {
+      const reference = expanded.series[0]!.markLine!.data.filter((mark) => mark.yAxis !== undefined);
+      expect(reference).toHaveLength(1);
+      expect(reference[0]).toMatchObject({ yAxis: 100, lineStyle: { type: 'solid', width: 1, color: 'rgba(255, 84, 73, 0.4)' } });
+    });
+
+    it('com teto de 300% o passo do eixo é de 50 em 50', () => {
+      const tall = buildChartOption(buildChartModel(inputs(ready(5000)), usageRange('6h'), NOW), palette) as unknown as typeof option;
+      expect(tall.yAxis).toMatchObject({ max: 300, interval: 50 });
+    });
+
+    it('o rótulo de 100% só ganha destaque quando o eixo expande', () => {
+      const plain = option as unknown as typeof expanded;
+      expect(plain.yAxis.axisLabel.formatter(100)).toBe('100%');
+    });
   });
 
   it('a grade de 100% é a mesma linha suave dos outros níveis', () => {
@@ -212,12 +283,12 @@ describe('buildChartOption', () => {
 describe('período Reset (ciclo semanal)', () => {
   const WEEKLY_RESET = NOW + 3 * 24 * HOUR_MS;
   const cycleInputs = (): WindowInput[] => {
-    const history = [
+    const history: UsagePoint[] = [
       { at: NOW - 3 * 24 * HOUR_MS, utilization: 5, resetsAt: NOW - 3 * 24 * HOUR_MS + 5 * HOUR_MS },
       { at: NOW - 2 * 24 * HOUR_MS, utilization: 20, resetsAt: NOW - 2 * 24 * HOUR_MS + 5 * HOUR_MS },
       { at: NOW - HOUR_MS, utilization: 30, resetsAt: NOW + 4 * HOUR_MS },
-      { at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS },
     ];
+    history.unshift({ at: NOW - 8 * 24 * HOUR_MS, utilization: 90, resetsAt: NOW - 8 * 24 * HOUR_MS + 5 * HOUR_MS });
     return [
       { kind: 'fiveHour', label: '5h', points: history, forecast: ready(60), resetsAt: NOW + 4 * HOUR_MS },
       { kind: 'sevenDay', label: '7d', points: history, forecast: ready(75), resetsAt: WEEKLY_RESET },
@@ -231,10 +302,115 @@ describe('período Reset (ciclo semanal)', () => {
     expect(model.windows[0]!.points.some((point) => point[1] === 90)).toBe(false);
   });
 
-  it('as tendências tracejadas vão até o reset de cada janela', () => {
+  it('no Reset a projeção do 5h não aparece e a do 7d vai até o reset semanal', () => {
     const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
-    expect(model.windows[0]!.trend?.[1]?.[0]).toBe(NOW + 4 * HOUR_MS);
-    expect(model.windows[1]!.trend?.[1]?.[0]).toBe(NOW + 4 * HOUR_MS);
+    expect(model.windows[0]!.trend).toBeNull();
+    expect(model.windows[1]!.trend?.[1]?.[0]).toBe(WEEKLY_RESET);
+  });
+
+  it('no Reset o 7d usa a média diária dos últimos 14 dias', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
+    const span = (NOW - HOUR_MS - (NOW - 8 * 24 * HOUR_MS)) / DAY_MS;
+    const rate = (15 + 10) / span;
+    const trend = model.windows[1]!.trend!;
+    expect(trend[0]).toEqual([NOW, 30]);
+    expect(trend[1]![1]).toBeCloseTo(30 + rate * 3, 5);
+  });
+
+  it('sem dados suficientes cai na regressão atual', () => {
+    const short = cycleInputs().map((input) => ({ ...input, points: input.points.filter((point) => point.at > NOW - 2 * HOUR_MS) }));
+    const model = buildChartModel(short, usageRange('cycle'), NOW);
+    expect(model.windows[1]!.trend![1]![1]).toBeCloseTo(75, 5);
+  });
+
+  it('períodos comuns mantêm a regressão e a projeção do 5h', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('7d'), NOW);
+    expect(model.windows[0]!.trend).not.toBeNull();
+    expect(model.windows[1]!.days).toEqual([]);
+  });
+
+  describe('pontos por dia', () => {
+    const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
+    const days = model.windows[1]!.days;
+
+    it('um ponto em cada 00:00 local entre agora e o reset, mais o ponto no reset', () => {
+      const expected: number[] = [];
+      const cursor = new Date(NOW);
+      cursor.setHours(24, 0, 0, 0);
+      while (cursor.getTime() < WEEKLY_RESET) {
+        expected.push(cursor.getTime());
+        cursor.setDate(cursor.getDate() + 1);
+        cursor.setHours(0, 0, 0, 0);
+      }
+      expect(days.map((day) => day.at)).toEqual([...expected, WEEKLY_RESET]);
+      days.slice(0, -1).forEach((day) => expect(new Date(day.at).getHours()).toBe(0));
+    });
+
+    it('cada valor está sobre a reta da projeção', () => {
+      const trend = model.windows[1]!.trend!;
+      for (const day of days) {
+        const expected = trend[0]![1] + ((trend[1]![1] - trend[0]![1]) * (day.at - NOW)) / (WEEKLY_RESET - NOW);
+        expect(day.value).toBeCloseTo(expected, 5);
+      }
+    });
+
+    it('a cor segue as faixas dos limiares: cinza, amarelo e vermelho', () => {
+      const withRate = (perDay: number) => {
+        const history: UsagePoint[] = [
+          { at: NOW - 3 * DAY_MS, utilization: 0, resetsAt: null },
+          { at: NOW, utilization: 3 * perDay, resetsAt: null },
+        ];
+        const input = [
+          { kind: 'fiveHour' as const, label: '5h', points: [], forecast: { status: 'collecting' } as Forecast, resetsAt: null },
+          { kind: 'sevenDay' as const, label: '7d', points: history, forecast: { status: 'collecting' } as Forecast, resetsAt: NOW + 3 * DAY_MS },
+        ];
+        return buildChartModel(input, usageRange('cycle'), NOW).windows[1]!.days;
+      };
+      expect(withRate(10).at(-1)!.tone).toBe('base');
+      expect(withRate(12).at(-1)!.tone).toBe('attention');
+      expect(withRate(15).at(-1)!.tone).toBe('danger');
+      expect(withRate(40).at(-1)!.tone).toBe('danger');
+      expect(withRate(12).map((day) => day.tone)).toContain('base');
+    });
+
+    it('o rótulo some quando dois pontos ficam apertados, mas o ponto continua', () => {
+      const reset = new Date(NOW);
+      reset.setHours(24 * 2, 30, 0, 0);
+      const close = buildChartModel(
+        cycleInputs().map((input) => ({ ...input, resetsAt: input.kind === 'sevenDay' ? reset.getTime() : input.resetsAt })),
+        usageRange('cycle'),
+        NOW,
+      ).windows[1]!.days;
+      expect(close.at(-1)!.labeled).toBe(true);
+      expect(close.at(-2)!.labeled).toBe(false);
+      expect(close.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('o eixo expande para a projeção do Reset e a série de pontos leva rótulo, cor e tooltip', () => {
+      const steep = cycleInputs().map((input) =>
+        input.kind === 'sevenDay' ? { ...input, points: input.points.map((point) => ({ ...point, utilization: point.at < NOW - 4 * DAY_MS ? 0 : point.utilization * 4 })) } : input,
+      );
+      const built = buildChartModel(steep, usageRange('cycle'), NOW);
+      expect(built.yMax).toBeGreaterThan(100);
+      const out = buildChartOption(built, palette, PT) as unknown as {
+        series: {
+          type: string;
+          data: { value: number[]; itemStyle: { color: string }; label: { show: boolean; formatter: string } }[];
+          tooltip?: { formatter: (params: { value: number[] }) => string };
+        }[];
+      };
+      const scatter = out.series.find((series) => series.type === 'scatter')!;
+      expect(scatter.data).toHaveLength(built.windows[1]!.days.length);
+      const last = scatter.data.at(-1)!;
+      expect(last.itemStyle.color).toBe('#ff5449');
+      expect(last.label.formatter).toBe(`${Math.round(built.windows[1]!.days.at(-1)!.value)}%`);
+      expect(scatter.tooltip!.formatter({ value: last.value })).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2}<br\/>Projetado \d+%$/);
+    });
+
+    it('fora do Reset não há série de pontos', () => {
+      const other = buildChartOption(buildChartModel(cycleInputs(), usageRange('7d'), NOW), palette) as unknown as { series: { type: string }[] };
+      expect(other.series.some((series) => series.type === 'scatter')).toBe(false);
+    });
   });
 
   it('marcadores: agora e os resets do 5h que caem no intervalo (passados e o próximo)', () => {
