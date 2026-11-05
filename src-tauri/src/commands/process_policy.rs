@@ -13,8 +13,6 @@ pub const ALLOWED_CLAUDE_TOOLS: &[&str] = &[
     "Bash(gh pr checks:*)",
     "Bash(gh pr diff:*)",
     "Bash(gh search prs:*)",
-    "mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql",
-    "mcp__plugin_atlassian_atlassian__getJiraIssue",
 ];
 const MAX_BUDGET_USD: f64 = 1_000.0;
 const GH_HOST: &str = "github.com";
@@ -38,12 +36,20 @@ const CLAUDE_DISALLOWED_TOOLS: &[&str] = &[
     "WebSearch",
     "Read(~/.ssh/**)",
     "Read(~/.aws/**)",
-    "Read(~/.config/gh/**)",
+    "Read(~/.config/**)",
     "Read(~/.claude/**)",
     "Read(~/.gnupg/**)",
+    "Read(~/.kube/**)",
+    "Read(~/.docker/**)",
+    "Read(~/Library/**)",
+    "Read(~/AppData/**)",
+];
+const SENSITIVE_HOME_DIRS: &[&str] = &[
+    "Library", ".config", ".kube", ".docker", ".ssh", ".aws", ".gnupg", ".claude", "AppData",
 ];
 pub const GH_ENV: &[(&str, &str)] = &[("GH_PROMPT_DISABLED", "1")];
 const CLAUDE_PERMISSION_MODE: &str = "dontAsk";
+const NO_SETTING_SOURCES: &str = "";
 
 fn invalid(message: impl Into<String>) -> CommandError {
     CommandError::new(ErrorKind::InvalidArgument, message)
@@ -81,10 +87,26 @@ pub fn validate_invocation(program: &str, args: &[String]) -> CommandResult<()> 
     }
 }
 
-fn claude_hardening_args() -> Vec<String> {
+pub fn claude_settings() -> serde_json::Value {
+    serde_json::json!({
+        "permissions": {
+            "allow": ALLOWED_CLAUDE_TOOLS,
+            "deny": CLAUDE_DISALLOWED_TOOLS,
+            "defaultMode": CLAUDE_PERMISSION_MODE,
+            "disableBypassPermissionsMode": "disable",
+        },
+        "disableAllHooks": true,
+        "enableAllProjectMcpServers": false,
+    })
+}
+
+fn claude_hardening_args(settings: &Path) -> Vec<String> {
     vec![
         "--setting-sources".to_string(),
-        "user".to_string(),
+        NO_SETTING_SOURCES.to_string(),
+        "--settings".to_string(),
+        settings.to_string_lossy().into_owned(),
+        "--strict-mcp-config".to_string(),
         "--permission-mode".to_string(),
         CLAUDE_PERMISSION_MODE.to_string(),
         "--disallowedTools".to_string(),
@@ -92,13 +114,20 @@ fn claude_hardening_args() -> Vec<String> {
     ]
 }
 
-pub fn prepare_invocation(program: &str, args: &[String]) -> CommandResult<Vec<String>> {
+pub fn prepare_invocation(
+    program: &str,
+    args: &[String],
+    claude_settings: Option<&Path>,
+) -> CommandResult<Vec<String>> {
     validate_invocation(program, args)?;
     let mut argv = args.to_vec();
     let is_print =
         validate_program(program)? == "claude" && args.first().map(String::as_str) == Some("-p");
     if is_print {
-        argv.extend(claude_hardening_args());
+        let settings = claude_settings.ok_or_else(|| {
+            CommandError::new(ErrorKind::Policy, "claude settings file not prepared")
+        })?;
+        argv.extend(claude_hardening_args(settings));
     }
     Ok(argv)
 }
@@ -243,8 +272,60 @@ pub fn resolve_working_dir(
     match (cwd, default_dir) {
         (None, Some(dir)) => Ok(Some(dir.to_path_buf())),
         (None, None) => validate_cwd_in(home.and_then(Path::to_str), home, protected, true),
-        (Some(_), _) => validate_cwd(cwd, home, protected),
+        (Some(dir), _) => validate_project_dir(dir, home, protected).map(Some),
     }
+}
+
+fn same_component(a: &std::ffi::OsStr, b: &std::ffi::OsStr) -> bool {
+    if cfg!(any(target_os = "macos", windows)) {
+        a.to_string_lossy()
+            .eq_ignore_ascii_case(&b.to_string_lossy())
+    } else {
+        a == b
+    }
+}
+
+fn is_under(path: &Path, base: &Path) -> bool {
+    let mut path = path.components();
+    base.components().all(|part| {
+        path.next()
+            .is_some_and(|other| same_component(part.as_os_str(), other.as_os_str()))
+    })
+}
+
+pub fn is_sensitive_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
+    SENSITIVE_HOME_DIRS
+        .iter()
+        .map(|name| home.join(name))
+        .chain(protected.iter().cloned())
+        .flat_map(|dir| {
+            let real = canonical_path(&dir).ok();
+            std::iter::once(dir).chain(real)
+        })
+        .any(|dir| is_under(resolved, &strip_verbatim_prefix(dir)))
+}
+
+pub fn validate_project_dir(
+    cwd: &str,
+    home: Option<&Path>,
+    protected: &[PathBuf],
+) -> CommandResult<PathBuf> {
+    let resolved = validate_cwd(Some(cwd), home, protected)?
+        .ok_or_else(|| invalid("invalid working directory"))?;
+    let home = home
+        .and_then(|dir| canonical_path(dir).ok())
+        .ok_or_else(|| invalid("user folder not found"))?;
+    if is_sensitive_dir(&resolved, &home, protected) {
+        return Err(invalid(
+            "working directory inside a config, credential or app folder",
+        ));
+    }
+    if !resolved.join(".git").exists() {
+        return Err(invalid(
+            "working directory is not a project folder (no .git)",
+        ));
+    }
+    Ok(resolved)
 }
 
 pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
@@ -255,10 +336,14 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
+pub fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    path.canonicalize().map(strip_verbatim_prefix)
+}
+
 pub fn is_protected_dir(resolved: &Path, home: &Path, protected: &[PathBuf]) -> bool {
     std::iter::once(home.join(".claude"))
         .chain(protected.iter().cloned())
-        .filter_map(|dir| dir.canonicalize().ok())
+        .filter_map(|dir| canonical_path(&dir).ok())
         .any(|dir| resolved.starts_with(dir))
 }
 
@@ -284,11 +369,9 @@ fn validate_cwd_in(
         return Err(invalid("invalid working directory"));
     }
     let home = home
-        .and_then(|dir| dir.canonicalize().ok())
+        .and_then(|dir| canonical_path(dir).ok())
         .ok_or_else(|| invalid("user folder not found"))?;
-    let resolved = path
-        .canonicalize()
-        .map_err(|_| invalid("working directory does not exist"))?;
+    let resolved = canonical_path(path).map_err(|_| invalid("working directory does not exist"))?;
     if !resolved.starts_with(&home) {
         return Err(invalid("working directory outside the user folder"));
     }
@@ -300,7 +383,7 @@ fn validate_cwd_in(
             "working directory inside the app config or ~/.claude",
         ));
     }
-    Ok(Some(strip_verbatim_prefix(resolved)))
+    Ok(Some(resolved))
 }
 
 #[cfg(test)]
@@ -452,6 +535,8 @@ mod tests {
             "*",
             "mcp__*",
             "mcp__plugin_atlassian_atlassian__*",
+            "mcp__plugin_atlassian_atlassian__getJiraIssue",
+            "mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql",
             "read",
             "Read,Write",
             "Read,Bash(git:*)",
@@ -501,16 +586,24 @@ mod tests {
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
 
-    const DISALLOWED: &str = "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Read(~/.ssh/**),Read(~/.aws/**),Read(~/.config/gh/**),Read(~/.claude/**),Read(~/.gnupg/**)";
+    const DISALLOWED: &str = "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Read(~/.ssh/**),Read(~/.aws/**),Read(~/.config/**),Read(~/.claude/**),Read(~/.gnupg/**),Read(~/.kube/**),Read(~/.docker/**),Read(~/Library/**),Read(~/AppData/**)";
+    const SETTINGS: &str = "/cache/claude-settings.json";
 
-    const HARDENING: [&str; 6] = [
+    const HARDENING: [&str; 9] = [
         "--setting-sources",
-        "user",
+        "",
+        "--settings",
+        SETTINGS,
+        "--strict-mcp-config",
         "--permission-mode",
         "dontAsk",
         "--disallowedTools",
         DISALLOWED,
     ];
+
+    fn prepare(program: &str, call: &[String]) -> CommandResult<Vec<String>> {
+        prepare_invocation(program, call, Some(Path::new(SETTINGS)))
+    }
 
     #[test]
     fn rust_appends_the_hardening_flags_to_the_final_claude_print_argv() {
@@ -525,31 +618,11 @@ mod tests {
             "--allowedTools",
             "Read(./**),Bash(gh pr diff:*)",
         ];
-        let argv = prepare_invocation("claude", &args(&from_ts)).unwrap();
+        let argv = prepare("claude", &args(&from_ts)).unwrap();
         let expected: Vec<&str> = from_ts.iter().chain(HARDENING.iter()).copied().collect();
         assert_eq!(argv, args(&expected));
-        assert_eq!(
-            argv,
-            args(&[
-                "-p",
-                "/acabativa",
-                "--output-format",
-                "stream-json",
-                "--verbose",
-                "--max-budget-usd",
-                "2",
-                "--allowedTools",
-                "Read(./**),Bash(gh pr diff:*)",
-                "--setting-sources",
-                "user",
-                "--permission-mode",
-                "dontAsk",
-                "--disallowedTools",
-                DISALLOWED,
-            ])
-        );
-        assert_eq!(prepare_invocation("claude", &args(&from_ts)).unwrap(), argv);
-        let without_tools = prepare_invocation(
+        assert_eq!(prepare("claude", &args(&from_ts)).unwrap(), argv);
+        let without_tools = prepare(
             "claude",
             &args(&[
                 "-p",
@@ -565,14 +638,79 @@ mod tests {
     }
 
     #[test]
+    fn user_settings_mcp_servers_and_hooks_are_never_loaded() {
+        let argv = prepare(
+            "claude",
+            &args(&[
+                "-p",
+                "oi",
+                "--output-format",
+                "stream-json",
+                "--max-budget-usd",
+                "1",
+            ]),
+        )
+        .unwrap();
+        let sources = argv
+            .iter()
+            .position(|arg| arg == "--setting-sources")
+            .unwrap();
+        assert_eq!(argv[sources + 1], "");
+        assert!(argv.contains(&"--strict-mcp-config".to_string()));
+        assert!(!argv.contains(&"--mcp-config".to_string()));
+        assert!(!argv
+            .iter()
+            .any(|arg| arg == "user" || arg.contains("user,")));
+        let settings = claude_settings();
+        assert_eq!(settings["disableAllHooks"], true);
+        assert_eq!(settings["enableAllProjectMcpServers"], false);
+        assert_eq!(settings["permissions"]["defaultMode"], "dontAsk");
+        assert_eq!(
+            settings["permissions"]["allow"],
+            serde_json::json!(ALLOWED_CLAUDE_TOOLS)
+        );
+        assert_eq!(
+            settings["permissions"]["deny"],
+            serde_json::json!(CLAUDE_DISALLOWED_TOOLS)
+        );
+    }
+
+    #[test]
+    fn claude_print_without_a_settings_file_is_refused() {
+        let call = args(&[
+            "-p",
+            "oi",
+            "--output-format",
+            "stream-json",
+            "--max-budget-usd",
+            "1",
+        ]);
+        assert_eq!(
+            prepare_invocation("claude", &call, None).unwrap_err().kind,
+            ErrorKind::Policy
+        );
+    }
+
+    #[test]
+    fn no_mcp_tool_is_left_in_the_allowlist() {
+        assert!(ALLOWED_CLAUDE_TOOLS
+            .iter()
+            .all(|tool| !tool.starts_with("mcp__")));
+    }
+
+    #[test]
     fn sensitive_reads_are_denied_and_never_collide_with_the_allowlist() {
         let denied: Vec<&str> = DISALLOWED.split(',').collect();
         for path in [
             "~/.ssh/**",
             "~/.aws/**",
-            "~/.config/gh/**",
+            "~/.config/**",
             "~/.claude/**",
             "~/.gnupg/**",
+            "~/.kube/**",
+            "~/.docker/**",
+            "~/Library/**",
+            "~/AppData/**",
         ] {
             assert!(denied.contains(&format!("Read({path})").as_str()), "{path}");
         }
@@ -591,7 +729,8 @@ mod tests {
     #[test]
     fn hardening_flags_are_not_added_to_gh() {
         let call = args(&["auth", "token"]);
-        assert_eq!(prepare_invocation("gh", &call).unwrap(), call);
+        assert_eq!(prepare("gh", &call).unwrap(), call);
+        assert_eq!(prepare_invocation("gh", &call, None).unwrap(), call);
     }
 
     #[test]
@@ -604,7 +743,7 @@ mod tests {
             vec!["--continue"],
         ] {
             assert!(
-                prepare_invocation("claude", &args(&call)).is_err(),
+                prepare("claude", &args(&call)).is_err(),
                 "{call:?} deveria ser barrado"
             );
         }
@@ -643,18 +782,15 @@ mod tests {
             vec!["--settings=x.json"],
         ] {
             let call: Vec<&str> = base.iter().chain(extra.iter()).copied().collect();
-            assert!(
-                prepare_invocation("claude", &args(&call)).is_err(),
-                "{extra:?}"
-            );
+            assert!(prepare("claude", &args(&call)).is_err(), "{extra:?}");
         }
     }
 
     #[test]
     fn prepare_invocation_still_applies_the_regular_policy() {
-        assert!(prepare_invocation("claude", &args(&["-p", "oi"])).is_err());
-        assert!(prepare_invocation("rm", &args(&["-p", "oi"])).is_err());
-        assert!(prepare_invocation("gh", &args(&["api", "/user"])).is_err());
+        assert!(prepare("claude", &args(&["-p", "oi"])).is_err());
+        assert!(prepare("rm", &args(&["-p", "oi"])).is_err());
+        assert!(prepare("gh", &args(&["api", "/user"])).is_err());
     }
 
     #[test]
@@ -908,7 +1044,7 @@ mod tests {
             let root =
                 std::env::temp_dir().join(format!("clawdmeter-{label}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
-            std::fs::create_dir_all(root.join("home").join("work")).unwrap();
+            std::fs::create_dir_all(root.join("home").join("work").join(".git")).unwrap();
             std::fs::create_dir_all(root.join("outside")).unwrap();
             Self { root }
         }
@@ -1049,7 +1185,7 @@ mod tests {
         std::fs::create_dir_all(&workdir).unwrap();
         let resolved = resolve_working_dir(None, Some(&home), &[], Some(&workdir)).unwrap();
         assert_eq!(resolved, Some(workdir.clone()));
-        assert_ne!(resolved, home.canonicalize().ok());
+        assert_ne!(resolved, canonical_path(&home).ok());
     }
 
     #[test]
@@ -1060,10 +1196,91 @@ mod tests {
         std::fs::create_dir_all(&workdir).unwrap();
         let inside = home.join("work");
         let ok = resolve_working_dir(inside.to_str(), Some(&home), &[], Some(&workdir)).unwrap();
-        assert_eq!(ok, Some(inside.canonicalize().unwrap()));
+        assert_eq!(ok, Some(canonical_path(&inside).unwrap()));
         let outside = tree.root.join("outside");
         assert!(resolve_working_dir(outside.to_str(), Some(&home), &[], Some(&workdir)).is_err());
         assert!(resolve_working_dir(Some("relativo"), Some(&home), &[], Some(&workdir)).is_err());
+    }
+
+    #[test]
+    fn an_explicit_cwd_must_be_a_project_folder_with_git() {
+        let tree = TempTree::new("project-git");
+        let home = tree.home();
+        let plain = home.join("notes");
+        std::fs::create_dir_all(&plain).unwrap();
+        let error = resolve_working_dir(plain.to_str(), Some(&home), &[], None).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::InvalidArgument);
+        let worktree = home.join("worktree");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(worktree.join(".git"), "gitdir: /elsewhere").unwrap();
+        assert!(resolve_working_dir(worktree.to_str(), Some(&home), &[], None).is_ok());
+        let nested = home.join("work").join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert!(resolve_working_dir(nested.to_str(), Some(&home), &[], None).is_err());
+    }
+
+    #[test]
+    fn config_and_credential_folders_are_refused_even_with_git() {
+        let tree = TempTree::new("project-sensitive");
+        let home = tree.home();
+        for dir in [
+            "Library/Application Support/x",
+            ".config/gcloud",
+            ".kube",
+            ".docker/repo",
+            ".ssh/keys",
+            ".aws/sso",
+            ".gnupg/r",
+            ".claude/plugins/repo",
+            "AppData/Roaming/x",
+        ] {
+            let path = home.join(dir);
+            std::fs::create_dir_all(path.join(".git")).unwrap();
+            assert!(
+                resolve_working_dir(path.to_str(), Some(&home), &[], None).is_err(),
+                "{dir}"
+            );
+        }
+        let lookalike = home.join(".kubernetes-notes");
+        std::fs::create_dir_all(lookalike.join(".git")).unwrap();
+        assert!(resolve_working_dir(lookalike.to_str(), Some(&home), &[], None).is_ok());
+    }
+
+    #[test]
+    fn app_dirs_are_refused_even_with_git() {
+        let tree = TempTree::new("project-appdirs");
+        let home = tree.home();
+        let cache = home.join("caches").join("com.fake.clawdmeter");
+        let repo = cache.join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        let protected = [cache];
+        assert!(resolve_working_dir(repo.to_str(), Some(&home), &protected, None).is_err());
+        assert!(resolve_working_dir(repo.to_str(), Some(&home), &[], None).is_ok());
+    }
+
+    #[test]
+    fn sensitive_dirs_match_whole_components_and_ignore_case_where_the_fs_does() {
+        let home = Path::new("/Users/dev");
+        assert!(is_sensitive_dir(
+            Path::new("/Users/dev/Library/x"),
+            home,
+            &[]
+        ));
+        assert!(is_sensitive_dir(Path::new("/Users/dev/.kube"), home, &[]));
+        assert!(!is_sensitive_dir(
+            Path::new("/Users/dev/.kubeconfig-repo"),
+            home,
+            &[]
+        ));
+        assert!(!is_sensitive_dir(
+            Path::new("/Users/dev/src/Library"),
+            home,
+            &[]
+        ));
+        assert_eq!(
+            is_sensitive_dir(Path::new("/Users/dev/library/x"), home, &[]),
+            cfg!(any(target_os = "macos", windows))
+        );
     }
 
     #[test]
@@ -1083,7 +1300,7 @@ mod tests {
         let tree = TempTree::new("workdir-home");
         let home = tree.home();
         let resolved = resolve_working_dir(None, Some(&home), &[], None).unwrap();
-        assert_eq!(resolved, Some(home.canonicalize().unwrap()));
+        assert_eq!(resolved, Some(canonical_path(&home).unwrap()));
         assert_eq!(resolve_working_dir(None, None, &[], None).unwrap(), None);
     }
 
@@ -1113,5 +1330,32 @@ mod tests {
         assert!(
             !raw.contains("APPCACHE") && !raw.contains("$APPLOCALDATA") && !raw.contains("$TEMP")
         );
+    }
+
+    #[test]
+    fn the_webview_never_reaches_the_migration_markers() {
+        let capabilities: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/default.json")).unwrap();
+        let permissions = capabilities["permissions"].as_array().unwrap();
+        let allowed: Vec<&str> = permissions
+            .iter()
+            .filter_map(|permission| permission["allow"].as_array())
+            .flatten()
+            .filter_map(|entry| entry["path"].as_str())
+            .collect();
+        assert!(allowed.iter().all(|path| !path.starts_with("$APPDATA")));
+        let global = permissions
+            .iter()
+            .find(|permission| permission["identifier"] == "fs:scope")
+            .expect("global fs scope with the deny list");
+        let denied: Vec<&str> = global["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["path"].as_str())
+            .collect();
+        let state = format!("$APPDATA/{}", crate::legacy_migration::STATE_DIR);
+        assert!(denied.contains(&state.as_str()));
+        assert!(denied.contains(&format!("{state}/**").as_str()));
     }
 }

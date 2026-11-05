@@ -1,34 +1,44 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::mpsc::{self, Sender};
+use std::sync::OnceLock;
+use std::thread;
 
-use crate::popover_dismiss::now_ms;
+use crate::popover_dismiss::wall_clock_ms;
 
 pub const FILE_NAME: &str = "popover.log";
 pub const MAX_BYTES: u64 = 100 * 1024;
 
-static PATH: OnceLock<PathBuf> = OnceLock::new();
-static WRITE_LOCK: Mutex<()> = Mutex::new(());
+static WRITER: OnceLock<Sender<String>> = OnceLock::new();
 
 pub fn init(dir: PathBuf) {
     if fs::create_dir_all(&dir).is_ok() {
-        let _ = PATH.set(dir.join(FILE_NAME));
+        let _ = WRITER.set(spawn_writer(dir.join(FILE_NAME), MAX_BYTES));
     }
 }
 
+fn spawn_writer(path: PathBuf, max: u64) -> Sender<String> {
+    let (sender, lines) = mpsc::channel::<String>();
+    thread::spawn(move || {
+        for line in lines {
+            append(&path, &line, max);
+        }
+    });
+    sender
+}
+
 pub fn write(message: &str) {
-    let Some(path) = PATH.get() else {
-        return;
-    };
-    let _guard = WRITE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    append(
-        path,
-        &format!("{} {message}\n", format_timestamp(now_ms())),
-        MAX_BYTES,
-    );
+    if let Some(writer) = WRITER.get() {
+        let _ = writer.send(format!("{} {message}\n", format_timestamp(wall_clock_ms())));
+    }
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn debug(message: impl FnOnce() -> String) {
+    if cfg!(debug_assertions) {
+        write(&message());
+    }
 }
 
 fn rotated(path: &Path) -> PathBuf {
@@ -103,7 +113,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "clawdmeter-popover-log-{}-{}",
             std::process::id(),
-            now_ms()
+            wall_clock_ms()
         ));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join(FILE_NAME);
@@ -116,6 +126,28 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "eeee\n");
         assert_eq!(fs::read_to_string(rotated(&path)).unwrap(), "cccc\ndddd\n");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_writer_thread_appends_lines_in_order_off_the_caller() {
+        let dir = std::env::temp_dir().join(format!(
+            "clawdmeter-popover-writer-{}-{}",
+            std::process::id(),
+            wall_clock_ms()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(FILE_NAME);
+        let writer = spawn_writer(path.clone(), MAX_BYTES);
+        for line in ["a\n", "b\n", "c\n"] {
+            writer.send(line.to_string()).unwrap();
+        }
+        drop(writer);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while fs::read_to_string(&path).unwrap_or_default() != "a\nb\nc\n" {
+            assert!(std::time::Instant::now() < deadline, "lines never written");
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 }

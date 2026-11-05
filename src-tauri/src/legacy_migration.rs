@@ -5,6 +5,18 @@ use std::path::{Path, PathBuf};
 pub const LEGACY_IDENTIFIER: &str = "com.mottu.devpulse";
 pub const CONFIG_MARKER: &str = ".legacy-config-migrated";
 pub const SECRETS_MARKER: &str = ".legacy-secrets-migrated";
+pub const STATE_DIR: &str = ".migration";
+
+pub fn state_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(STATE_DIR)
+}
+
+pub fn write_marker(marker: &Path) -> io::Result<()> {
+    if let Some(dir) = marker.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(marker, LEGACY_IDENTIFIER)
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConfigMigration {
@@ -32,8 +44,12 @@ fn is_user_file(name: &str) -> bool {
     !name.starts_with('.') && !name.ends_with(".tmp")
 }
 
-pub fn migrate_config_dir(target: &Path, legacy: &Path) -> io::Result<ConfigMigration> {
-    if target.join(CONFIG_MARKER).exists() {
+pub fn migrate_config_dir(
+    target: &Path,
+    legacy: &Path,
+    marker: &Path,
+) -> io::Result<ConfigMigration> {
+    if marker.exists() || target.join(CONFIG_MARKER).exists() {
         return Ok(ConfigMigration::AlreadyDone);
     }
     if !legacy.is_dir() {
@@ -62,12 +78,12 @@ pub fn migrate_config_dir(target: &Path, legacy: &Path) -> io::Result<ConfigMigr
         fs::copy(entry.path(), staging.join(&file_name))?;
         copied += 1;
     }
-    fs::write(staging.join(CONFIG_MARKER), LEGACY_IDENTIFIER)?;
     // Staging + rename keeps an interrupted copy from leaving a half-migrated config dir.
     if target.exists() {
         fs::remove_dir(target)?;
     }
     fs::rename(&staging, target)?;
+    write_marker(marker)?;
     Ok(ConfigMigration::Copied(copied))
 }
 
@@ -94,6 +110,14 @@ mod tests {
 
         fn legacy(&self) -> PathBuf {
             legacy_dir_for(&self.target()).unwrap()
+        }
+
+        fn marker(&self) -> PathBuf {
+            state_dir(&self.0.join("data")).join(CONFIG_MARKER)
+        }
+
+        fn migrate(&self) -> io::Result<ConfigMigration> {
+            migrate_config_dir(&self.target(), &self.legacy(), &self.marker())
         }
 
         fn seed_legacy(&self) {
@@ -135,10 +159,7 @@ mod tests {
         sandbox.seed_legacy();
         let target = sandbox.target();
 
-        assert_eq!(
-            migrate_config_dir(&target, &sandbox.legacy()).unwrap(),
-            ConfigMigration::Copied(5)
-        );
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::Copied(5));
         assert_eq!(
             fs::read_to_string(target.join("settings.json")).unwrap(),
             "{\"a\":1}"
@@ -154,7 +175,8 @@ mod tests {
         assert!(!target.join("settings.json.tmp").exists());
         assert!(!target.join(".DS_Store").exists());
         assert!(!target.join("nested").exists());
-        assert!(target.join(CONFIG_MARKER).is_file());
+        assert!(sandbox.marker().is_file());
+        assert!(!target.join(CONFIG_MARKER).exists());
         assert!(sandbox.legacy().join("settings.json").is_file());
         assert!(!target
             .with_file_name("com.mottu.clawdmeter.migrating")
@@ -166,14 +188,11 @@ mod tests {
         let sandbox = Sandbox::new("idempotent");
         sandbox.seed_legacy();
         let target = sandbox.target();
-        migrate_config_dir(&target, &sandbox.legacy()).unwrap();
+        sandbox.migrate().unwrap();
         fs::write(target.join("settings.json"), "novo").unwrap();
         fs::write(sandbox.legacy().join("settings.json"), "antigo").unwrap();
 
-        assert_eq!(
-            migrate_config_dir(&target, &sandbox.legacy()).unwrap(),
-            ConfigMigration::AlreadyDone
-        );
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::AlreadyDone);
         assert_eq!(
             fs::read_to_string(target.join("settings.json")).unwrap(),
             "novo"
@@ -188,10 +207,7 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join("settings.json"), "atual").unwrap();
 
-        assert_eq!(
-            migrate_config_dir(&target, &sandbox.legacy()).unwrap(),
-            ConfigMigration::TargetInUse
-        );
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::TargetInUse);
         assert_eq!(
             fs::read_to_string(target.join("settings.json")).unwrap(),
             "atual"
@@ -206,10 +222,7 @@ mod tests {
         let target = sandbox.target();
         fs::create_dir_all(&target).unwrap();
 
-        assert_eq!(
-            migrate_config_dir(&target, &sandbox.legacy()).unwrap(),
-            ConfigMigration::Copied(5)
-        );
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::Copied(5));
         assert!(target.join("runs.json").is_file());
     }
 
@@ -222,7 +235,7 @@ mod tests {
         fs::create_dir_all(&staging).unwrap();
         fs::write(staging.join("lixo.json"), "x").unwrap();
 
-        migrate_config_dir(&target, &sandbox.legacy()).unwrap();
+        sandbox.migrate().unwrap();
         assert!(!target.join("lixo.json").exists());
         assert!(target.join("settings.json").is_file());
     }
@@ -232,10 +245,50 @@ mod tests {
         let sandbox = Sandbox::new("no-legacy");
         let target = sandbox.target();
 
-        assert_eq!(
-            migrate_config_dir(&target, &sandbox.legacy()).unwrap(),
-            ConfigMigration::NoLegacy
-        );
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::NoLegacy);
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn with_the_state_dir_inside_the_config_dir_the_marker_lands_after_the_copy() {
+        let sandbox = Sandbox::new("shared-dir");
+        sandbox.seed_legacy();
+        let target = sandbox.target();
+        let marker = state_dir(&target).join(CONFIG_MARKER);
+        assert_eq!(
+            migrate_config_dir(&target, &sandbox.legacy(), &marker).unwrap(),
+            ConfigMigration::Copied(5)
+        );
+        assert!(marker.is_file());
+        assert!(target.join("settings.json").is_file());
+        assert_eq!(
+            migrate_config_dir(&target, &sandbox.legacy(), &marker).unwrap(),
+            ConfigMigration::AlreadyDone
+        );
+    }
+
+    #[test]
+    fn a_config_dir_holding_only_the_state_dir_counts_as_in_use() {
+        let sandbox = Sandbox::new("state-only");
+        sandbox.seed_legacy();
+        let target = sandbox.target();
+        let secrets_marker = state_dir(&target).join(SECRETS_MARKER);
+        write_marker(&secrets_marker).unwrap();
+        let marker = state_dir(&target).join(CONFIG_MARKER);
+        assert_eq!(
+            migrate_config_dir(&target, &sandbox.legacy(), &marker).unwrap(),
+            ConfigMigration::TargetInUse
+        );
+        assert!(secrets_marker.is_file());
+    }
+
+    #[test]
+    fn the_old_marker_inside_the_config_dir_still_counts() {
+        let sandbox = Sandbox::new("old-marker");
+        sandbox.seed_legacy();
+        let target = sandbox.target();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join(CONFIG_MARKER), LEGACY_IDENTIFIER).unwrap();
+        assert_eq!(sandbox.migrate().unwrap(), ConfigMigration::AlreadyDone);
     }
 }

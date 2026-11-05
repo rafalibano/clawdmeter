@@ -89,9 +89,17 @@ mod popover {
             && PopoverPanel::class().instance_size() == window_size
     }
 
+    pub const TAO_WINDOW_CLASS: &str = "TaoWindow";
+
+    pub fn can_swap_class(name: &str) -> bool {
+        name == TAO_WINDOW_CLASS
+    }
+
     fn into_panel(window: &NSWindow) -> Option<&NSPanel> {
         if !window.isKindOfClass(PopoverPanel::class()) {
-            if !panel_shares_window_layout()
+            // A KVO subclass (NSKVONotifying_TaoWindow) or another wrapper would be lost by the swap.
+            if !can_swap_class(&window.class().name().to_string_lossy())
+                || !panel_shares_window_layout()
                 || window.class().instance_size() < PopoverPanel::class().instance_size()
             {
                 return None;
@@ -175,11 +183,15 @@ mod dismiss {
     };
     use objc2_foundation::{NSNotification, NSOperationQueue};
 
-    use crate::popover_dismiss::{self as rules, Decision, HideReason, Session, Trigger};
+    use crate::popover_dismiss::{
+        self as rules, Decision, HideReason, Session, ShowEpoch, Trigger,
+    };
     use crate::popover_geometry::{Point, Rect};
     use crate::popover_log as log;
 
     const ESCAPE_KEY_CODE: u16 = 53;
+
+    static SHOWS: ShowEpoch = ShowEpoch::new();
 
     struct Monitors {
         clicks: Option<Retained<AnyObject>>,
@@ -212,8 +224,14 @@ mod dismiss {
         )
     }
 
-    fn defer(on_dismiss: Rc<dyn Fn(HideReason)>, reason: HideReason) {
-        let block = RcBlock::new(move || on_dismiss(reason));
+    fn defer(on_dismiss: Rc<dyn Fn(HideReason)>, reason: HideReason, epoch: u64) {
+        let block = RcBlock::new(move || {
+            if SHOWS.is_current(epoch) {
+                on_dismiss(reason);
+            } else {
+                log::write("dismiss-stale");
+            }
+        });
         // Removing a monitor frees its block, so the hide must not run inside the monitor handler.
         unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
     }
@@ -225,6 +243,7 @@ mod dismiss {
     ) -> Rc<dyn Fn(Trigger) -> bool> {
         let window = window.retain();
         let dismissed = Cell::new(false);
+        let epoch = SHOWS.begin();
         Rc::new(move |trigger| {
             if dismissed.get() {
                 return false;
@@ -236,10 +255,10 @@ mod dismiss {
                 frame.size.width,
                 frame.size.height,
             );
-            match rules::decide(&session, rules::now_ms(), panel, trigger) {
+            match rules::decide(&session, rules::monotonic_ms(), panel, trigger) {
                 Decision::Dismiss(reason) => {
                     dismissed.set(true);
-                    defer(on_dismiss.clone(), reason);
+                    defer(on_dismiss.clone(), reason, epoch);
                     true
                 }
                 Decision::Ignore(why) => {
@@ -254,16 +273,18 @@ mod dismiss {
         remove();
         let front = frontmost();
         let session = Session {
-            shown_at_ms: rules::now_ms(),
+            shown_at_ms: rules::monotonic_ms(),
             frontmost_pid: front.as_ref().map(|app| app.processIdentifier()),
             own_pid: Some(NSRunningApplication::currentApplication().processIdentifier()),
             tray_icon: TRAY_ICON.get(),
         };
-        log::write(&format!(
-            "monitors-install frontmost={} tray_icon={:?}",
-            describe_app(front.as_deref()),
-            session.tray_icon
-        ));
+        log::debug(|| {
+            format!(
+                "monitors-install frontmost={} tray_icon={:?}",
+                describe_app(front.as_deref()),
+                session.tray_icon
+            )
+        });
         let evaluate = evaluator(window, session, on_dismiss);
 
         let on_click = evaluate.clone();
@@ -297,7 +318,7 @@ mod dismiss {
 
         let activation_block = RcBlock::new(move |_notification: NonNull<NSNotification>| {
             let app = frontmost();
-            log::write(&format!("app-activated {}", describe_app(app.as_deref())));
+            log::debug(|| format!("app-activated {}", describe_app(app.as_deref())));
             if let Some(app) = app {
                 evaluate(Trigger::AppActivated(app.processIdentifier()));
             }
@@ -415,15 +436,17 @@ mod placement {
         let target = &screens[placement.screen];
         let size = window.frame().size;
         let origin = geometry::popover_origin(placement.icon, target, size.width, size.height);
-        log::write(&format!(
-            "position screen={} frame={:?} visible={:?} icon={:?} origin=({:.0},{:.0})",
-            placement.screen,
-            target.frame,
-            target.visible_frame,
-            placement.icon,
-            origin.x,
-            origin.y
-        ));
+        log::debug(|| {
+            format!(
+                "position screen={} frame={:?} visible={:?} icon={:?} origin=({:.0},{:.0})",
+                placement.screen,
+                target.frame,
+                target.visible_frame,
+                placement.icon,
+                origin.x,
+                origin.y
+            )
+        });
         window.setFrameOrigin(NSPoint::new(origin.x, origin.y));
         placement.icon
     }
@@ -446,6 +469,72 @@ pub fn position_popover(window: &tauri::WebviewWindow, icon: Option<tauri::Rect>
     });
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkArea {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn clamp_to_work_area(x: i32, y: i32, width: i32, height: i32, area: WorkArea) -> (i32, i32) {
+    let fit = |position: i32, size: i32, start: i32, end: i32| {
+        let last = end.saturating_sub(size);
+        if last < start {
+            start
+        } else {
+            position.clamp(start, last)
+        }
+    };
+    (
+        fit(x, width, area.left, area.right),
+        fit(y, height, area.top, area.bottom),
+    )
+}
+
+#[cfg(windows)]
+fn work_area(window: &tauri::WebviewWindow) -> Option<WorkArea> {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+
+    let hwnd = window.hwnd().ok()?;
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: u32::try_from(std::mem::size_of::<MONITORINFO>()).ok()?,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    let work = info.rcWork;
+    Some(WorkArea {
+        left: work.left,
+        top: work.top,
+        right: work.right,
+        bottom: work.bottom,
+    })
+}
+
+#[cfg(windows)]
+fn keep_in_work_area(window: &tauri::WebviewWindow) {
+    let (Ok(position), Ok(size), Some(area)) = (
+        window.outer_position(),
+        window.outer_size(),
+        work_area(window),
+    ) else {
+        return;
+    };
+    let width = i32::try_from(size.width).unwrap_or(i32::MAX);
+    let height = i32::try_from(size.height).unwrap_or(i32::MAX);
+    let (x, y) = clamp_to_work_area(position.x, position.y, width, height, area);
+    if (x, y) != (position.x, position.y) {
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
     use tauri_plugin_positioner::{Position, WindowExt};
@@ -456,6 +545,8 @@ pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect
     {
         let _ = window.move_window_constrained(Position::BottomRight);
     }
+    #[cfg(windows)]
+    keep_in_work_area(window);
 }
 
 #[cfg(target_os = "macos")]
@@ -470,16 +561,18 @@ pub fn show_popover(
 
     on_ns_window(window, move |ns_window| {
         popover::show(ns_window);
-        log::write(&format!("show {}", popover::describe(ns_window)));
+        log::debug(|| format!("show {}", popover::describe(ns_window)));
         dismiss::install(ns_window, std::rc::Rc::new(on_dismiss));
     });
-    let target = window.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(SHOW_PROBE_DELAY);
-        on_ns_window(&target, |ns_window| {
-            log::write(&format!("show+100ms {}", popover::describe(ns_window)));
+    if cfg!(debug_assertions) {
+        let target = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(SHOW_PROBE_DELAY);
+            on_ns_window(&target, |ns_window| {
+                log::write(&format!("show+100ms {}", popover::describe(ns_window)));
+            });
         });
-    });
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -570,6 +663,14 @@ mod tests {
         }
 
         #[test]
+        fn only_a_plain_tao_window_is_swapped_into_a_panel() {
+            assert!(popover::can_swap_class("TaoWindow"));
+            for other in ["NSKVONotifying_TaoWindow", "NSWindow", "TaoWindowX", ""] {
+                assert!(!popover::can_swap_class(other), "{other}");
+            }
+        }
+
+        #[test]
         fn panel_swap_keeps_the_window_memory_layout() {
             assert!(popover::panel_shares_window_layout());
         }
@@ -612,6 +713,50 @@ mod tests {
         }
     }
 
+    const WORK: WorkArea = WorkArea {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1040,
+    };
+
+    #[test]
+    fn a_popover_inside_the_work_area_stays_put() {
+        assert_eq!(clamp_to_work_area(1500, 500, 380, 520, WORK), (1500, 500));
+    }
+
+    #[test]
+    fn a_popover_over_a_bottom_or_right_taskbar_moves_inside_the_work_area() {
+        assert_eq!(clamp_to_work_area(1500, 560, 380, 520, WORK), (1500, 520));
+        let right_bar = WorkArea {
+            right: 1860,
+            ..WORK
+        };
+        assert_eq!(
+            clamp_to_work_area(1600, 100, 380, 520, right_bar),
+            (1480, 100)
+        );
+    }
+
+    #[test]
+    fn a_popover_over_a_left_or_top_taskbar_moves_inside_the_work_area() {
+        let left_bar = WorkArea { left: 60, ..WORK };
+        assert_eq!(clamp_to_work_area(0, 100, 380, 520, left_bar), (60, 100));
+        let top_bar = WorkArea { top: 40, ..WORK };
+        assert_eq!(clamp_to_work_area(100, 0, 380, 520, top_bar), (100, 40));
+    }
+
+    #[test]
+    fn a_popover_larger_than_the_work_area_sticks_to_its_top_left() {
+        let tiny = WorkArea {
+            left: -1280,
+            top: 0,
+            right: -1000,
+            bottom: 400,
+        };
+        assert_eq!(clamp_to_work_area(-900, 300, 380, 520, tiny), (-1280, 0));
+    }
+
     #[test]
     fn click_with_visible_popover_hides_it() {
         assert_eq!(click_action(true, 10_000), ClickAction::Hide);
@@ -626,5 +771,18 @@ mod tests {
     #[test]
     fn click_on_hidden_popover_shows_it() {
         assert_eq!(click_action(false, REOPEN_GUARD_MS + 1), ClickAction::Show);
+    }
+
+    #[test]
+    fn the_first_click_after_launch_opens_the_popover() {
+        use crate::popover_dismiss::{elapsed_since, monotonic_ms, NEVER};
+        assert_eq!(
+            click_action(false, elapsed_since(NEVER, monotonic_ms())),
+            ClickAction::Show
+        );
+        assert_eq!(
+            click_action(false, elapsed_since(NEVER, 0)),
+            ClickAction::Show
+        );
     }
 }

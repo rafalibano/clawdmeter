@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::home::{home_dir, protected_dirs, skill_workdir};
+use super::home::{app_dirs, claude_settings_file, home_dir, skill_workdir};
 use super::process_policy::{prepare_invocation, resolve_working_dir, validate_program, GH_ENV};
 
 const DEFAULT_RUN_TIMEOUT_MS: u64 = 15_000;
@@ -19,6 +22,18 @@ const MAX_RUN_TIMEOUT_MS: u64 = 120_000;
 const POLL_INTERVAL_MS: u64 = 25;
 const READER_JOIN_LIMIT_MS: u64 = 2_000;
 const MAX_CONCURRENT_PROCESSES: usize = 4;
+const MAX_SPAWN_RUNTIME: Duration = Duration::from_secs(15 * 60);
+const CHILD_ENV: &[&str] = &["PATH", "HOME", "USER", "LANG", "TMPDIR", "SHELL", "TERM"];
+const WINDOWS_CHILD_ENV: &[&str] = &[
+    "SystemRoot",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PATHEXT",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+];
 const MAX_CAPTURE_BYTES: usize = 1_048_576;
 const MAX_STDOUT_LINE_BYTES: usize = 4_194_304;
 const MAX_STDERR_LINE_BYTES: usize = 65_536;
@@ -36,15 +51,24 @@ enum Slot {
     Exiting,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Entry {
+    pid: u32,
+    slot: Slot,
+}
+
 #[derive(Default)]
-pub struct ProcessRegistry(Mutex<HashMap<u32, Slot>>);
+pub struct ProcessRegistry {
+    next_id: AtomicU64,
+    entries: Mutex<HashMap<u64, Entry>>,
+}
 
 impl ProcessRegistry {
     fn ensure_capacity(&self) -> CommandResult<()> {
         let full = self
-            .0
+            .entries
             .lock()
-            .map(|slots| slots.len() >= MAX_CONCURRENT_PROCESSES)
+            .map(|entries| entries.len() >= MAX_CONCURRENT_PROCESSES)
             .unwrap_or(true);
         if full {
             Err(too_many_processes())
@@ -53,60 +77,70 @@ impl ProcessRegistry {
         }
     }
 
-    fn insert(&self, pid: u32) -> CommandResult<()> {
-        let mut slots = self.0.lock().map_err(|_| too_many_processes())?;
-        if slots.len() >= MAX_CONCURRENT_PROCESSES {
+    fn insert(&self, pid: u32) -> CommandResult<u64> {
+        let mut entries = self.entries.lock().map_err(|_| too_many_processes())?;
+        if entries.len() >= MAX_CONCURRENT_PROCESSES {
             return Err(too_many_processes());
         }
-        slots.insert(pid, Slot::Running);
-        Ok(())
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+        entries.insert(
+            id,
+            Entry {
+                pid,
+                slot: Slot::Running,
+            },
+        );
+        Ok(id)
     }
 
-    fn mark_exiting(&self, pid: u32) {
-        if let Ok(mut slots) = self.0.lock() {
-            if let Some(slot) = slots.get_mut(&pid) {
-                *slot = Slot::Exiting;
+    fn mark_exiting(&self, id: u64) {
+        if let Ok(mut entries) = self.entries.lock() {
+            if let Some(entry) = entries.get_mut(&id) {
+                entry.slot = Slot::Exiting;
             }
         }
     }
 
-    fn remove(&self, pid: u32) {
-        if let Ok(mut slots) = self.0.lock() {
-            slots.remove(&pid);
+    fn remove(&self, id: u64) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.remove(&id);
         }
     }
 
     #[cfg(test)]
-    fn is_running(&self, pid: u32) -> bool {
-        self.0
+    fn is_running(&self, id: u64) -> bool {
+        self.entries
             .lock()
-            .map(|slots| slots.get(&pid) == Some(&Slot::Running))
+            .map(|entries| {
+                entries
+                    .get(&id)
+                    .is_some_and(|entry| entry.slot == Slot::Running)
+            })
             .unwrap_or(false)
     }
 
     fn signal_if_running(
         &self,
-        pid: u32,
-        send: impl FnOnce() -> CommandResult<()>,
+        id: u64,
+        send: impl FnOnce(u32) -> CommandResult<()>,
     ) -> CommandResult<()> {
-        let Ok(slots) = self.0.lock() else {
+        let Ok(entries) = self.entries.lock() else {
             return Ok(());
         };
-        if slots.get(&pid) == Some(&Slot::Running) {
-            send()
-        } else {
-            Ok(())
+        match entries.get(&id) {
+            Some(entry) if entry.slot == Slot::Running => send(entry.pid),
+            _ => Ok(()),
         }
     }
 
     fn drain_running(&self) -> Vec<u32> {
-        self.0
+        self.entries
             .lock()
-            .map(|mut slots| {
-                slots
+            .map(|mut entries| {
+                entries
                     .drain()
-                    .filter(|(_, slot)| *slot == Slot::Running)
-                    .map(|(pid, _)| pid)
+                    .filter(|(_, entry)| entry.slot == Slot::Running)
+                    .map(|(_, entry)| entry.pid)
                     .collect()
             })
             .unwrap_or_default()
@@ -135,15 +169,40 @@ pub struct RunOutput {
 
 #[derive(Debug, Clone, Serialize)]
 struct OutputEvent {
-    pid: u32,
+    id: u64,
     stream: &'static str,
     line: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct ExitEvent {
-    pid: u32,
+    id: u64,
     code: Option<i32>,
+}
+
+fn is_inherited_env(name: &str, windows: bool) -> bool {
+    let same = |allowed: &&str| {
+        if windows {
+            allowed.eq_ignore_ascii_case(name)
+        } else {
+            *allowed == name
+        }
+    };
+    CHILD_ENV.iter().any(same)
+        || name.starts_with("LC_")
+        || (windows && WINDOWS_CHILD_ENV.iter().any(same))
+}
+
+pub fn child_env(
+    vars: impl IntoIterator<Item = (OsString, OsString)>,
+    windows: bool,
+) -> Vec<(OsString, OsString)> {
+    vars.into_iter()
+        .filter(|(name, _)| {
+            name.to_str()
+                .is_some_and(|name| is_inherited_env(name, windows))
+        })
+        .collect()
 }
 
 pub fn candidate_paths(
@@ -203,18 +262,37 @@ pub fn resolve_program(program: &str) -> CommandResult<PathBuf> {
         })
 }
 
-fn build_command(
-    program: &str,
-    args: &[String],
-    cwd: Option<&str>,
-    protected: &[PathBuf],
-    default_dir: Option<&Path>,
-) -> CommandResult<Command> {
-    let argv = prepare_invocation(program, args)?;
+#[derive(Clone, Copy)]
+struct Launch<'a> {
+    cwd: Option<&'a str>,
+    protected: &'a [PathBuf],
+    default_dir: Option<&'a Path>,
+    claude_settings: Option<&'a Path>,
+}
+
+impl Launch<'_> {
+    const NONE: Launch<'static> = Launch {
+        cwd: None,
+        protected: &[],
+        default_dir: None,
+        claude_settings: None,
+    };
+}
+
+fn build_command(program: &str, args: &[String], launch: &Launch) -> CommandResult<Command> {
+    let Launch {
+        cwd,
+        protected,
+        default_dir,
+        claude_settings,
+    } = *launch;
+    let argv = prepare_invocation(program, args, claude_settings)?;
     let dir = resolve_working_dir(cwd, home_dir().as_deref(), protected, default_dir)?;
     let mut command = Command::new(resolve_program(program)?);
     command
         .args(&argv)
+        .env_clear()
+        .envs(child_env(std::env::vars_os(), cfg!(windows)))
         .envs(GH_ENV.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -313,7 +391,7 @@ fn run_to_completion(
             "process_run only runs gh",
         ));
     }
-    let mut child = build_command(program, args, None, &[], None)?
+    let mut child = build_command(program, args, &Launch::NONE)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let stdout = child.stdout.take().map(Capture::start);
@@ -401,14 +479,14 @@ fn read_bounded_lines(source: impl Read, max: usize, mut emit: impl FnMut(String
 
 fn stream_lines(
     app: AppHandle,
-    pid: u32,
+    id: u64,
     stream: &'static str,
     source: impl Read + Send + 'static,
     max_line: usize,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         read_bounded_lines(source, max_line, |line| {
-            let _ = app.emit(OUTPUT_EVENT, OutputEvent { pid, stream, line });
+            let _ = app.emit(OUTPUT_EVENT, OutputEvent { id, stream, line });
         });
     })
 }
@@ -431,36 +509,75 @@ fn wait_until_exited(pid: u32) {
     }
 }
 
-fn reap(child: &mut Child, registry: &ProcessRegistry) -> Option<i32> {
-    let pid = child.id();
+#[cfg(unix)]
+fn kill_group(pid: u32) {
+    if let Ok(group) = i32::try_from(pid) {
+        unsafe { libc::kill(-group, libc::SIGKILL) };
+    }
+}
+
+fn reap(child: &mut Child, registry: &ProcessRegistry, id: u64) -> Option<i32> {
     #[cfg(unix)]
     {
+        let pid = child.id();
         wait_until_exited(pid);
-        registry.mark_exiting(pid);
+        // The zombie still holds the pid, so the group id cannot have been recycled yet.
+        kill_group(pid);
+        registry.mark_exiting(id);
         child.wait().ok().and_then(|status| status.code())
     }
     #[cfg(not(unix))]
     {
         let code = child.wait().ok().and_then(|status| status.code());
-        registry.mark_exiting(pid);
+        registry.mark_exiting(id);
         code
     }
 }
 
-fn watch_exit(app: AppHandle, mut child: Child, pid: u32, readers: Vec<thread::JoinHandle<()>>) {
+fn arm_deadline(limit: Duration, done: Receiver<()>, on_timeout: impl FnOnce() + Send + 'static) {
+    thread::spawn(move || {
+        if done.recv_timeout(limit) == Err(RecvTimeoutError::Timeout) {
+            on_timeout();
+        }
+    });
+}
+
+struct Spawned {
+    child: Child,
+    id: u64,
+    tree: ProcessTree,
+    readers: Vec<thread::JoinHandle<()>>,
+}
+
+fn watch_exit(app: AppHandle, spawned: Spawned) {
+    let Spawned {
+        mut child,
+        id,
+        tree,
+        readers,
+    } = spawned;
+    let (done, finished) = mpsc::channel();
+    let deadline_app = app.clone();
+    arm_deadline(MAX_SPAWN_RUNTIME, finished, move || {
+        if let Some(registry) = deadline_app.try_state::<ProcessRegistry>() {
+            let _ = registry.signal_if_running(id, |pid| terminate(pid, true));
+        }
+    });
     thread::spawn(move || {
         let registry = app.try_state::<ProcessRegistry>();
         let code = match &registry {
-            Some(registry) => reap(&mut child, registry),
+            Some(registry) => reap(&mut child, registry, id),
             None => child.wait().ok().and_then(|status| status.code()),
         };
+        let _ = done.send(());
+        tree.terminate();
         for reader in readers {
             let _ = join_with_limit(reader, Duration::from_millis(READER_JOIN_LIMIT_MS));
         }
         if let Some(registry) = registry {
-            registry.remove(pid);
+            registry.remove(id);
         }
-        let _ = app.emit(EXIT_EVENT, ExitEvent { pid, code });
+        let _ = app.emit(EXIT_EVENT, ExitEvent { id, code });
     });
 }
 
@@ -471,24 +588,36 @@ pub fn process_spawn(
     program: String,
     args: Vec<String>,
     cwd: Option<String>,
-) -> CommandResult<u32> {
+) -> CommandResult<u64> {
     registry.ensure_capacity()?;
-    let protected = protected_dirs(&app)?;
+    let protected = app_dirs(&app)?;
     let workdir = skill_workdir(&app)?;
-    let mut child = build_command(&program, &args, cwd.as_deref(), &protected, Some(&workdir))?
+    let settings = claude_settings_file(&app)?;
+    let launch = Launch {
+        cwd: cwd.as_deref(),
+        protected: &protected,
+        default_dir: Some(&workdir),
+        claude_settings: Some(&settings),
+    };
+    let mut child = build_command(&program, &args, &launch)?
         .spawn()
         .map_err(|error| CommandError::new(ErrorKind::SpawnFailed, error.to_string()))?;
     let pid = child.id();
-    if let Err(error) = registry.insert(pid) {
-        let _ = terminate(pid, true);
-        let _ = child.wait();
-        return Err(error);
-    }
+    let tree = ProcessTree::adopt(&child);
+    let id = match registry.insert(pid) {
+        Ok(id) => id,
+        Err(error) => {
+            let _ = terminate(pid, true);
+            tree.terminate();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
     let mut readers = Vec::new();
     if let Some(out) = child.stdout.take() {
         readers.push(stream_lines(
             app.clone(),
-            pid,
+            id,
             "stdout",
             out,
             MAX_STDOUT_LINE_BYTES,
@@ -497,28 +626,105 @@ pub fn process_spawn(
     if let Some(err) = child.stderr.take() {
         readers.push(stream_lines(
             app.clone(),
-            pid,
+            id,
             "stderr",
             err,
             MAX_STDERR_LINE_BYTES,
         ));
     }
-    watch_exit(app, child, pid, readers);
-    Ok(pid)
+    watch_exit(
+        app,
+        Spawned {
+            child,
+            id,
+            tree,
+            readers,
+        },
+    );
+    Ok(id)
+}
+
+#[cfg(unix)]
+struct ProcessTree;
+
+#[cfg(unix)]
+impl ProcessTree {
+    fn adopt(_child: &Child) -> Self {
+        Self
+    }
+
+    fn terminate(&self) {}
+}
+
+#[cfg(windows)]
+struct ProcessTree(Option<windows::Win32::Foundation::HANDLE>);
+
+#[cfg(windows)]
+unsafe impl Send for ProcessTree {}
+
+#[cfg(windows)]
+impl ProcessTree {
+    fn adopt(child: &Child) -> Self {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+
+        let Ok(job) = (unsafe { CreateJobObjectW(None, windows::core::PCWSTR::null()) }) else {
+            return Self(None);
+        };
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                std::ptr::from_ref(&limits).cast(),
+                u32::try_from(std::mem::size_of_val(&limits)).unwrap_or(0),
+            )
+        };
+        let assigned = configured
+            .and_then(|()| unsafe { AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())) });
+        if assigned.is_err() {
+            let _ = unsafe { CloseHandle(job) };
+            return Self(None);
+        }
+        Self(Some(job))
+    }
+
+    fn terminate(&self) {
+        if let Some(job) = self.0 {
+            let _ = unsafe { windows::Win32::System::JobObjects::TerminateJobObject(job, 1) };
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ProcessTree {
+    fn drop(&mut self) {
+        if let Some(job) = self.0.take() {
+            let _ = unsafe { windows::Win32::Foundation::CloseHandle(job) };
+        }
+    }
 }
 
 #[tauri::command]
-pub async fn process_kill(app: AppHandle, pid: u32) -> CommandResult<()> {
-    run_blocking(move || kill_registered(&app.state::<ProcessRegistry>(), pid)).await
+pub async fn process_kill(app: AppHandle, id: u64) -> CommandResult<()> {
+    run_blocking(move || kill_registered(&app.state::<ProcessRegistry>(), id)).await
 }
 
-fn kill_registered(registry: &ProcessRegistry, pid: u32) -> CommandResult<()> {
-    registry.signal_if_running(pid, || terminate(pid, false))
+fn kill_registered(registry: &ProcessRegistry, id: u64) -> CommandResult<()> {
+    registry.signal_if_running(id, |pid| terminate(pid, false))
 }
 
 #[cfg(unix)]
 fn terminate(pid: u32, force: bool) -> CommandResult<()> {
-    let target = pid as i32;
+    let Ok(target) = i32::try_from(pid) else {
+        return Ok(());
+    };
     let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
     let group = unsafe { libc::kill(-target, signal) };
     if group == 0 {
@@ -560,9 +766,16 @@ pub fn tasklist_lists_pid(output: &str, pid: u32) -> bool {
     })
 }
 
+pub fn is_probeable_pid(pid: u32) -> bool {
+    pid != 0 && i32::try_from(pid).is_ok()
+}
+
 #[cfg(unix)]
 fn is_alive(pid: u32) -> bool {
-    let result = unsafe { libc::kill(pid as i32, 0) };
+    let Ok(target) = i32::try_from(pid) else {
+        return false;
+    };
+    let result = unsafe { libc::kill(target, 0) };
     result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
@@ -579,7 +792,7 @@ fn is_alive(pid: u32) -> bool {
 
 #[tauri::command]
 pub async fn process_is_alive(pid: u32) -> bool {
-    pid != 0
+    is_probeable_pid(pid)
         && tauri::async_runtime::spawn_blocking(move || is_alive(pid))
             .await
             .unwrap_or(false)
@@ -589,6 +802,7 @@ pub async fn process_is_alive(pid: u32) -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn unix_candidates_include_path_homebrew_and_home() {
         let paths = candidate_paths(
@@ -712,9 +926,9 @@ mod tests {
     }
 
     #[test]
-    fn killing_a_pid_this_app_never_started_is_a_noop() {
+    fn killing_an_id_this_app_never_issued_is_a_noop() {
         let registry = ProcessRegistry::default();
-        assert!(kill_registered(&registry, std::process::id()).is_ok());
+        assert!(kill_registered(&registry, u64::from(std::process::id())).is_ok());
         assert!(kill_registered(&registry, 0).is_ok());
     }
 
@@ -730,8 +944,8 @@ mod tests {
         let pid = child.id();
         child.wait().unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(pid).unwrap();
-        assert!(kill_registered(&registry, pid).is_ok());
+        let id = registry.insert(pid).unwrap();
+        assert!(kill_registered(&registry, id).is_ok());
     }
 
     #[cfg(unix)]
@@ -744,20 +958,20 @@ mod tests {
             .spawn()
             .unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(child.id()).unwrap();
+        let id = registry.insert(child.id()).unwrap();
         thread::sleep(Duration::from_millis(150));
         registry.terminate_all();
         assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
-        assert!(!registry.is_running(child.id()));
+        assert!(!registry.is_running(id));
     }
 
     #[test]
     fn registry_tracks_only_inserted_pids() {
         let registry = ProcessRegistry::default();
-        registry.insert(10).unwrap();
-        assert!(registry.is_running(10));
-        registry.remove(10);
-        assert!(!registry.is_running(10));
+        let id = registry.insert(10).unwrap();
+        assert!(registry.is_running(id));
+        registry.remove(id);
+        assert!(!registry.is_running(id));
     }
     #[test]
     fn capture_keeps_at_most_the_limit_marks_the_cut_and_keeps_draining() {
@@ -879,9 +1093,10 @@ mod tests {
     #[test]
     fn the_registry_refuses_more_than_the_concurrent_limit() {
         let registry = ProcessRegistry::default();
+        let mut ids = Vec::new();
         for pid in 1..=MAX_CONCURRENT_PROCESSES as u32 {
             registry.ensure_capacity().unwrap();
-            registry.insert(pid).unwrap();
+            ids.push(registry.insert(pid).unwrap());
         }
         assert_eq!(
             registry.ensure_capacity().unwrap_err().kind,
@@ -891,7 +1106,7 @@ mod tests {
             registry.insert(99).unwrap_err().kind,
             ErrorKind::TooManyProcesses
         );
-        registry.remove(1);
+        registry.remove(ids[0]);
         assert!(registry.ensure_capacity().is_ok());
         assert!(registry.insert(99).is_ok());
     }
@@ -906,9 +1121,9 @@ mod tests {
             .spawn()
             .unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(child.id()).unwrap();
-        registry.mark_exiting(child.id());
-        kill_registered(&registry, child.id()).unwrap();
+        let id = registry.insert(child.id()).unwrap();
+        registry.mark_exiting(id);
+        kill_registered(&registry, id).unwrap();
         thread::sleep(Duration::from_millis(100));
         assert!(child.try_wait().unwrap().is_none());
         let _ = terminate(child.id(), true);
@@ -940,15 +1155,20 @@ mod tests {
             .spawn()
             .unwrap();
         let registry = ProcessRegistry::default();
-        registry.insert(child.id()).unwrap();
-        assert!(registry.is_running(child.id()));
-        assert_eq!(reap(&mut child, &registry), Some(5));
-        assert!(!registry.is_running(child.id()));
+        let id = registry.insert(child.id()).unwrap();
+        assert!(registry.is_running(id));
+        assert_eq!(reap(&mut child, &registry, id), Some(5));
+        assert!(!registry.is_running(id));
         assert_eq!(
-            registry.0.lock().unwrap().get(&child.id()),
-            Some(&Slot::Exiting)
+            registry
+                .entries
+                .lock()
+                .unwrap()
+                .get(&id)
+                .map(|entry| entry.slot),
+            Some(Slot::Exiting)
         );
-        kill_registered(&registry, child.id()).unwrap();
+        kill_registered(&registry, id).unwrap();
     }
 
     #[cfg(unix)]
@@ -963,13 +1183,14 @@ mod tests {
                 .unwrap();
             let pid = child.id();
             let registry = Arc::new(ProcessRegistry::default());
-            registry.insert(pid).unwrap();
+            let id = registry.insert(pid).unwrap();
             let killer = {
                 let registry = Arc::clone(&registry);
                 thread::spawn(move || {
                     for _ in 0..200 {
                         registry
-                            .signal_if_running(pid, || {
+                            .signal_if_running(id, |target| {
+                                assert_eq!(target, pid);
                                 assert!(is_alive(pid), "signal sent to an already released pid");
                                 Ok(())
                             })
@@ -977,8 +1198,133 @@ mod tests {
                     }
                 })
             };
-            reap(&mut child, &registry);
+            reap(&mut child, &registry, id);
             killer.join().unwrap();
         }
+    }
+
+    #[test]
+    fn spawn_ids_are_unique_even_when_a_pid_comes_back() {
+        let registry = ProcessRegistry::default();
+        let first = registry.insert(4242).unwrap();
+        registry.remove(first);
+        let second = registry.insert(4242).unwrap();
+        assert_ne!(first, second);
+        assert!(!registry.is_running(first));
+        assert!(registry.is_running(second));
+        let mut signalled = None;
+        registry
+            .signal_if_running(first, |pid| {
+                signalled = Some(pid);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(signalled, None);
+    }
+
+    #[test]
+    fn events_carry_the_spawn_id_not_the_pid() {
+        let output = serde_json::to_value(OutputEvent {
+            id: 7,
+            stream: "stdout",
+            line: "x".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            output,
+            serde_json::json!({ "id": 7, "stream": "stdout", "line": "x" })
+        );
+        let exit = serde_json::to_value(ExitEvent {
+            id: 7,
+            code: Some(0),
+        })
+        .unwrap();
+        assert_eq!(exit, serde_json::json!({ "id": 7, "code": 0 }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reaping_the_main_process_kills_what_it_left_in_its_group() {
+        use std::os::unix::process::CommandExt;
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30 & echo $!"])
+            .process_group(0)
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let orphan: i32 = line.trim().parse().unwrap();
+        let registry = ProcessRegistry::default();
+        let id = registry.insert(child.id()).unwrap();
+        reap(&mut child, &registry, id);
+        thread::sleep(Duration::from_millis(150));
+        let mut status = 0;
+        unsafe { libc::waitpid(orphan, &mut status, libc::WNOHANG) };
+        assert_ne!(
+            unsafe { libc::kill(orphan, 0) },
+            0,
+            "orphan {orphan} still alive"
+        );
+    }
+
+    #[test]
+    fn the_deadline_fires_only_when_the_run_is_still_going() {
+        let (fired_tx, fired) = mpsc::channel();
+        let (_done, finished) = mpsc::channel::<()>();
+        arm_deadline(Duration::from_millis(30), finished, move || {
+            let _ = fired_tx.send(());
+        });
+        assert!(fired.recv_timeout(Duration::from_secs(2)).is_ok());
+
+        let (fired_tx, fired) = mpsc::channel();
+        let (done, finished) = mpsc::channel();
+        arm_deadline(Duration::from_millis(200), finished, move || {
+            let _ = fired_tx.send(());
+        });
+        done.send(()).unwrap();
+        assert!(fired.recv_timeout(Duration::from_millis(400)).is_err());
+        assert_eq!(MAX_SPAWN_RUNTIME, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn children_get_only_the_allowed_environment() {
+        let vars = [
+            ("PATH", "/usr/bin"),
+            ("HOME", "/Users/dev"),
+            ("LC_ALL", "en_US.UTF-8"),
+            ("LANG", "en_US.UTF-8"),
+            ("ANTHROPIC_API_KEY", "sk"),
+            ("NODE_OPTIONS", "--require x"),
+            ("HTTPS_PROXY", "http://proxy"),
+            ("GH_TOKEN", "gho"),
+            ("SystemRoot", "C:\\Windows"),
+        ]
+        .map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let names = |windows| -> Vec<String> {
+            child_env(vars.clone(), windows)
+                .into_iter()
+                .map(|(name, _)| name.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(names(false), ["PATH", "HOME", "LC_ALL", "LANG"]);
+        assert_eq!(
+            names(true),
+            ["PATH", "HOME", "LC_ALL", "LANG", "SystemRoot"]
+        );
+        let windows_case = [(OsString::from("Path"), OsString::from("C:\\bin"))];
+        assert_eq!(child_env(windows_case.clone(), true).len(), 1);
+        assert!(child_env(windows_case, false).is_empty());
+    }
+
+    #[test]
+    fn pids_above_i32_max_are_never_probed() {
+        assert!(!is_probeable_pid(0));
+        assert!(!is_probeable_pid(u32::MAX));
+        assert!(!is_probeable_pid(i32::MAX as u32 + 1));
+        assert!(is_probeable_pid(1));
+        assert!(!tauri::async_runtime::block_on(process_is_alive(u32::MAX)));
     }
 }

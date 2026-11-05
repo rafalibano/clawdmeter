@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Tray app with Claude usage, PRs, sessions, agenda and skills"
 edition = "2021"
 publish = false
-rust-version = "1.77"
+rust-version = "1.77.2"
 
 [lib]
 name = "clawdmeter_lib"
@@ -36,7 +36,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
-windows = { version = "0.62", features = ["UI_Notifications"] }
+windows = { version = "0.62", features = ["UI_Notifications", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Com", "Win32_System_JobObjects"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 interface Permission {
   identifier?: string;
   allow?: Array<{ url?: string; path?: string }>;
+  deny?: Array<{ path?: string }>;
 }
 
 const capability = JSON.parse(readFileSync(join(__dirname, '../src-tauri/capabilities/default.json'), 'utf8')) as {
@@ -39,6 +40,13 @@ describe('capability default', () => {
     );
     expect(rename).toHaveLength(1);
     expect((rename[0]?.allow ?? []).map((entry) => entry.path)).toEqual(['$APPCONFIG/**']);
+  });
+
+  it('denies every fs command access to the migration markers in $APPDATA/.migration', () => {
+    const global = capability.permissions.find(
+      (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:scope',
+    );
+    expect((global?.deny ?? []).map((entry) => entry.path)).toEqual(['$APPDATA/.migration', '$APPDATA/.migration/**']);
   });
 
   it('allows a local notification at the end of skill runs', () => {
@@ -81,10 +89,13 @@ describe('capability default', () => {
 
     const reaching = (path: string) => fsScopes().filter((scope) => pathMatches(scope.path, path));
 
-    it('file read only, and only of history.json', () => {
-      expect(reaching(HISTORY).map((scope) => scope.identifier)).toEqual(['fs:allow-read-text-file']);
+    it('file read and stat only, and only of history.json', () => {
+      expect(reaching(HISTORY).map((scope) => scope.identifier)).toEqual(['fs:allow-read-text-file', 'fs:allow-stat']);
       const own = fsScopes().filter((scope) => scope.path.includes('claude-usage-bar'));
-      expect(own).toEqual([{ identifier: 'fs:allow-read-text-file', path: '$HOME/.config/claude-usage-bar/history.json' }]);
+      expect(own).toEqual([
+        { identifier: 'fs:allow-read-text-file', path: '$HOME/.config/claude-usage-bar/history.json' },
+        { identifier: 'fs:allow-stat', path: '$HOME/.config/claude-usage-bar/history.json' },
+      ]);
     });
 
     it('credentials.json in the same folder and the folder itself stay outside any scope', () => {

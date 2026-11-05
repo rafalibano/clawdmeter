@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../time';
 import { buildForecasts, forecastWindow, trendValueAt, type Forecast } from './forecast';
+import { DEFAULT_PROJECTION_METHOD, PROJECTION_METHODS } from './projection-method';
 import { createEmptyHistory, type UsagePoint } from './usage-history';
 
 const NOW = new Date(2026, 10, 5, 15, 0).getTime();
@@ -18,6 +19,40 @@ function ready(forecast: Forecast) {
   if (forecast.status !== 'ready') throw new Error(`esperava ready, veio ${forecast.status}`);
   return forecast;
 }
+
+describe('projection methods', () => {
+  it('the selector order is Last 24h, Last 7 days, Last 14 days, Since reset, and 7d is the default', () => {
+    expect(PROJECTION_METHODS).toEqual(['24h', '7d', '14d', 'since-reset']);
+    expect(DEFAULT_PROJECTION_METHOD).toBe('7d');
+  });
+});
+
+describe('7d method (sevenDay)', () => {
+  it('rate = positive increments in the last 7×24h ÷ 7 calendar days, gaps count as zero', () => {
+    const points = [point(10, 0), point(6, 10), point(5, 20), point(1, 15), point(0, 35)];
+    const forecast = ready(forecastWindow('sevenDay', '7d', points, NOW, 35, WEEKLY_RESET));
+    expect(forecast.ratePerDay).toBeCloseTo((10 + 20) / 7, 9);
+    expect(forecast.valueAtReset).toBeCloseTo(35 + ((10 + 20) / 7) * 3, 9);
+  });
+
+  it('divides by 7 even when the data only covers 2 days', () => {
+    const points = [point(2, 10), point(0, 24)];
+    expect(ready(forecastWindow('sevenDay', '7d', points, NOW, 24, WEEKLY_RESET)).ratePerDay).toBeCloseTo(2, 9);
+    expect(ready(forecastWindow('sevenDay', '14d', points, NOW, 24, WEEKLY_RESET)).ratePerDay).toBeCloseTo(7, 9);
+  });
+
+  it('points older than 7 days are ignored', () => {
+    const points = [point(8, 0), point(7.5, 40), point(3, 40), point(0, 47)];
+    expect(ready(forecastWindow('sevenDay', '7d', points, NOW, 47, WEEKLY_RESET)).ratePerDay).toBeCloseTo(1, 9);
+  });
+
+  it('less than 1 day of history falls back to consumption since the reset', () => {
+    const points = [point(0.5, 10), point(0, 20)];
+    const fallback = ready(forecastWindow('sevenDay', 'since-reset', points, NOW, 20, WEEKLY_RESET));
+    expect(ready(forecastWindow('sevenDay', '7d', points, NOW, 20, WEEKLY_RESET))).toEqual(fallback);
+    expect(ready(forecastWindow('sevenDay', '7d', [point(1, 10), point(0, 20)], NOW, 20, WEEKLY_RESET)).ratePerDay).toBeCloseTo(10 / 7, 9);
+  });
+});
 
 describe('14d method (sevenDay)', () => {
   const points = [point(4, 10), point(2, 30), point(0, 50)];

@@ -1,4 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(any(target_os = "macos", test))]
 use crate::popover_geometry::{Point, Rect};
@@ -32,12 +34,48 @@ impl HideReason {
     }
 }
 
-pub fn now_ms() -> u64 {
+pub const NEVER: u64 = u64::MAX;
+
+static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+
+pub fn wall_clock_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| {
             u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
         })
+}
+
+pub fn monotonic_ms() -> u64 {
+    let elapsed = PROCESS_START.get_or_init(Instant::now).elapsed();
+    u64::try_from(elapsed.as_millis()).unwrap_or(NEVER - 1)
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug, Default)]
+pub struct ShowEpoch(AtomicU64);
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl ShowEpoch {
+    pub const fn new() -> Self {
+        Self(AtomicU64::new(0))
+    }
+
+    pub fn begin(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    pub fn is_current(&self, epoch: u64) -> bool {
+        self.0.load(Ordering::SeqCst) == epoch
+    }
+}
+
+pub fn elapsed_since(earlier_ms: u64, now_ms: u64) -> u64 {
+    if earlier_ms == NEVER {
+        NEVER
+    } else {
+        now_ms.saturating_sub(earlier_ms)
+    }
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -204,6 +242,33 @@ mod tests {
             decide(&session(), SHOWN - 10, PANEL, Trigger::Escape),
             Decision::Ignore("grace")
         );
+    }
+
+    #[test]
+    fn the_monotonic_clock_never_goes_backwards() {
+        let first = monotonic_ms();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let second = monotonic_ms();
+        assert!(second >= first + 5);
+        assert!(second < NEVER);
+    }
+
+    #[test]
+    fn a_deferred_hide_from_an_older_show_is_stale() {
+        let shows = ShowEpoch::new();
+        let first = shows.begin();
+        assert!(shows.is_current(first));
+        let second = shows.begin();
+        assert!(!shows.is_current(first));
+        assert!(shows.is_current(second));
+    }
+
+    #[test]
+    fn a_hide_that_never_happened_is_infinitely_far_away() {
+        assert_eq!(elapsed_since(NEVER, 0), NEVER);
+        assert_eq!(elapsed_since(NEVER, 123), NEVER);
+        assert_eq!(elapsed_since(100, 350), 250);
+        assert_eq!(elapsed_since(400, 350), 0);
     }
 
     #[test]

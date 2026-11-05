@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fs = vi.hoisted(() => ({ readTextFile: vi.fn() }));
+const fs = vi.hoisted(() => ({ readTextFile: vi.fn(), stat: vi.fn() }));
 
 vi.mock('@tauri-apps/api/path', () => ({
   homeDir: vi.fn(async () => '/home/dev'),
@@ -15,6 +15,8 @@ const FILE = '/home/dev/.config/claude-usage-bar/history.json';
 describe('TauriClaudeUsageBarHistorySource', () => {
   beforeEach(() => {
     fs.readTextFile.mockReset();
+    fs.stat.mockReset();
+    fs.stat.mockResolvedValue({ size: 1_024 });
   });
 
   it('reads only the ClaudeUsageBar history.json and converts it to points', async () => {
@@ -36,6 +38,19 @@ describe('TauriClaudeUsageBarHistorySource', () => {
   it('invalid JSON becomes an empty list', async () => {
     fs.readTextFile.mockResolvedValue('{ quebrado');
     expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
+  });
+
+  it('a file over 8 MiB is skipped from its size, before being read', async () => {
+    fs.stat.mockResolvedValue({ size: 8 * 1024 * 1024 + 1 });
+    expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
+    expect(fs.stat).toHaveBeenCalledWith(FILE);
+    expect(fs.readTextFile).not.toHaveBeenCalled();
+  });
+
+  it('a stat failure becomes an empty list without reading', async () => {
+    fs.stat.mockRejectedValue(new Error('No such file'));
+    expect(await new TauriClaudeUsageBarHistorySource().read()).toEqual([]);
+    expect(fs.readTextFile).not.toHaveBeenCalled();
   });
 
   it('a huge file is ignored without parsing', async () => {

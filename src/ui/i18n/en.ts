@@ -53,6 +53,7 @@ export const en = {
   'settings.projection': 'Projection',
   'settings.projection.hint': 'The 5h window always uses consumption since reset.',
   'projection.24h': 'Last 24h',
+  'projection.7d': 'Last 7 days',
   'projection.14d': 'Last 14 days',
   'projection.since-reset': 'Since reset',
   'settings.hexAria': '{label} in hexadecimal',

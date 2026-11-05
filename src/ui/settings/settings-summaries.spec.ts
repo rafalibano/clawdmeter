@@ -38,6 +38,7 @@ describe('settings section summaries', () => {
 
   it('projection and appearance show the chosen label', () => {
     expect(projectionSummary(pt, '14d')).toBe('Últimos 14 dias');
+    expect(projectionSummary(pt, '7d')).toBe('Últimos 7 dias');
     expect(appearanceSummary(pt, 'dark')).toBe('Escuro');
   });
 });

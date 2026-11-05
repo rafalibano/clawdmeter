@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(__dirname, '..');
 const WORKFLOWS = join(ROOT, '.github/workflows');
 const files = readdirSync(WORKFLOWS).filter((name) => name.endsWith('.yml'));
-const read = (name: string) => readFileSync(join(WORKFLOWS, name), 'utf8');
+const read = (name: string) => readFileSync(join(WORKFLOWS, name), 'utf8').replace(/\r\n/g, '\n');
 
 const USES = /^\s*- uses: (\S+)@(\S+)(.*)$/gm;
 
@@ -43,8 +43,17 @@ describe('GitHub Actions workflows', () => {
     }
   });
 
+  it('cargo audit and deny also run weekly, without the build matrix', () => {
+    const text = read('ci.yml');
+    expect(text).toMatch(/schedule:\n\s+- cron: '\d+ \d+ \* \* \d'/);
+    expect(text).toContain("if: github.event_name != 'schedule'");
+    const supplyChain = text.slice(text.indexOf('supply-chain:'));
+    expect(supplyChain).not.toContain('if:');
+    expect(supplyChain).toContain('cargo audit');
+  });
+
   it('dependabot covers actions, cargo and npm every week', () => {
-    const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8');
+    const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8').replace(/\r\n/g, '\n');
     for (const ecosystem of ['github-actions', 'cargo', 'npm']) {
       expect(text).toContain(`package-ecosystem: ${ecosystem}`);
     }

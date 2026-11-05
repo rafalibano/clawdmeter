@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     {
+      "identifier": "fs:scope",
+      "deny": [{ "path": "$APPDATA/.migration" }, { "path": "$APPDATA/.migration/**" }]
+    },
+    {
       "identifier": "fs:allow-exists",
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },
@@ -44,6 +48,10 @@
     },
     {
       "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$HOME/.config/claude-usage-bar/history.json" }]
+    },
+    {
+      "identifier": "fs:allow-stat",
       "allow": [{ "path": "$HOME/.config/claude-usage-bar/history.json" }]
     },
     {

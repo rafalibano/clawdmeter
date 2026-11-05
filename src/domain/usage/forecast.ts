@@ -1,5 +1,5 @@
 import { DAY_MS, MINUTE_MS } from '../time';
-import { RATE_WINDOW_14D, RATE_WINDOW_24H, dailyConsumptionRate } from './consumption-rate';
+import { RATE_WINDOW_14D, RATE_WINDOW_24H, RATE_WINDOW_7D, dailyConsumptionRate, type RateWindow } from './consumption-rate';
 import type { ProjectionMethod } from './projection-method';
 import type { UsageHistory, UsagePoint } from './usage-history';
 import type { UsageSnapshot } from './usage-snapshot';
@@ -29,6 +29,12 @@ export type Forecast =
     };
 
 export type UsageForecasts = Record<UsageWindowKind, Forecast>;
+
+const RATE_WINDOWS: Record<Exclude<ProjectionMethod, 'since-reset'>, RateWindow> = {
+  '24h': RATE_WINDOW_24H,
+  '7d': RATE_WINDOW_7D,
+  '14d': RATE_WINDOW_14D,
+};
 
 function ready(current: number, ratePerMs: number, now: number, resetsAt: number): Forecast {
   const valueAtReset = current + ratePerMs * (resetsAt - now);
@@ -62,7 +68,7 @@ export function forecastWindow(
   if (current === null) return { status: 'collecting' };
   if (resetsAt === null || resetsAt <= now) return { status: 'unavailable' };
   if (kind === 'sevenDay' && method !== 'since-reset') {
-    const rate = dailyConsumptionRate(points, now, method === '24h' ? RATE_WINDOW_24H : RATE_WINDOW_14D);
+    const rate = dailyConsumptionRate(points, now, RATE_WINDOWS[method]);
     if (rate !== null) return ready(current, rate / DAY_MS, now, resetsAt);
   }
   return sinceReset(kind, current, now, resetsAt);
