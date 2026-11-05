@@ -27,11 +27,15 @@ pub fn shell_line(program: &str, args: &[String]) -> String {
         .join(" ")
 }
 
+fn has_forbidden_cwd_char(text: &str, backslash_forbidden: bool) -> bool {
+    text.chars().any(|c| matches!(c, '\'' | '"' | '\n' | '\r' | '\0') || (backslash_forbidden && c == '\\'))
+}
+
 pub fn validate_terminal_cwd(cwd: Option<&str>, home: Option<&Path>) -> CommandResult<Option<PathBuf>> {
     let resolved = validate_cwd(cwd, home)?;
     if let Some(dir) = &resolved {
         let text = dir.to_string_lossy();
-        if text.chars().any(|c| matches!(c, '\'' | '"' | '\\' | '\n' | '\r' | '\0')) {
+        if has_forbidden_cwd_char(&text, cfg!(target_os = "macos")) {
             return Err(CommandError::new(ErrorKind::InvalidArgument, "diretório de trabalho não permitido no terminal"));
         }
     }
@@ -107,6 +111,15 @@ mod tests {
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn backslash_is_only_rejected_where_the_shell_line_needs_it() {
+        let windows_path = r"C:\Users\dev\proj";
+        assert!(!has_forbidden_cwd_char(windows_path, false));
+        assert!(has_forbidden_cwd_char(windows_path, true));
+        assert!(has_forbidden_cwd_char(r"C:\Users\o'brien", false));
+        assert!(has_forbidden_cwd_char("C:\\dev\n", false));
     }
 
     #[test]
