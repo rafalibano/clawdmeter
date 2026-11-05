@@ -210,6 +210,20 @@ describe('configuração de skills', () => {
     expect(skills[0]).toMatchObject({ maxBudgetUsd: 3, allowedTools: ['Read'] });
   });
 
+  it('rejeita ferramentas que o Rust barraria', () => {
+    const accepted = (allowedTools: unknown[]) =>
+      parseSkillsConfig({ skills: [{ id: 'x', name: 'X', prompt: '/x', allowedTools }] }).length === 1;
+    expect(accepted(['Read', 'Bash(git diff:*)', 'mcp__srv__tool'])).toBe(true);
+    expect(accepted(['--dangerously-skip-permissions'])).toBe(false);
+    expect(accepted(['Read', '-x'])).toBe(false);
+    expect(accepted(['Bash;rm'])).toBe(false);
+    expect(accepted(['Bash$(x)'])).toBe(false);
+    expect(accepted(['a,b'])).toBe(false);
+    expect(accepted(['a\nb'])).toBe(false);
+    expect(accepted(['  '])).toBe(false);
+    expect(accepted(['x'.repeat(1_025)])).toBe(false);
+  });
+
   it('monta os argumentos do claude sem shell, com stream-json e verbose', () => {
     expect(buildClaudeArgs({ ...SKILL, allowedTools: ['Read', 'Bash(git log:*)'] })).toEqual([
       '-p',
@@ -220,8 +234,7 @@ describe('configuração de skills', () => {
       '--max-budget-usd',
       '1.5',
       '--allowedTools',
-      'Read',
-      'Bash(git log:*)',
+      'Read,Bash(git log:*)',
     ]);
     expect(buildClaudeArgs({ ...SKILL, allowedTools: [] })).not.toContain('--allowedTools');
   });

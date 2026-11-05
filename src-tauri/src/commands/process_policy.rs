@@ -46,6 +46,7 @@ pub fn validate_terminal_invocation(program: &str, args: &[String]) -> CommandRe
     validate_args(args)?;
     match validate_program(program)? {
         "gh" => validate_gh_terminal(args),
+        _ if args.len() == 1 && args[0] == "/mcp" => Ok(()),
         _ => validate_claude(args),
     }
 }
@@ -112,12 +113,20 @@ fn validate_claude_print(prompt: &str, options: &[String]) -> CommandResult<()> 
     if prompt.trim().is_empty() || prompt.starts_with('-') {
         return Err(invalid("prompt inválido"));
     }
-    let (mut format, mut budget, mut tools) = (false, false, false);
-    for pair in options.chunks(2) {
-        let [flag, value] = pair else {
+    let (mut format, mut budget, mut tools, mut verbose) = (false, false, false, false);
+    let mut rest = options.iter().map(String::as_str);
+    while let Some(flag) = rest.next() {
+        if flag == "--verbose" {
+            if verbose {
+                return Err(invalid("valor inválido ou repetido em --verbose"));
+            }
+            verbose = true;
+            continue;
+        }
+        let Some(value) = rest.next() else {
             return Err(invalid("flag do claude sem valor"));
         };
-        let (seen, valid) = match flag.as_str() {
+        let (seen, valid) = match flag {
             "--output-format" => (&mut format, value == "stream-json"),
             "--max-budget-usd" => (&mut budget, is_budget(value)),
             "--allowedTools" => (&mut tools, is_tool_list(value)),
@@ -246,6 +255,36 @@ mod tests {
     }
 
     #[test]
+    fn claude_accepts_the_exact_argv_built_by_the_app() {
+        let argv = [
+            "-p",
+            "/acabativa",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--max-budget-usd",
+            "2",
+            "--allowedTools",
+            "Read,Grep,Glob,Bash(gh:*),Bash(git:*)",
+        ];
+        assert!(validate_invocation("claude", &args(&argv)).is_ok());
+        let without_tools = ["-p", "/acabativa", "--output-format", "stream-json", "--verbose", "--max-budget-usd", "2"];
+        assert!(validate_invocation("claude", &args(&without_tools)).is_ok());
+    }
+
+    #[test]
+    fn claude_verbose_is_a_bare_flag_accepted_once() {
+        let twice = [
+            "-p", "oi", "--output-format", "stream-json", "--verbose", "--verbose", "--max-budget-usd", "1",
+        ];
+        assert!(validate_invocation("claude", &args(&twice)).is_err());
+        let with_value = [
+            "-p", "oi", "--output-format", "stream-json", "--verbose", "true", "--max-budget-usd", "1",
+        ];
+        assert!(validate_invocation("claude", &args(&with_value)).is_err());
+    }
+
+    #[test]
     fn claude_accepts_login_and_resume() {
         assert!(validate_invocation("claude", &args(&["/login"])).is_ok());
         assert!(validate_invocation("claude", &args(&["--resume", SESSION])).is_ok());
@@ -307,6 +346,7 @@ mod tests {
             vec!["--version"],
             vec!["mcp", "add", "x"],
             vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", "--verbose", "true"],
+            vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd", "1", "--debug"],
             vec!["-p", "oi", "--output-format", "stream-json", "--max-budget-usd"],
             vec!["-p", "  ", "--output-format", "stream-json", "--max-budget-usd", "1"],
             vec![],
@@ -319,6 +359,7 @@ mod tests {
     fn terminal_accepts_the_commands_the_app_launches() {
         assert!(validate_terminal_invocation("claude", &args(&["/login"])).is_ok());
         assert!(validate_terminal_invocation("claude", &args(&["--resume", SESSION])).is_ok());
+        assert!(validate_terminal_invocation("claude", &args(&["/mcp"])).is_ok());
         assert!(validate_terminal_invocation("gh", &args(&["auth", "login", "-h", "github.com", "-w"])).is_ok());
         assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-h", "github.com", "-s", "repo,read:org"])).is_ok());
         assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-s", "repo,read:org"])).is_ok());
@@ -330,6 +371,8 @@ mod tests {
         assert!(validate_terminal_invocation("gh", &args(&["auth", "login", "-h", "evil.example", "-w"])).is_err());
         assert!(validate_terminal_invocation("gh", &args(&["auth", "refresh", "-s", "repo;rm"])).is_err());
         assert!(validate_terminal_invocation("claude", &args(&["--dangerously-skip-permissions"])).is_err());
+        assert!(validate_terminal_invocation("claude", &args(&["/mcp", "extra"])).is_err());
+        assert!(validate_invocation("claude", &args(&["/mcp"])).is_err());
         assert!(validate_terminal_invocation("bash", &args(&["-c", "x"])).is_err());
     }
 

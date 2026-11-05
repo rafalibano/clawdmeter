@@ -23,6 +23,12 @@ export const DEFAULT_SKILLS: readonly SkillDefinition[] = [
 ];
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/i;
+const TOOL_PATTERN = /^[a-z0-9()*:._/@ -]+$/i;
+const MAX_ALLOWED_TOOLS_LENGTH = 1_024;
+
+function isValidTool(tool: unknown): tool is string {
+  return typeof tool === 'string' && tool.trim() !== '' && !tool.startsWith('-') && TOOL_PATTERN.test(tool);
+}
 
 function parseSkill(raw: unknown): SkillDefinition | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -34,9 +40,7 @@ function parseSkill(raw: unknown): SkillDefinition | null {
   const budget = maxBudgetUsd === undefined ? DEFAULT_MAX_BUDGET_USD : maxBudgetUsd;
   if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0) return null;
   const tools = allowedTools === undefined ? [...DEFAULT_ALLOWED_TOOLS] : allowedTools;
-  if (!Array.isArray(tools) || !tools.every((tool) => typeof tool === 'string' && tool.trim() !== '' && !tool.includes('\0'))) {
-    return null;
-  }
+  if (!Array.isArray(tools) || !tools.every(isValidTool) || tools.join(',').length > MAX_ALLOWED_TOOLS_LENGTH) return null;
   if (cwd !== undefined && cwd !== null && (typeof cwd !== 'string' || cwd.trim() === '')) return null;
   return {
     id,
@@ -72,6 +76,6 @@ export function buildClaudeArgs(skill: SkillDefinition): string[] {
     '--max-budget-usd',
     String(skill.maxBudgetUsd),
   ];
-  if (skill.allowedTools.length > 0) args.push('--allowedTools', ...skill.allowedTools);
+  if (skill.allowedTools.length > 0) args.push('--allowedTools', skill.allowedTools.join(','));
   return args;
 }

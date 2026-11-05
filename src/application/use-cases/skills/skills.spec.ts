@@ -57,11 +57,7 @@ describe('RunSkill', () => {
         '--max-budget-usd',
         '2',
         '--allowedTools',
-        'Read',
-        'Grep',
-        'Glob',
-        'Bash(gh:*)',
-        'Bash(git:*)',
+        'Read,Grep,Glob,Bash(gh:*),Bash(git:*)',
       ],
     });
   });
