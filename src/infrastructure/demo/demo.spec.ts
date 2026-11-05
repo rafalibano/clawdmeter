@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildAgenda, dayBounds } from '../../domain/calendar';
 import { createConnections } from '../../application/connections/create-connections';
 import { FakeClock } from '../../application/testing/fake-clock';
 import { CONNECTIONS, type ConnectionId } from '../../domain/connections';
-import { createDemoConnectionAdapters } from './demo-adapters';
+import { DemoCalendar, createDemoConnectionAdapters } from './demo-adapters';
 import { createDemoWorld, parseDemoScenario } from './demo-world';
 
 beforeEach(() => vi.useFakeTimers());
@@ -104,5 +105,59 @@ describe('cenário demo', () => {
     expect((await settle(viaPat.github.connectWithPat.execute('ghp_qualquer'))).state).toBe('connected');
     const invalid = await checkAll('');
     expect(await settle(invalid.github.connectWithPat.execute('lixo'))).toMatchObject({ problem: 'github-unauthorized' });
+  });
+
+  describe('agenda', () => {
+    const NOON = Date.parse('2026-11-05T15:00:00Z');
+    const clock = { now: () => NOON, every: () => () => undefined };
+    const range = dayBounds(NOON, 'America/Sao_Paulo');
+
+    it('devolve reuniões genéricas, com uma em andamento, uma próxima, uma cancelada e uma de dia inteiro', async () => {
+      const calendar = new DemoCalendar(createDemoWorld(''), clock);
+      const pending = calendar.meetings(range, 'America/Sao_Paulo');
+      await vi.runAllTimersAsync();
+      const meetings = await pending;
+      expect(meetings.map((meeting) => meeting.title)).toEqual([
+        'Alinhamento rápido',
+        'Daily do time',
+        '1:1',
+        'Planejamento',
+        'Retrospectiva',
+        'Dia de foco',
+      ]);
+      const agenda = buildAgenda(meetings, NOON);
+      expect(agenda.current.map((meeting) => meeting.title)).toEqual(['Daily do time']);
+      expect(agenda.next?.meeting.title).toBe('1:1');
+      expect(agenda.allDay).toHaveLength(1);
+      expect(agenda.timed.filter((item) => item.phase === 'cancelled')).toHaveLength(1);
+    });
+
+    it('?demo=microsoft:microsoft-expired faz a agenda falhar com microsoft-expired até refazer o login', async () => {
+      const world = createDemoWorld('?demo=microsoft:microsoft-expired');
+      const adapters = createDemoConnectionAdapters(world);
+      const calendar = new DemoCalendar(world, clock);
+      const failing = calendar.meetings(range, 'America/Sao_Paulo');
+      const assertion = expect(failing).rejects.toMatchObject({ problem: 'microsoft-expired' });
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      const signIn = adapters.microsoft.signIn();
+      await vi.runAllTimersAsync();
+      await signIn;
+      const recovered = calendar.meetings(range, 'America/Sao_Paulo');
+      await vi.runAllTimersAsync();
+      expect(await recovered).toHaveLength(6);
+    });
+
+    it('?demo=microsoft:unexpected falha uma vez com erro comum e depois funciona', async () => {
+      const calendar = new DemoCalendar(createDemoWorld('?demo=microsoft:unexpected'), clock);
+      const first = calendar.meetings(range, 'America/Sao_Paulo');
+      const assertion = expect(first).rejects.toThrow('Sem rede');
+      await vi.runAllTimersAsync();
+      await assertion;
+      const second = calendar.meetings(range, 'America/Sao_Paulo');
+      await vi.runAllTimersAsync();
+      expect(await second).toHaveLength(6);
+    });
   });
 });

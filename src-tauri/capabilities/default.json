@@ -31,7 +31,8 @@
       "allow": [
         { "url": "https://api.github.com/*" },
         { "url": "https://github.com/login/*" },
-        { "url": "https://login.microsoftonline.com/*" }
+        { "url": "https://login.microsoftonline.com/*" },
+        { "url": "https://graph.microsoft.com/*" }
       ]
     },
     "notification:allow-is-permission-granted",

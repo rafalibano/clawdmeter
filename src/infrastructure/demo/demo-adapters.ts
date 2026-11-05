@@ -1,6 +1,8 @@
 import type { ConnectionAdapters } from '../../application/connections/connection-adapters';
 import type {
+  CalendarGateway,
   ClaudeCredential,
+  Clock,
   ClaudeCredentialSource,
   ConnectionPrefsStore,
   DeviceCode,
@@ -17,6 +19,7 @@ import type {
   TerminalLauncher,
   UrlOpener,
 } from '../../application/ports';
+import { dayBounds, type DayBounds, type Meeting } from '../../domain/calendar';
 import {
   CLAUDE_CODE_INSTALL_URL,
   ConnectionProblemError,
@@ -142,6 +145,49 @@ class DemoMicrosoft implements MicrosoftAuthorizer {
 
   async signOut(): Promise<void> {
     this.world.microsoft.expired = false;
+  }
+}
+
+const DEMO_JOIN_URL = 'https://teams.microsoft.com/l/meetup-join/demo';
+const MINUTE_MS = 60_000;
+
+function demoMeeting(id: string, title: string, startsAt: number, minutes: number, extra: Partial<Meeting> = {}): Meeting {
+  return {
+    id,
+    title,
+    startsAt,
+    endsAt: startsAt + minutes * MINUTE_MS,
+    allDay: false,
+    cancelled: false,
+    showAs: 'busy',
+    organizer: null,
+    location: null,
+    joinUrl: DEMO_JOIN_URL,
+    ...extra,
+  };
+}
+
+export class DemoCalendar implements CalendarGateway {
+  constructor(
+    private readonly world: DemoWorld,
+    private readonly clock: Clock,
+  ) {}
+
+  async meetings(_range: DayBounds, timeZone: string): Promise<Meeting[]> {
+    await pause(DEMO_LATENCY_MS);
+    failOnce(this.world, 'microsoft');
+    if (this.world.microsoft.expired) throw new ConnectionProblemError('microsoft-expired');
+    const anchor = Math.floor(this.clock.now() / (5 * MINUTE_MS)) * 5 * MINUTE_MS;
+    const today = dayBounds(anchor, timeZone);
+    const at = (offsetMinutes: number) => anchor + offsetMinutes * MINUTE_MS;
+    return [
+      demoMeeting('demo-1', 'Alinhamento rápido', at(-120), 30, { organizer: 'Pessoa A' }),
+      demoMeeting('demo-2', 'Daily do time', at(-10), 30, { organizer: 'Pessoa B' }),
+      demoMeeting('demo-3', '1:1', at(45), 30, { organizer: 'Pessoa C' }),
+      demoMeeting('demo-4', 'Planejamento', at(150), 60, { location: 'Sala de reunião' }),
+      demoMeeting('demo-5', 'Retrospectiva', at(240), 30, { cancelled: true }),
+      demoMeeting('demo-6', 'Dia de foco', today.startsAt, 24 * 60, { allDay: true, showAs: 'free', joinUrl: null }),
+    ];
   }
 }
 

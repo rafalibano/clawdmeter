@@ -1,6 +1,6 @@
 # Dev Pulse
 
-App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje só uma página de exemplo; Claude usage, PRs, Sessões, Teams e Skills entram nas próximas fases).
+App de bandeja para macOS e Windows. No macOS fica na barra de menu; no Windows, na área de notificação. Um clique no ícone abre um popover com as páginas ligadas (hoje: página de exemplo e Agenda; Claude usage, PRs, Sessões e Skills entram nas próximas fases).
 
 Stack: Tauri 2 (Rust só na camada de plataforma), TypeScript, Angular 19 (standalone + signals).
 
@@ -18,7 +18,7 @@ infrastructure ────────┘   (implementa as portas da applicatio
 
 ```
 src/
-├─ domain/            TS puro: modelos e regras (settings, connections, ...)
+├─ domain/            TS puro: modelos e regras (settings, connections, calendar, ...)
 ├─ application/
 │  ├─ ports/          interfaces que a infraestrutura implementa (SettingsStore, Clock, SecretStore, ...)
 │  ├─ use-cases/      um arquivo por caso de uso, um método execute() (connections/ tem os de conexão)
@@ -30,7 +30,7 @@ src/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
 │  ├─ platform/       adapters Tauri (invoke, plugins): cofre, credencial do Claude, processos, loopback OAuth, notificações
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway
-│  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback)
+│  ├─ microsoft/      PkceMicrosoftAuthorizer (PKCE + loopback), GraphCalendarGateway
 │  ├─ config/         auth-config.ts: client_id do GitHub e da Microsoft (placeholders)
 │  └─ demo/           adapters fakes do modo demo, com cenários por query param
 ├─ ui/
@@ -116,7 +116,7 @@ Ajustes tem uma seção **Conexões** com as conexões exigidas pelas páginas l
 
 - **Claude:** lê a credencial do Claude Code (Keychain `Claude Code-credentials` no macOS; `~/.claude/.credentials.json` como fallback e no Windows). O Rust devolve só `accessToken`, `expiresAt` e o plano; o refresh token nunca sai do Rust e o app nunca faz refresh. Desconectar só para de usar a credencial, não apaga nada do Claude Code.
 - **GitHub:** `gh auth token` (o token não é copiado) → Device Flow → PAT colado (os dois últimos ficam no cofre do SO). A validação confere escopos (`repo`, `read:org`) e o acesso à org `Mottu-ops`.
-- **Microsoft:** PKCE com listener em `127.0.0.1` (porta efêmera); o refresh token fica no cofre do SO. A agenda entra na F4.
+- **Microsoft:** PKCE com listener em `127.0.0.1` (porta efêmera); o refresh token fica no cofre do SO. Escopos delegados `Calendars.Read` + `offline_access`; nenhum client secret.
 - **Notificações:** permissão do sistema; bloqueada leva aos ajustes do SO.
 - Preferências não secretas (método do GitHub, conta Microsoft, Claude ligado) ficam em `connections.json` ao lado do `settings.json`.
 
@@ -137,6 +137,17 @@ Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.js
 
 O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita CORS do WebView), com allowlist de URLs na capability.
 
+### Página Agenda
+
+Reuniões de hoje do Outlook/Teams, ligada à conexão Microsoft, com poll de 5 min.
+
+- Fonte: `GET https://graph.microsoft.com/v1.0/me/calendarView` (permissão delegada) com `startDateTime`/`endDateTime` do dia em `America/Sao_Paulo`, header `Prefer: outlook.timezone="America/Sao_Paulo"`, `$select`, `$orderby=start/dateTime`, `$top=50` e paginação por `@odata.nextLink` (só segue links do próprio `graph.microsoft.com`; máximo de 10 páginas).
+- Regras de dia, fuso, "agora" e "próxima" ficam em `src/domain/calendar` (testadas: virada de dia, horário de verão, dia inteiro, cancelada, reunião que atravessa a meia-noite).
+- Canceladas aparecem riscadas e nunca contam como "agora" nem "próxima"; eventos de dia inteiro ficam numa lista própria.
+- **Entrar** abre `onlineMeeting.joinUrl` pelo `OpenUrl`, só se for `https` em `teams.microsoft.com` ou `teams.live.com` (validado em `teamsJoinUrl`, no mapeamento do Graph e de novo no caso de uso `JoinMeeting`).
+- 401/403 do Graph ou token vencido viram `microsoft-expired`: a página mostra o aviso e o botão "Refazer login da Microsoft"; depois do conserto ela recarrega na hora (`PollingScheduler.refresh`).
+- A allowlist do `plugin-http` e o `connect-src` do CSP incluem `https://graph.microsoft.com`.
+
 ### Modo demo: cenários de conexão
 
 `yarn dev:web` abre o app com adapters fakes. O query param `demo` escolhe o estado inicial de cada conexão (`id:valor`, separados por vírgula); clicar nos botões de conserto muda o estado como no app real.
@@ -145,6 +156,8 @@ O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita COR
 http://127.0.0.1:4200/?demo=claude:claude-expired,github:github-org-access
 http://127.0.0.1:4200/?demo=errors
 ```
+
+A agenda do demo usa só títulos genéricos (Daily do time, 1:1, Planejamento) ancorados no horário atual; `microsoft:microsoft-expired` e `microsoft:unexpected` exercitam os estados de erro da página.
 
 Valores: `ok` (padrão do Claude e das notificações), `disconnected`, qualquer `ConnectionProblem` da tabela, e `github:ok` / `microsoft:ok`. `errors` liga um erro em cada conexão. No demo, o token `ghp_…` é aceito como PAT válido.
 
