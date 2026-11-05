@@ -121,11 +121,18 @@ describe('escala do eixo y', () => {
     expect(buildChartModel(inputs(ready(60), ready(70)), usageRange('1h'), NOW).yMax).toBe(100);
   });
 
-  it('acima de 100% sobe para o próximo múltiplo de 25 acima do máximo', () => {
-    expect(axisMaxFor([100.5])).toBe(125);
-    expect(axisMaxFor([124])).toBe(125);
-    expect(axisMaxFor([125])).toBe(150);
-    expect(axisMaxFor([180])).toBe(200);
+  it('acima de 100% sobe para o próximo múltiplo de 50 acima do máximo', () => {
+    expect(axisMaxFor([100.5])).toBe(150);
+    expect(axisMaxFor([130])).toBe(150);
+    expect(axisMaxFor([155])).toBe(200);
+    expect(axisMaxFor([260])).toBe(300);
+    expect(axisMaxFor([275])).toBe(300);
+  });
+
+  it('o passo é 50 e todo rótulo é múltiplo de 50 quando expandido', () => {
+    const option = buildChartOption(buildChartModel(steepCycle(4), usageRange('cycle'), NOW), palette) as { yAxis: { max: number; interval: number } };
+    expect(option.yAxis.interval).toBe(50);
+    expect(option.yAxis.max % 50).toBe(0);
   });
 
   it('o teto é 300%', () => {

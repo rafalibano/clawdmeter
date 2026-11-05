@@ -15,7 +15,8 @@ export const FUTURE_SHARE = 0.15;
 export const CYCLE_MS = 7 * DAY_MS;
 export const BASE_AXIS_MAX = 100;
 export const MAX_AXIS_MAX = 300;
-export const AXIS_STEP = 25;
+export const BASE_AXIS_STEP = 25;
+export const EXPANDED_AXIS_STEP = 50;
 
 export type ChartPoint = [at: number, value: number];
 
@@ -63,7 +64,7 @@ function trendPoints(forecast: Forecast, xMax: number, cap: number): ChartPoint[
 export function axisMaxFor(values: readonly number[]): number {
   const peak = Math.max(0, ...values);
   if (peak <= BASE_AXIS_MAX) return BASE_AXIS_MAX;
-  return Math.min(MAX_AXIS_MAX, (Math.floor(peak / AXIS_STEP) + 1) * AXIS_STEP);
+  return Math.min(MAX_AXIS_MAX, (Math.floor(peak / EXPANDED_AXIS_STEP) + 1) * EXPANDED_AXIS_STEP);
 }
 
 export function projector(forecast: Forecast): ((at: number) => number) | null {

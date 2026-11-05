@@ -3,9 +3,8 @@ import { DAY_MS, HOUR_MS } from '../../../domain/time';
 import { EXHAUSTION_LEVEL } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
-import { BASE_AXIS_MAX, CYCLE_MS, curveValueAt, type ChartPoint, type UsageChartModel, type WindowSeries } from './usage-chart-model';
+import { BASE_AXIS_MAX, BASE_AXIS_STEP, CYCLE_MS, EXPANDED_AXIS_STEP, curveValueAt, type ChartPoint, type UsageChartModel, type WindowSeries } from './usage-chart-model';
 
-const COMPACT_AXIS_MAX = 200;
 const REFERENCE_ALPHA = 0.4;
 
 function fade(colors: SeriesColors) {
@@ -157,10 +156,10 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
       position: 'right',
       min: 0,
       max: model.yMax,
-      interval: model.yMax > COMPACT_AXIS_MAX ? 50 : 25,
+      interval: model.yMax > BASE_AXIS_MAX ? EXPANDED_AXIS_STEP : BASE_AXIS_STEP,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: yAxisLabel(model, palette),
+      axisLabel: { ...yAxisLabel(model, palette), showMinLabel: true, showMaxLabel: true },
       splitLine: { lineStyle: { color: palette.grid, type: 'dashed', width: 1 } },
     },
     tooltip: {
