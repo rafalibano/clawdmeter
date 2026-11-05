@@ -1,4 +1,4 @@
-import { DEFAULT_ACCENT_COLOR } from '../../domain/settings';
+import { DEFAULT_ACCENT_COLOR, type SeriesColorSettings } from '../../domain/settings';
 import type { UsageWindowKind } from '../../domain/usage';
 import { THEME_BACKGROUNDS, type ResolvedTheme } from './theme-style';
 import { readableTextOn } from './color';
@@ -37,14 +37,33 @@ function seriesColors(line: string): SeriesColors {
   return { line, area: withAlpha(line, 0.1), areaFade: withAlpha(line, 0), marker: withAlpha(line, 0.28) };
 }
 
-export function chartPalette(accent: string, popoverBackground: string | null, theme: ResolvedTheme): ChartPalette {
-  const text = readableTextOn(popoverBackground ?? THEME_BACKGROUNDS[theme]);
+const NO_OVERRIDES: SeriesColorSettings = { fiveHour: null, sevenDay: null };
+
+export function seriesLineColors(
+  accent: string,
+  theme: ResolvedTheme,
+  overrides: SeriesColorSettings = NO_OVERRIDES,
+): Record<UsageWindowKind, string> {
   const dark = theme === 'dark';
   const fiveHour = accent === DEFAULT_ACCENT_COLOR ? (dark ? MOTTU.primary.alt : MOTTU.primary.base) : accent;
   return {
+    fiveHour: overrides.fiveHour ?? fiveHour,
+    sevenDay: overrides.sevenDay ?? (dark ? WEEKLY_NEUTRAL.dark : WEEKLY_NEUTRAL.light),
+  };
+}
+
+export function chartPalette(
+  accent: string,
+  popoverBackground: string | null,
+  theme: ResolvedTheme,
+  overrides: SeriesColorSettings = NO_OVERRIDES,
+): ChartPalette {
+  const text = readableTextOn(popoverBackground ?? THEME_BACKGROUNDS[theme]);
+  const lines = seriesLineColors(accent, theme, overrides);
+  return {
     series: {
-      fiveHour: seriesColors(fiveHour),
-      sevenDay: seriesColors(dark ? WEEKLY_NEUTRAL.dark : WEEKLY_NEUTRAL.light),
+      fiveHour: seriesColors(lines.fiveHour),
+      sevenDay: seriesColors(lines.sevenDay),
     },
     text,
     muted: withAlpha(text, 0.62),

@@ -5,13 +5,15 @@ import {
   isMaintenancePage,
   isPageEnabled,
   type AppLanguage,
+  type SeriesColorSettings,
   type ThemeMode,
 } from '../../domain/settings';
 import { PROJECTION_METHODS, type ProjectionMethod } from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
-import { ACCENT_PRESETS, BACKGROUND_PRESETS } from '../theme/accent-presets';
+import { ACCENT_PRESETS, BACKGROUND_PRESETS, SERIES_PRESETS } from '../theme/accent-presets';
+import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
 import { ConnectionsComponent } from './connections/connections.component';
@@ -31,6 +33,7 @@ export class SettingsComponent {
   protected readonly settings = this.facade.settings;
   protected readonly accentPresets = ACCENT_PRESETS;
   protected readonly backgroundPresets = BACKGROUND_PRESETS;
+  protected readonly seriesPresets = SERIES_PRESETS;
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
   protected readonly projectionMethods = PROJECTION_METHODS;
@@ -45,6 +48,14 @@ export class SettingsComponent {
   protected readonly backgroundValue = computed(
     () => this.settings().appearance.popoverBackground ?? THEME_BACKGROUNDS[this.theme.resolved()],
   );
+
+  protected readonly seriesValues = computed(() =>
+    seriesLineColors(this.settings().appearance.accentColor, this.theme.resolved(), this.settings().seriesColors),
+  );
+
+  protected setSeriesColor(kind: keyof SeriesColorSettings, color: string | null): void {
+    this.facade.update({ seriesColors: { [kind]: color } });
+  }
 
   protected togglePage(id: string, enabled: boolean): void {
     this.facade.update({ enabledPages: { [id]: enabled } });

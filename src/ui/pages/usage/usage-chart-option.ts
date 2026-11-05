@@ -3,7 +3,7 @@ import { DAY_MS, HOUR_MS } from '../../../domain/time';
 import { EXHAUSTION_LEVEL } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { withAlpha, type ChartPalette, type SeriesColors } from '../../theme/chart-palette';
-import { BASE_AXIS_MAX, CYCLE_MS, estimatedValueAt, type ChartPoint, type UsageChartModel, type WindowSeries } from './usage-chart-model';
+import { BASE_AXIS_MAX, CYCLE_MS, curveValueAt, type ChartPoint, type UsageChartModel, type WindowSeries } from './usage-chart-model';
 
 const COMPACT_AXIS_MAX = 200;
 const REFERENCE_ALPHA = 0.4;
@@ -50,35 +50,19 @@ function strokeColor(colors: SeriesColors, width: number, type?: string, color: 
   return { lineStyle, itemStyle: { color } };
 }
 
+export const CURVE_SMOOTHING = 0.5;
+
 function realSeries(window: WindowSeries, palette: ChartPalette, width: number, withMarkers: unknown) {
   const colors = palette.series[window.kind];
   return {
     name: window.label,
     type: 'line',
-    smooth: false,
+    smooth: CURVE_SMOOTHING,
     showSymbol: false,
     data: window.points,
     ...strokeColor(colors, width),
     areaStyle: fade(colors),
     ...(withMarkers === null ? {} : { markLine: { silent: true, symbol: 'none', animation: false, data: withMarkers } }),
-  };
-}
-
-const ESTIMATED_OPACITY = 0.35;
-
-function estimatedSeries(window: WindowSeries, palette: ChartPalette, width: number) {
-  const color = withAlpha(palette.series[window.kind].line, ESTIMATED_OPACITY);
-  return {
-    name: window.label,
-    type: 'line',
-    smooth: false,
-    showSymbol: false,
-    silent: true,
-    data: window.estimated,
-    lineStyle: { width, color },
-    itemStyle: { color },
-    tooltip: { show: false },
-    z: 2,
   };
 }
 
@@ -112,10 +96,6 @@ function projectionProbe(window: WindowSeries, model: UsageChartModel) {
 
 interface AxisParam {
   axisValue: number | string;
-  seriesIndex: number;
-  marker: string;
-  seriesName: string;
-  value: unknown;
 }
 
 function dot(color: string): string {
@@ -134,14 +114,9 @@ export function tooltipFormatter(model: UsageChartModel, palette: ChartPalette, 
       const value = projecting.projectAt(at);
       return `${header}<br/>${dot(palette.series[projecting.kind].line)}${l.t('usage.projected', { value: Math.round(value) })}`;
     }
-    const lines = model.windows.flatMap((window, index) => {
-      if (window.estimatedSpans.some(([from, to]) => at > from && at < to)) {
-        const value = estimatedValueAt(window.estimated, at);
-        if (value !== null) return [`${dot(palette.series[window.kind].line)}${window.label} ${Math.round(value)}% ${l.t('usage.estimated')}`];
-      }
-      const param = params.find((item) => item.seriesIndex === index);
-      const value = (param?.value as Array<number | null> | undefined)?.[1];
-      return param === undefined || value == null ? [] : [`${param.marker}${param.seriesName} ${Math.round(value)}%`];
+    const lines = model.windows.flatMap((window) => {
+      const value = curveValueAt(window.points, at);
+      return value === null ? [] : [`${dot(palette.series[window.kind].line)}${window.label} ${Math.round(value)}%`];
     });
     return [header, ...lines].join('<br/>');
   };
@@ -204,7 +179,6 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette, 
       ...model.windows.map((window, index) => realSeries(window, palette, lineWidth, index === 0 ? markers(model, palette) : null)),
       ...model.windows.flatMap((window) => (window.trend === null ? [] : [trendSeries(window, palette, l)])),
       ...model.windows.flatMap((window) => (window.projectAt === null ? [] : [projectionProbe(window, model)])),
-      ...model.windows.flatMap((window) => (window.estimated.length === 0 ? [] : [estimatedSeries(window, palette, lineWidth)])),
     ],
   };
 }

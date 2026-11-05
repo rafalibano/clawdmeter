@@ -1,4 +1,4 @@
-import type { AppSettings, ThemeMode } from './app-settings';
+import type { AppSettings, SeriesColorSettings, ThemeMode } from './app-settings';
 import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
@@ -39,6 +39,11 @@ const addProjectionMethod: Migration = (raw) => ({
   projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
 });
 
+const addSeriesColors: Migration = (raw) => ({
+  ...raw,
+  seriesColors: readSeriesColors(raw['seriesColors']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -46,6 +51,7 @@ export const MIGRATIONS: readonly Migration[] = [
   switchOffMaintenancePages,
   dropUsageThresholds,
   addProjectionMethod,
+  addSeriesColors,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -59,6 +65,15 @@ function readVersion(raw: Record<string, unknown>): number {
 
 export function isFutureSchema(raw: unknown): boolean {
   return isRecord(raw) && readVersion(raw) > SCHEMA_VERSION;
+}
+
+function optionalHex(value: unknown): string | null {
+  return isHexColor(value) ? value.toLowerCase() : null;
+}
+
+function readSeriesColors(value: unknown): SeriesColorSettings {
+  const colors = isRecord(value) ? value : {};
+  return { fiveHour: optionalHex(colors['fiveHour']), sevenDay: optionalHex(colors['sevenDay']) };
 }
 
 function readEnabledPages(value: unknown): Record<string, boolean> {
@@ -86,6 +101,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     },
     language: isAppLanguage(raw['language']) ? raw['language'] : DEFAULT_LANGUAGE,
     projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
+    seriesColors: readSeriesColors(raw['seriesColors']),
   };
 }
 

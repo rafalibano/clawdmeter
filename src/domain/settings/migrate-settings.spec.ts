@@ -40,10 +40,12 @@ describe('migrateSettings', () => {
       appearance: { accentColor: '#22C55E', popoverBackground: '#101010', theme: 'light' },
       language: 'es-MX',
       projectionMethod: 'since-reset',
+      seriesColors: { fiveHour: '#0063F7', sevenDay: null },
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
       appearance: { accentColor: '#22c55e', popoverBackground: '#101010', theme: 'light' },
+      seriesColors: { fiveHour: '#0063f7', sevenDay: null },
     });
   });
 
@@ -144,7 +146,7 @@ describe('migração 3 -> 4 (páginas em manutenção)', () => {
 describe('migração 5 -> 6 (método de projeção)', () => {
   it('arquivo da versão 5 ganha projectionMethod 14d', () => {
     const migrated = migrateSettings({ schemaVersion: 5, language: 'en', appearance: { theme: 'dark' } });
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.projectionMethod).toBe('14d');
     expect(migrated.language).toBe('en');
   });
@@ -160,5 +162,27 @@ describe('migração 5 -> 6 (método de projeção)', () => {
 
   it('o padrão dos defaults é 14d', () => {
     expect(createDefaultSettings().projectionMethod).toBe('14d');
+  });
+});
+
+describe('migração 6 -> 7 (cores das séries)', () => {
+  it('arquivo da versão 6 ganha as cores padrão do 5h e do 7d', () => {
+    const migrated = migrateSettings({ schemaVersion: 6, projectionMethod: '24h', appearance: { accentColor: '#0063f7' } });
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.seriesColors).toEqual({ fiveHour: null, sevenDay: null });
+    expect(migrated.projectionMethod).toBe('24h');
+    expect(migrated.appearance.accentColor).toBe('#0063f7');
+  });
+
+  it('preserva hex válidos e descarta os inválidos', () => {
+    expect(migrateSettings({ schemaVersion: 6, seriesColors: { fiveHour: '#EF6800', sevenDay: 'cinza' } }).seriesColors).toEqual({
+      fiveHour: '#ef6800',
+      sevenDay: null,
+    });
+    expect(migrateSettings({ schemaVersion: 7, seriesColors: 'x' }).seriesColors).toEqual({ fiveHour: null, sevenDay: null });
+  });
+
+  it('o padrão dos defaults segue as cores do tema', () => {
+    expect(createDefaultSettings().seriesColors).toEqual({ fiveHour: null, sevenDay: null });
   });
 });

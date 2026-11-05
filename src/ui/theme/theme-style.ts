@@ -1,4 +1,4 @@
-import { DEFAULT_ACCENT_COLOR, type AppearanceSettings, type ThemeMode } from '../../domain/settings';
+import { DEFAULT_ACCENT_COLOR, type AppearanceSettings, type SeriesColorSettings, type ThemeMode } from '../../domain/settings';
 import { readableTextOn } from './color';
 import { MOTTU } from './mottu-tokens';
 import { SOFT_SURFACES } from './soft-surfaces';
@@ -35,7 +35,17 @@ export function resolveTheme(mode: ThemeMode, systemDark: boolean): ResolvedThem
   return mode;
 }
 
-export function applyThemeStyle(root: ThemeRoot, appearance: AppearanceSettings, resolved: ResolvedTheme): void {
+function applySeriesColor(root: ThemeRoot, name: string, color: string | null): void {
+  if (color === null) root.style.removeProperty(name);
+  else root.style.setProperty(name, color);
+}
+
+export function applyThemeStyle(
+  root: ThemeRoot,
+  appearance: AppearanceSettings,
+  resolved: ResolvedTheme,
+  seriesColors: SeriesColorSettings = { fiveHour: null, sevenDay: null },
+): void {
   const { accentColor, popoverBackground } = appearance;
   root.dataset['theme'] = resolved;
   root.style.setProperty('--cm-accent', accentColor);
@@ -48,6 +58,8 @@ export function applyThemeStyle(root: ThemeRoot, appearance: AppearanceSettings,
     root.style.setProperty('--cm-accent-active', `color-mix(in srgb, ${accentColor} 65%, ${MOTTU.neutral.black})`);
     root.style.setProperty('--cm-accent-fg-active', MOTTU.neutral.white);
   }
+  if (seriesColors.fiveHour !== null) root.style.setProperty('--cm-series-five', seriesColors.fiveHour);
+  applySeriesColor(root, '--cm-series-seven', seriesColors.sevenDay);
   if (popoverBackground === null) {
     root.style.removeProperty('--cm-bg');
     root.style.removeProperty('--cm-fg');

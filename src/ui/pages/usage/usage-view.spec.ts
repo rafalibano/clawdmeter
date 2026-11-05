@@ -211,7 +211,10 @@ describe('toUsageView', () => {
     const { chart } = toUsageView(dataWith(ramp((i) => 10 + i)), '6h');
     expect(chart.windows.map((window) => window.label)).toEqual(['5h', '7d']);
     expect(chart.xMin).toBe(NOW - 6 * HOUR_MS);
-    expect(chart.windows[0]!.trend?.[0]).toEqual(chart.windows[0]!.points[chart.windows[0]!.points.length - 1]);
+    const last = chart.windows[0]!.points[chart.windows[0]!.points.length - 1]!;
+    const trendStart = chart.windows[0]!.trend![0]![0];
+    expect(trendStart).toBeGreaterThanOrEqual(last[0]);
+    expect(trendStart - last[0]).toBeLessThan((6 * HOUR_MS) / 120);
     expect(chart.windows[1]!.trend).not.toBeNull();
   });
 

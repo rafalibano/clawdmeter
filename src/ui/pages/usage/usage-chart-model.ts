@@ -9,7 +9,7 @@ import {
   type UsageRange,
   type UsageWindowKind,
 } from '../../../domain/usage';
-import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
+import { DAY_MS, MINUTE_MS } from '../../../domain/time';
 
 export const FUTURE_SHARE = 0.15;
 export const CYCLE_MS = 7 * DAY_MS;
@@ -18,9 +18,7 @@ export const MAX_AXIS_MAX = 300;
 export const AXIS_STEP = 25;
 
 export type ChartPoint = [at: number, value: number];
-export type SeriesPoint = [at: number, value: number | null];
 
-export const ESTIMATED_GAP_MS = 2 * HOUR_MS;
 export const FIVE_HOUR_PROJECTION_MAX_MS = DAY_MS;
 
 export interface WindowInput {
@@ -34,9 +32,7 @@ export interface WindowInput {
 export interface WindowSeries {
   kind: UsageWindowKind;
   label: string;
-  points: SeriesPoint[];
-  estimated: SeriesPoint[];
-  estimatedSpans: Array<[from: number, to: number]>;
+  points: ChartPoint[];
   trend: ChartPoint[] | null;
   projectAt: ((at: number) => number) | null;
   resetsAt: number | null;
@@ -76,70 +72,38 @@ export function projector(forecast: Forecast): ((at: number) => number) | null {
   return (at) => trendValueAt(trend, at);
 }
 
-const RESET_DROP_TOLERANCE = 1;
+export const CHART_BUCKETS = 120;
 
-export interface FilledSeries {
-  measured: SeriesPoint[];
-  estimated: SeriesPoint[];
-  spans: Array<[from: number, to: number]>;
-}
-
-function resetBetween(previous: UsagePoint, next: UsagePoint): boolean {
-  if (next.utilization < previous.utilization - RESET_DROP_TOLERANCE) return true;
-  return previous.resetsAt !== null && previous.resetsAt > previous.at && previous.resetsAt <= next.at;
-}
-
-function resetInstant(previous: UsagePoint, next: UsagePoint): number {
-  const known = previous.resetsAt;
-  if (known !== null && known > previous.at && known <= next.at) return known;
-  return Math.round((previous.at + next.at) / 2);
-}
-
-function pushEdge(target: SeriesPoint[], edge: readonly ChartPoint[]): void {
-  const last = target[target.length - 1];
-  const first = edge[0]!;
-  if (last !== undefined && (last[0] !== first[0] || last[1] !== first[1])) target.push([last[0] + 1, null]);
-  for (const point of edge) {
-    const tail = target[target.length - 1];
-    if (tail === undefined || tail[0] !== point[0] || tail[1] !== point[1]) target.push(point);
+export function downsample(points: readonly UsagePoint[], from: number, to: number, buckets: number = CHART_BUCKETS): ChartPoint[] {
+  const width = (to - from) / buckets;
+  if (!(width > 0)) return points.map((point) => [point.at, point.utilization]);
+  const sums = new Map<number, { at: number; value: number; count: number }>();
+  for (const point of points) {
+    const index = Math.min(buckets - 1, Math.max(0, Math.floor((point.at - from) / width)));
+    const sum = sums.get(index) ?? { at: 0, value: 0, count: 0 };
+    sum.at += point.at;
+    sum.value += point.utilization;
+    sum.count += 1;
+    sums.set(index, sum);
   }
+  return [...sums.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, sum]) => [sum.at / sum.count, sum.value / sum.count]);
 }
 
-export function fillGaps(points: readonly UsagePoint[]): FilledSeries {
-  const measured: SeriesPoint[] = [];
-  const estimated: SeriesPoint[] = [];
-  const spans: Array<[number, number]> = [];
+export function curveValueAt(points: readonly ChartPoint[], at: number): number | null {
   const first = points[0];
-  if (first === undefined) return { measured, estimated, spans };
-  measured.push([first.at, first.utilization]);
-  for (let index = 1; index < points.length; index++) {
-    const previous = points[index - 1]!;
-    const next = points[index]!;
-    const edge: ChartPoint[] = [[previous.at, previous.utilization]];
-    if (resetBetween(previous, next)) {
-      const at = resetInstant(previous, next);
-      edge.push([at, previous.utilization], [at, 0]);
-    }
-    edge.push([next.at, next.utilization]);
-    if (next.at - previous.at > ESTIMATED_GAP_MS) {
-      pushEdge(estimated, edge);
-      spans.push([previous.at, next.at]);
-      if (index === points.length - 1) pushEdge(measured, [edge[edge.length - 1]!]);
-    } else {
-      pushEdge(measured, edge);
-    }
-  }
-  return { measured, estimated, spans };
-}
-
-export function estimatedValueAt(estimated: readonly SeriesPoint[], at: number): number | null {
-  for (let index = 1; index < estimated.length; index++) {
-    const from = estimated[index - 1]!;
-    const to = estimated[index]!;
-    if (from[1] === null || to[1] === null || to[0] <= from[0] || at < from[0] || at > to[0]) continue;
-    return from[1] + ((to[1] - from[1]) * (at - from[0])) / (to[0] - from[0]);
-  }
-  return null;
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined || at < first[0]) return null;
+  if (at >= last[0]) return last[1];
+  const index = points.findIndex((point, position) => point[0] <= at && at <= (points[position + 1]?.[0] ?? Number.NEGATIVE_INFINITY));
+  const p1 = points[index]!;
+  const p2 = points[index + 1]!;
+  const p0 = points[index - 1] ?? p1;
+  const p3 = points[index + 2] ?? p2;
+  const t = p2[0] === p1[0] ? 0 : (at - p1[0]) / (p2[0] - p1[0]);
+  const [y0, y1, y2, y3] = [p0[1], p1[1], p2[1], p3[1]];
+  return 0.5 * (2 * y1 + (y2 - y0) * t + (2 * y0 - 5 * y1 + 4 * y2 - y3) * t * t + (3 * y1 - y0 - 3 * y2 + y3) * t * t * t);
 }
 
 function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: number): number[] {
@@ -173,13 +137,10 @@ export function buildChartModel(
     const visible = cycle
       ? input.points.filter((point) => point.at >= xMin && point.at <= now)
       : pointsInRange(input.points, effective, now);
-    const filled = fillGaps(visible);
     return {
       kind: input.kind,
       label: input.label,
-      points: filled.measured,
-      estimated: filled.estimated,
-      estimatedSpans: filled.spans,
+      points: downsample(visible, xMin, now),
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast) : null,
       resetsAt: input.resetsAt,

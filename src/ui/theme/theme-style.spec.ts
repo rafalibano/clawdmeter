@@ -64,3 +64,23 @@ describe('applyThemeStyle', () => {
     expect(THEME_BACKGROUNDS).toEqual({ light: '#f7f7f7', dark: '#1a1a1a' });
   });
 });
+
+describe('cores das séries', () => {
+  it('sem escolha, o 5h segue o destaque e o 7d fica no cinza do tema', () => {
+    const { root, properties } = fakeRoot();
+    properties.set('--cm-series-seven', '#ff0000');
+    applyThemeStyle(root, appearance, 'light', { fiveHour: null, sevenDay: null });
+    expect(properties.has('--cm-series-five')).toBe(false);
+    expect(properties.has('--cm-series-seven')).toBe(false);
+    applyThemeStyle(root, { ...appearance, accentColor: '#0063f7' }, 'light', { fiveHour: null, sevenDay: null });
+    expect(properties.get('--cm-series-five')).toBe('#0063f7');
+  });
+
+  it('cor escolhida vale nas barras do 5h e do 7d, acima do destaque', () => {
+    const { root, properties } = fakeRoot();
+    applyThemeStyle(root, { ...appearance, accentColor: '#0063f7' }, 'dark', { fiveHour: '#ef6800', sevenDay: '#1bd60b' });
+    expect(properties.get('--cm-series-five')).toBe('#ef6800');
+    expect(properties.get('--cm-series-seven')).toBe('#1bd60b');
+    expect(properties.get('--cm-accent')).toBe('#0063f7');
+  });
+});

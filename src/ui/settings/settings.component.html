@@ -90,6 +90,44 @@
     </button>
   </div>
 
+  <div class="field" data-series="fiveHour">
+    <span class="label">{{ i18n.t('settings.seriesFiveHour') }}</span>
+    <cm-color-picker
+      [label]="i18n.t('settings.seriesFiveHour')"
+      [presets]="seriesPresets"
+      [value]="seriesValues().fiveHour"
+      [marked]="settings().seriesColors.fiveHour !== null"
+      (picked)="setSeriesColor('fiveHour', $event)"
+    />
+    <button
+      type="button"
+      class="link"
+      [disabled]="settings().seriesColors.fiveHour === null"
+      (click)="setSeriesColor('fiveHour', null)"
+    >
+      {{ i18n.t('settings.series.reset') }}
+    </button>
+  </div>
+
+  <div class="field" data-series="sevenDay">
+    <span class="label">{{ i18n.t('settings.seriesSevenDay') }}</span>
+    <cm-color-picker
+      [label]="i18n.t('settings.seriesSevenDay')"
+      [presets]="seriesPresets"
+      [value]="seriesValues().sevenDay"
+      [marked]="settings().seriesColors.sevenDay !== null"
+      (picked)="setSeriesColor('sevenDay', $event)"
+    />
+    <button
+      type="button"
+      class="link"
+      [disabled]="settings().seriesColors.sevenDay === null"
+      (click)="setSeriesColor('sevenDay', null)"
+    >
+      {{ i18n.t('settings.series.reset') }}
+    </button>
+  </div>
+
   <div class="field">
     <span class="label">{{ i18n.t('settings.theme') }}</span>
     <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.theme')">

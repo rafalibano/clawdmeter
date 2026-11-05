@@ -41,8 +41,8 @@ export class UsageComponent {
   protected readonly rangeId = this.state.range;
 
   private readonly palette = computed(() => {
-    const { accentColor, popoverBackground } = this.settings.settings().appearance;
-    return chartPalette(accentColor, popoverBackground, this.theme.resolved());
+    const { appearance, seriesColors } = this.settings.settings();
+    return chartPalette(appearance.accentColor, appearance.popoverBackground, this.theme.resolved(), seriesColors);
   });
 
   protected readonly view = computed(() => {

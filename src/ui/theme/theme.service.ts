@@ -16,6 +16,9 @@ export class ThemeService {
     const listener = (event: MediaQueryListEvent) => this.systemDark.set(event.matches);
     this.media.addEventListener('change', listener);
     inject(DestroyRef).onDestroy(() => this.media.removeEventListener('change', listener));
-    effect(() => applyThemeStyle(document.documentElement, this.facade.settings().appearance, this.resolved()));
+    effect(() => {
+      const settings = this.facade.settings();
+      applyThemeStyle(document.documentElement, settings.appearance, this.resolved(), settings.seriesColors);
+    });
   }
 }

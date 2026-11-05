@@ -1,4 +1,4 @@
-import type { AppLanguage, AppSettings, AppearanceSettings } from './app-settings';
+import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings } from './app-settings';
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { isHexColor } from './hex-color';
@@ -9,6 +9,7 @@ export interface SettingsPatch {
   appearance?: Partial<AppearanceSettings>;
   language?: AppLanguage;
   projectionMethod?: ProjectionMethod;
+  seriesColors?: Partial<SeriesColorSettings>;
 }
 
 export function mergePatches(first: SettingsPatch, second: SettingsPatch): SettingsPatch {
@@ -20,6 +21,9 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   if (language !== undefined) merged.language = language;
   const projectionMethod = second.projectionMethod ?? first.projectionMethod;
   if (projectionMethod !== undefined) merged.projectionMethod = projectionMethod;
+  if (first.seriesColors !== undefined || second.seriesColors !== undefined) {
+    merged.seriesColors = { ...first.seriesColors, ...second.seriesColors };
+  }
   return merged;
 }
 
@@ -32,6 +36,18 @@ function applyAppearance(current: AppearanceSettings, patch: Partial<AppearanceS
   return next;
 }
 
+function applySeriesColor(current: string | null, patch: string | null | undefined): string | null {
+  if (patch === null) return null;
+  return isHexColor(patch) ? patch.toLowerCase() : current;
+}
+
+function applySeriesColors(current: SeriesColorSettings, patch: Partial<SeriesColorSettings>): SeriesColorSettings {
+  return {
+    fiveHour: applySeriesColor(current.fiveHour, patch.fiveHour),
+    sevenDay: applySeriesColor(current.sevenDay, patch.sevenDay),
+  };
+}
+
 export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSettings {
   return {
     ...current,
@@ -39,5 +55,6 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     appearance: applyAppearance(current.appearance, patch.appearance ?? {}),
     language: isAppLanguage(patch.language) ? patch.language : current.language,
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
+    seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
   };
 }

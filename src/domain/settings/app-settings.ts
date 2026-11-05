@@ -15,6 +15,11 @@ export function isAppLanguage(value: unknown): value is AppLanguage {
   return APP_LANGUAGES.includes(value as AppLanguage);
 }
 
+export interface SeriesColorSettings {
+  fiveHour: string | null;
+  sevenDay: string | null;
+}
+
 export interface AppearanceSettings {
   accentColor: string;
   popoverBackground: string | null;
@@ -27,4 +32,5 @@ export interface AppSettings {
   appearance: AppearanceSettings;
   language: AppLanguage;
   projectionMethod: ProjectionMethod;
+  seriesColors: SeriesColorSettings;
 }

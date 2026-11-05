@@ -14,6 +14,11 @@ export const ACCENT_PRESETS: readonly AccentPreset[] = [
   { name: 'preset.graphite', color: '#4f4f4f' },
 ];
 
+export const SERIES_PRESETS: readonly AccentPreset[] = [
+  ...ACCENT_PRESETS,
+  { name: 'preset.mediumGray', color: '#767676' },
+];
+
 export const BACKGROUND_PRESETS: readonly AccentPreset[] = [
   { name: 'preset.white', color: '#ffffff' },
   { name: 'preset.lightGray', color: '#f7f7f7' },

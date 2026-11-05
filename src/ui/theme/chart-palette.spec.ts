@@ -48,3 +48,29 @@ describe('chartPalette', () => {
     expect(chartPalette('#00b131', '#ffffff', 'dark').text).toBe('#121212');
   });
 });
+
+describe('cores escolhidas das séries', () => {
+  it('substituem linha, área e marcador de cada série nos dois temas', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      const palette = chartPalette('#00b131', null, theme, { fiveHour: '#0063f7', sevenDay: '#ef6800' });
+      expect(palette.series.fiveHour.line).toBe('#0063f7');
+      expect(palette.series.fiveHour.area).toBe('rgba(0, 99, 247, 0.1)');
+      expect(palette.series.sevenDay.line).toBe('#ef6800');
+      expect(palette.series.sevenDay.marker).toBe('rgba(239, 104, 0, 0.28)');
+    }
+  });
+
+  it('o texto do gráfico não muda com a cor da série', () => {
+    const base = chartPalette('#00b131', null, 'dark');
+    const dark = chartPalette('#00b131', null, 'dark', { fiveHour: '#000000', sevenDay: '#121212' });
+    expect(dark.text).toBe(base.text);
+    expect(dark.muted).toBe(base.muted);
+    expect(dark.series.fiveHour.line).toBe('#000000');
+  });
+
+  it('só uma cor escolhida mantém o padrão da outra', () => {
+    const palette = chartPalette('#00b131', null, 'light', { fiveHour: null, sevenDay: '#0063f7' });
+    expect(palette.series.fiveHour.line).toBe('#00b131');
+    expect(palette.series.sevenDay.line).toBe('#0063f7');
+  });
+});

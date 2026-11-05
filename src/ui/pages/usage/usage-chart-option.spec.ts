@@ -3,7 +3,7 @@ import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
 import { forecastWindow, usageRange, type Forecast, type ProjectionMethod, type UsagePoint } from '../../../domain/usage';
 import { chartPalette } from '../../theme/chart-palette';
 import { Localizer } from '../../i18n';
-import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, estimatedValueAt, FUTURE_SHARE, fillGaps, type WindowInput } from './usage-chart-model';
+import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, CHART_BUCKETS, curveValueAt, downsample, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
 import { buildChartOption as buildOption, tooltipFormatter } from './usage-chart-option';
 
 const PT = new Localizer('pt-BR');
@@ -156,7 +156,7 @@ describe('buildChartOption', () => {
     textStyle: { fontFamily: string };
     series: {
       name: string;
-      smooth?: boolean;
+      smooth?: boolean | number;
       data: number[][];
       lineStyle: { color: string; type?: string; width: number };
       areaStyle?: { color: { type: string; colorStops: { offset: number; color: string }[] } };
@@ -175,7 +175,7 @@ describe('buildChartOption', () => {
     expect(option.series.map((series) => series.name)).toEqual(['5h', '7d', '5h tendência', '7d tendência']);
     const en = buildChartOption(model, palette, new Localizer('en')) as unknown as typeof option;
     expect(en.series.map((series) => series.name)).toEqual(['5h', '7d', '5h trend', '7d trend']);
-    expect(option.series[0]!.smooth).toBe(false);
+    expect(option.series[0]!.smooth).toBe(0.5);
     expect(option.series[2]!.lineStyle).toMatchObject({ type: 'dashed', width: 1.2 });
     expect(option.series[2]!.lineStyle.width).toBeLessThan(option.series[0]!.lineStyle.width);
     expect(option.series[2]!.data[0]).toEqual([NOW, 29]);
@@ -192,6 +192,20 @@ describe('buildChartOption', () => {
     const dark = buildChartOption(model, chartPalette('#00b131', null, 'dark')) as unknown as typeof option;
     expect(dark.series[0]!.lineStyle.color).toBe('#1bd60b');
     expect(dark.series[1]!.lineStyle.color).toBe('#a9a9a9');
+  });
+
+  it('cores escolhidas valem na linha real, na área, na tendência tracejada e no tooltip', () => {
+    const custom = chartPalette('#00b131', null, 'dark', { fiveHour: '#0063f7', sevenDay: '#ef6800' });
+    const out = buildChartOption(model, custom) as unknown as typeof option;
+    expect(out.series[0]!.lineStyle.color).toBe('#0063f7');
+    expect(out.series[1]!.lineStyle.color).toBe('#ef6800');
+    expect(out.series[2]!.lineStyle.color).toBe('#0063f7');
+    expect(out.series[3]!.lineStyle.color).toBe('#ef6800');
+    expect(out.series[0]!.areaStyle?.color.colorStops[0]).toEqual({ offset: 0, color: 'rgba(0, 99, 247, 0.1)' });
+    const at = model.windows[0]!.points[0]![0];
+    const text = tooltipFormatter(model, custom, PT)([{ axisValue: at }]);
+    expect(text).toContain('background-color:#0063f7');
+    expect(text).toContain('background-color:#ef6800');
   });
 
   it('marcas: sem linha de 100% quando o eixo é 0–100, só "agora" e os resets dentro do eixo', () => {
@@ -295,8 +309,9 @@ describe('período Reset (ciclo semanal)', () => {
     const model = buildChartModel(cycleInputs(), usageRange('cycle'), NOW);
     expect(model).toMatchObject({ cycle: true, xMin: WEEKLY_RESET - CYCLE_MS, xMax: WEEKLY_RESET, rangeMs: CYCLE_MS });
     const window = model.windows[0]!;
-    const values = [...window.points, ...window.estimated].map((point) => point[1]).filter((value) => value !== null);
-    expect([...new Set(values)].sort((a, b) => a! - b!)).toEqual([0, 5, 20, 30]);
+    const values = window.points.map((point) => point[1]);
+    expect(window.points.every((point) => point[0] >= model.xMin && point[0] <= NOW)).toBe(true);
+    expect(Math.max(...values)).toBe(30);
     expect(values.includes(90)).toBe(false);
   });
 
@@ -356,13 +371,14 @@ describe('período Reset (ciclo semanal)', () => {
       expect(future).not.toContain('5h');
       expect(project(mid)).toBeGreaterThan(project(NOW + HOUR_MS));
       const past = NOW - HOUR_MS;
-      const text = format([{ axisValue: past, seriesIndex: 1, marker: '', seriesName: '7d', value: [past, 42.4] }]);
-      expect(text).toContain('7d 42%');
+      const curve = curveValueAt(built.windows[1]!.points, past)!;
+      const text = format([{ axisValue: past }]);
+      expect(text).toContain(`7d ${Math.round(curve)}%`);
       expect(text).not.toContain('Projetado');
     });
   });
 
-  describe('histórico misto e lacunas', () => {
+  describe('histórico e curva suave em baldes', () => {
     const mixed = (): UsagePoint[] => [
       { at: NOW - 20 * DAY_MS, utilization: 10, resetsAt: null, imported: true },
       { at: NOW - 6 * DAY_MS - 30 * MINUTE_MS, utilization: 12, resetsAt: null },
@@ -372,157 +388,86 @@ describe('período Reset (ciclo semanal)', () => {
       { at: NOW - HOUR_MS, utilization: 30, resetsAt: null },
       { at: NOW - 50 * MINUTE_MS, utilization: 31, resetsAt: null },
     ];
-    const run = (id: string) =>
-      buildChartModel(
-        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
-        usageRange(id),
-        NOW,
-      ).windows[0]!.points;
+    const weekly = (id: string) =>
+      buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange(id), NOW);
 
-    it('7d traz brutos, agregados e importados dentro do intervalo', () => {
-      expect(run('7d').filter((point) => point[1] !== null).map((point) => point[0])).toEqual([
-        NOW - 6 * DAY_MS - 30 * MINUTE_MS,
-        NOW - 6 * DAY_MS,
-        NOW - 5 * DAY_MS,
-        NOW - 5 * DAY_MS + 10 * MINUTE_MS,
-        NOW - HOUR_MS,
-        NOW - 50 * MINUTE_MS,
+    it('cada balde vira um ponto com a média do valor e do instante; baldes vazios somem', () => {
+      const bucket = (7 * DAY_MS) / CHART_BUCKETS;
+      expect(weekly('7d').windows[0]!.points).toEqual([
+        [NOW - 6 * DAY_MS - 30 * MINUTE_MS, 12],
+        [NOW - 6 * DAY_MS, 15],
+        [NOW - 5 * DAY_MS + 5 * MINUTE_MS, 16.5],
+        [NOW - 55 * MINUTE_MS, 30.5],
       ]);
+      expect(bucket).toBeGreaterThan(80 * MINUTE_MS);
     });
 
-    it('30d inclui também o trecho antigo', () => {
-      expect(run('30d').filter((point) => point[1] !== null)).toHaveLength(7);
+    it('30d inclui também o trecho antigo, ainda em no máximo 120 pontos', () => {
+      expect(weekly('30d').windows[0]!.points[0]).toEqual([NOW - 20 * DAY_MS, 10]);
+      const dense: UsagePoint[] = Array.from({ length: 5000 }, (_, index) => ({ at: NOW - index * 5 * MINUTE_MS, utilization: index % 100, resetsAt: null }));
+      expect(downsample(dense, NOW - 30 * DAY_MS, NOW).length).toBeLessThanOrEqual(CHART_BUCKETS);
     });
 
-    it('lacuna de até 2h é ligada em reta na linha medida; acima de 2h vira trecho estimado', () => {
-      const model = buildChartModel(
-        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
-        usageRange('7d'),
-        NOW,
+    it('lacunas e resets não ganham tratamento especial: só os pontos médios', () => {
+      const points = downsample(
+        [
+          { at: 0, utilization: 80, resetsAt: 10 },
+          { at: 1000, utilization: 5, resetsAt: 2000 },
+        ],
+        0,
+        1200,
       );
-      const window = model.windows[0]!;
-      expect(window.estimatedSpans).toEqual([
-        [NOW - 6 * DAY_MS, NOW - 5 * DAY_MS],
-        [NOW - 5 * DAY_MS + 10 * MINUTE_MS, NOW - HOUR_MS],
-      ]);
-      expect(window.points.filter((point) => point[1] === null)).toHaveLength(2);
-      expect(window.estimated.filter((point) => point[1] !== null).map((point) => point[0])).toEqual([
-        NOW - 6 * DAY_MS,
-        NOW - 5 * DAY_MS,
-        NOW - 5 * DAY_MS + 10 * MINUTE_MS,
-        NOW - HOUR_MS,
+      expect(points).toEqual([
+        [0, 80],
+        [1000, 5],
       ]);
     });
 
-    it('2h exatos ainda é medido; acima disso é estimado', () => {
-      const pair = (gap: number): UsagePoint[] => [
-        { at: NOW - 3 * HOUR_MS, utilization: 10, resetsAt: null },
-        { at: NOW - 3 * HOUR_MS + gap, utilization: 20, resetsAt: null },
-      ];
-      expect(fillGaps(pair(2 * HOUR_MS)).spans).toEqual([]);
-      expect(fillGaps(pair(2 * HOUR_MS + 1)).spans).toHaveLength(1);
-      expect(fillGaps(pair(2 * HOUR_MS)).measured).toEqual([
-        [NOW - 3 * HOUR_MS, 10],
-        [NOW - HOUR_MS, 20],
-      ]);
-    });
-
-    it('a série não é suavizada e não usa connectNulls', () => {
-      const out = buildChartOption(
-        buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange('7d'), NOW),
-        palette,
-      ) as unknown as { series: { smooth: boolean; connectNulls?: boolean; lineStyle: { color: string } }[] };
-      expect(out.series[0]).toMatchObject({ smooth: false });
+    it('a série é suave (0.5), sem série auxiliar de lacuna e sem connectNulls', () => {
+      const out = buildChartOption(weekly('7d'), palette) as unknown as { series: { smooth: number; connectNulls?: boolean; silent?: boolean; areaStyle?: unknown }[] };
+      expect(out.series[0]).toMatchObject({ smooth: 0.5 });
       expect(out.series[0]).not.toHaveProperty('connectNulls');
+      expect(out.series).toHaveLength(1);
     });
 
-    it('o trecho estimado vai numa série auxiliar com a cor da série e opacidade menor', () => {
-      const out = buildChartOption(
-        buildChartModel([{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }], usageRange('7d'), NOW),
-        palette,
-      ) as unknown as { series: { smooth: boolean; lineStyle: { color: string }; areaStyle?: unknown }[] };
-      const aux = out.series[out.series.length - 1]!;
-      expect(aux.lineStyle.color).toMatch(/^rgba\(|^#[0-9a-f]{8}$/i);
-      expect(aux.lineStyle.color).not.toBe(out.series[0]!.lineStyle.color);
-      expect(aux.areaStyle).toBeUndefined();
-    });
-
-    it('tooltip no trecho estimado mostra o valor interpolado com o sufixo "(estimado)"', () => {
-      const model = buildChartModel(
-        [{ kind: 'sevenDay', label: '7d', points: mixed(), forecast: { status: 'collecting' }, resetsAt: null }],
-        usageRange('7d'),
-        NOW,
-      );
+    it('tooltip interpola na curva (Catmull-Rom) e não fala em estimado', () => {
+      const model = weekly('7d');
       const format = tooltipFormatter(model, palette, PT);
-      const mid = NOW - 5 * DAY_MS - 12 * HOUR_MS;
-      const text = format([{ axisValue: mid, seriesIndex: 0, marker: '', seriesName: '7d', value: [mid, 15] }]);
-      expect(text).toContain('7d 16% (estimado)');
-      const measured = NOW - 5 * DAY_MS + 5 * MINUTE_MS;
-      const real = format([{ axisValue: measured, seriesIndex: 0, marker: '', seriesName: '7d', value: [measured, 16.5] }]);
-      expect(real).toContain('7d 17%');
-      expect(real).not.toContain('estimado');
-    });
-  });
-
-  describe('preenchimento e reset em degrau', () => {
-    const at = (minutes: number) => NOW - 60 * MINUTE_MS + minutes * MINUTE_MS;
-    const p = (minutes: number, utilization: number, resetsAt: number | null = null): UsagePoint => ({ at: at(minutes), utilization, resetsAt });
-
-    it('no mesmo ciclo liga os pontos em reta, sem nulls', () => {
-      const filled = fillGaps([p(0, 10, at(500)), p(20, 30, at(500)), p(50, 40, at(500))]);
-      expect(filled.measured).toEqual([
-        [at(0), 10],
-        [at(20), 30],
-        [at(50), 40],
-      ]);
-      expect(filled.spans).toEqual([]);
+      const points = model.windows[0]!.points;
+      const mid = (points[2]![0] + points[3]![0]) / 2;
+      const value = curveValueAt(points, mid)!;
+      expect(value).toBeGreaterThan(16.5);
+      expect(value).toBeLessThan(30.5);
+      const text = format([{ axisValue: mid }]);
+      expect(text).toContain(`7d ${Math.round(value)}%`);
+      expect(text).not.toMatch(/estimado|sem leitura/);
     });
 
-    it('reset com resets_at conhecido: mantém o valor até o reset, cai a 0 ali e sobe em reta', () => {
-      const filled = fillGaps([p(0, 80, at(10)), p(30, 5, at(300))]);
-      expect(filled.measured).toEqual([
-        [at(0), 80],
-        [at(10), 80],
-        [at(10), 0],
-        [at(30), 5],
-      ]);
-    });
-
-    it('reset sem resets_at: o degrau cai no meio da lacuna', () => {
-      const filled = fillGaps([p(0, 80), p(30, 5)]);
-      expect(filled.measured).toEqual([
-        [at(0), 80],
-        [at(15), 80],
-        [at(15), 0],
-        [at(30), 5],
-      ]);
-    });
-
-    it('resets_at do ponto anterior já passado marca reset mesmo sem queda visível', () => {
-      const filled = fillGaps([p(0, 0, at(10)), p(30, 0, at(300))]);
-      expect(filled.measured.map((point) => point[0])).toEqual([at(0), at(10), at(30)]);
-    });
-
-    it('reset dentro de lacuna longa: o degrau todo é estimado', () => {
-      const long = (minutes: number) => minutes + 180;
-      const filled = fillGaps([p(0, 80, at(60)), p(long(0), 5, at(600))]);
-      expect(filled.spans).toHaveLength(1);
-      expect(filled.estimated.filter((point) => point[1] !== null)).toEqual([
-        [at(0), 80],
-        [at(60), 80],
-        [at(60), 0],
-        [at(180), 5],
-      ]);
-      expect(estimatedValueAt(filled.estimated, at(120))).toBeCloseTo(2.5, 5);
+    it('curva passa pelos pontos, fica no último depois dele e some antes do primeiro', () => {
+      const points: [number, number][] = [
+        [0, 10],
+        [10, 20],
+        [20, 40],
+        [30, 30],
+      ];
+      expect(curveValueAt(points, 10)).toBe(20);
+      expect(curveValueAt(points, 20)).toBe(40);
+      expect(curveValueAt(points, 15)).toBeCloseTo(0.5 * (40 + (40 - 10) * 0.5 + (20 - 100 + 160 - 30) * 0.25 + (60 - 10 - 120 + 30) * 0.125), 9);
+      expect(curveValueAt(points, 35)).toBe(30);
+      expect(curveValueAt(points, -1)).toBeNull();
+      expect(curveValueAt([], 5)).toBeNull();
     });
 
     it('vale também para o 5h', () => {
       const model = buildChartModel(
-        [{ kind: 'fiveHour', label: '5h', points: [p(0, 90, at(10)), p(30, 4, at(400))], forecast: { status: 'collecting' }, resetsAt: at(400) }],
+        [{ kind: 'fiveHour', label: '5h', points: [{ at: NOW - 40 * MINUTE_MS, utilization: 90, resetsAt: null }, { at: NOW - 10 * MINUTE_MS, utilization: 4, resetsAt: null }], forecast: { status: 'collecting' }, resetsAt: null }],
         usageRange('1h'),
         NOW,
       );
-      expect(model.windows[0]!.points.map((point) => point[1])).toEqual([90, 90, 0, 4]);
+      expect(model.windows[0]!.points).toEqual([
+        [NOW - 40 * MINUTE_MS, 90],
+        [NOW - 10 * MINUTE_MS, 4],
+      ]);
     });
   });
 

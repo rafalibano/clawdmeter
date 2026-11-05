@@ -75,3 +75,22 @@ describe('isPageEnabled', () => {
     expect(isPageEnabled(settings, 'off')).toBe(false);
   });
 });
+
+describe('cores das séries no patch', () => {
+  it('troca cada cor, volta ao padrão com null e ignora hex inválido', () => {
+    const base = createDefaultSettings();
+    const blue = applyPatch(base, { seriesColors: { fiveHour: '#0063F7' } });
+    expect(blue.seriesColors).toEqual({ fiveHour: '#0063f7', sevenDay: null });
+    const both = applyPatch(blue, { seriesColors: { sevenDay: '#ef6800', fiveHour: 'azul' } });
+    expect(both.seriesColors).toEqual({ fiveHour: '#0063f7', sevenDay: '#ef6800' });
+    expect(applyPatch(both, { seriesColors: { fiveHour: null } }).seriesColors).toEqual({ fiveHour: null, sevenDay: '#ef6800' });
+  });
+
+  it('mergePatches junta as duas cores', () => {
+    expect(mergePatches({ seriesColors: { fiveHour: '#111111' } }, { seriesColors: { sevenDay: null } }).seriesColors).toEqual({
+      fiveHour: '#111111',
+      sevenDay: null,
+    });
+    expect(mergePatches({}, {})).not.toHaveProperty('seriesColors');
+  });
+});

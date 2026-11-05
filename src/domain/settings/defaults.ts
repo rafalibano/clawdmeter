@@ -16,5 +16,6 @@ export function createDefaultSettings(): AppSettings {
     },
     language: DEFAULT_LANGUAGE,
     projectionMethod: DEFAULT_PROJECTION_METHOD,
+    seriesColors: { fiveHour: null, sevenDay: null },
   };
 }
