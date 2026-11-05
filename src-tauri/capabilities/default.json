@@ -30,9 +30,6 @@
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },
     "fs:allow-unwatch",
-    "global-shortcut:allow-is-registered",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
     {
       "identifier": "fs:allow-exists",
       "allow": [{ "path": "$HOME/.claude/sessions" }]
