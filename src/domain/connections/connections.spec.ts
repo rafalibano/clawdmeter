@@ -5,7 +5,7 @@ import { createDefaultConnectionPrefs, parseConnectionPrefs } from './connection
 import { CONNECTION_PROBLEMS } from './connection-problem';
 import { errorStatus } from './connection-status';
 import { FIX_FOR, FIX_LABELS, PROBLEM_MESSAGES } from './fix-action';
-import { evaluateGitHubAccount, missingScopes } from './github';
+import { evaluateGitHubAccount, missingScopes, parseSsoUrl } from './github';
 
 describe('tabela de consertos', () => {
   it('todo problema tem conserto, rótulo e mensagem', () => {
@@ -25,6 +25,8 @@ describe('tabela de consertos', () => {
     ['github-org-access', 'Autorizar na org'],
     ['microsoft-expired', 'Refazer login da Microsoft'],
     ['notifications-blocked', 'Abrir ajustes do sistema'],
+    ['notifications-unverifiable', 'Abrir ajustes do sistema'],
+    ['github-not-member', 'Abrir página da org'],
   ] as const)('%s mostra o botão "%s"', (problem, label) => {
     expect(FIX_LABELS[FIX_FOR[problem]]).toBe(label);
   });
@@ -81,9 +83,18 @@ describe('evaluateGitHubAccount', () => {
     expect(status).toMatchObject({ state: 'error', problem: 'github-missing-scope' });
   });
 
-  it('SSO pendente e não-membro caem em org', () => {
+  it('SSO pendente e não-membro têm problemas distintos', () => {
     expect(evaluateGitHubAccount({ ...ok, orgAccess: 'sso-required' })).toMatchObject({ problem: 'github-org-access' });
-    expect(evaluateGitHubAccount({ ...ok, orgAccess: 'not-member' })).toMatchObject({ problem: 'github-org-access' });
+    expect(evaluateGitHubAccount({ ...ok, orgAccess: 'not-member' })).toMatchObject({ problem: 'github-not-member' });
+  });
+
+  it('escopos maiores implicam os menores', () => {
+    expect(missingScopes({ ...ok, scopes: ['repo', 'admin:org'] })).toEqual([]);
+    expect(missingScopes({ ...ok, scopes: ['repo', 'write:org'] })).toEqual([]);
+    expect(missingScopes({ ...ok, scopes: ['repo'] })).toEqual(['read:org']);
+    expect(missingScopes({ ...ok, scopes: ['read:org'] })).toEqual(['repo']);
+    expect(missingScopes({ ...ok, scopes: ['repo'] }, ['repo:status', 'public_repo'])).toEqual([]);
+    expect(missingScopes({ ...ok, scopes: ['read:org'] }, ['write:org'])).toEqual(['write:org']);
   });
 
   it('escopos desconhecidos (token fine-grained) não bloqueiam', () => {
@@ -106,5 +117,28 @@ describe('parseConnectionPrefs', () => {
       microsoft: { account: 'a@b.c' },
     });
     expect(prefs).toEqual({ claude: { enabled: false }, github: { method: 'pat' }, microsoft: { account: 'a@b.c' } });
+  });
+});
+
+describe('parseSsoUrl', () => {
+  it('extrai a URL https de github.com do header', () => {
+    expect(parseSsoUrl('required; url=https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC')).toBe(
+      'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC',
+    );
+  });
+
+  it('recusa header ausente, sem url, http, outro host e lixo', () => {
+    for (const header of [
+      null,
+      'required',
+      'required; url=http://github.com/orgs/x/sso',
+      'required; url=https://evil.example/orgs/x/sso',
+      'required; url=https://github.com.evil.example/sso',
+      'required; url=https://user@github.com/sso',
+      'required; url=javascript:alert(1)',
+      'required; url=nao-e-url',
+    ]) {
+      expect(parseSsoUrl(header)).toBeNull();
+    }
   });
 });

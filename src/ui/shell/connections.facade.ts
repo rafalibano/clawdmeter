@@ -57,13 +57,12 @@ export class ConnectionsFacade {
     }
   }
 
-  startGitHubDeviceFlow(): Promise<DeviceCode> {
+  startGitHubDeviceFlow(): Promise<DeviceCode | null> {
     return this.connections.github.startDeviceFlow.execute();
   }
 
-  async completeGitHubDeviceFlow(code: DeviceCode): Promise<void> {
-    await this.connections.openUrl.execute(code.verificationUri);
-    await this.connections.github.completeDeviceFlow.execute(code);
+  async completeGitHubDeviceFlow(code: DeviceCode, signal: AbortSignal): Promise<void> {
+    await this.connections.github.completeDeviceFlow.execute(code, signal);
   }
 
   async connectGitHubWithPat(pat: string): Promise<void> {

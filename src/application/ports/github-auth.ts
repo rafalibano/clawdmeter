@@ -14,7 +14,7 @@ export interface GitHubCliTokenSource {
 
 export interface GitHubDeviceFlow {
   start(): Promise<DeviceCode>;
-  complete(code: DeviceCode): Promise<string>;
+  complete(code: DeviceCode, signal?: AbortSignal): Promise<string>;
 }
 
 export interface GitHubAccountGateway {

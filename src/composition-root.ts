@@ -42,7 +42,7 @@ export function createComposition(): Application {
       secrets,
       now: () => clock.now(),
     }),
-    notifications: new TauriNotificationPermission(),
+    notifications: new TauriNotificationPermission(commands),
     systemSettings: new TauriSystemSettings(commands),
     urlOpener: urls,
     terminal: new TauriTerminalLauncher(commands),

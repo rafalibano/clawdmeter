@@ -28,6 +28,18 @@ describe('toRowView', () => {
     }
   });
 
+  it('notificações não verificáveis aparecem como "Não verificável", nunca como conectadas', () => {
+    const view = toRowView('notifications', errorStatus('notifications-unverifiable'));
+    expect(view).toMatchObject({ tone: 'error', summary: 'Não verificável' });
+    expect(view.actions.find((action) => action.kind === 'fix')?.label).toBe('Abrir ajustes do sistema');
+  });
+
+  it('token vencido do Claude orienta a abrir o Claude Code ou refazer o login', () => {
+    expect(toRowView('claude', errorStatus('claude-expired')).message).toBe(
+      'Token vencido — abra o Claude Code para renová-lo ou refaça o login.',
+    );
+  });
+
   it('mensagem específica do status tem prioridade sobre a padrão', () => {
     expect(toRowView('claude', errorStatus('claude-expired', 'Conclua o login')).message).toBe('Conclua o login');
   });

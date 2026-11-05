@@ -21,6 +21,7 @@ import {
   CLAUDE_CODE_INSTALL_URL,
   ConnectionProblemError,
   GITHUB_ORG_SSO_URL,
+  GITHUB_ORG_URL,
   type ConnectionId,
   type ConnectionPrefs,
   type GitHubAccount,
@@ -172,7 +173,7 @@ class DemoUrlOpener implements UrlOpener {
 
   async open(url: string): Promise<void> {
     if (url === CLAUDE_CODE_INSTALL_URL) this.world.claude.missing = false;
-    if (url === GITHUB_ORG_SSO_URL) this.world.github.orgAccess = 'ok';
+    if (url === GITHUB_ORG_SSO_URL || url === GITHUB_ORG_URL) this.world.github.orgAccess = 'ok';
   }
 }
 

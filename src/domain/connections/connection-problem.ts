@@ -7,6 +7,8 @@ export type ConnectionProblem =
   | 'github-org-access'
   | 'microsoft-expired'
   | 'notifications-blocked'
+  | 'notifications-unverifiable'
+  | 'github-not-member'
   | 'unexpected';
 
 export const CONNECTION_PROBLEMS: readonly ConnectionProblem[] = [
@@ -18,6 +20,8 @@ export const CONNECTION_PROBLEMS: readonly ConnectionProblem[] = [
   'github-org-access',
   'microsoft-expired',
   'notifications-blocked',
+  'notifications-unverifiable',
+  'github-not-member',
   'unexpected',
 ];
 

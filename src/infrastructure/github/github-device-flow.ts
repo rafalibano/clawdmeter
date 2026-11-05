@@ -22,9 +22,28 @@ interface TokenResponse {
   error_description?: string;
 }
 
-export type Sleep = (ms: number) => Promise<void>;
+export type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 
-const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function cancelled(): DOMException {
+  return new DOMException('Login cancelado', 'AbortError');
+}
+
+const realSleep: Sleep = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(cancelled());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(cancelled());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
   constructor(
@@ -47,12 +66,13 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
     };
   }
 
-  async complete(code: DeviceCode): Promise<string> {
+  async complete(code: DeviceCode, signal?: AbortSignal): Promise<string> {
     const clientId = requireClientId(this.config.clientId, 'GitHub OAuth App');
     let interval = code.intervalSeconds;
     let waited = 0;
     while (waited < code.expiresInSeconds) {
-      await this.sleep(interval * 1000);
+      await this.sleep(interval * 1000, signal);
+      if (signal?.aborted) throw cancelled();
       waited += interval;
       const response = await this.post(ACCESS_TOKEN_URL, {
         client_id: clientId,
@@ -71,6 +91,12 @@ export class GitHubDeviceFlowAuthorizer implements GitHubDeviceFlow {
           throw new ConnectionProblemError('github-unauthorized', 'Acesso negado no GitHub.');
         case 'expired_token':
           throw new ConnectionProblemError('github-unauthorized', 'O código expirou. Tente de novo.');
+        case 'device_flow_disabled':
+        case 'incorrect_client_credentials':
+          throw new ConnectionProblemError(
+            'unexpected',
+            `OAuth App do GitHub mal configurada (${body.error}). Confira o client_id e se o Device Flow está habilitado.`,
+          );
         default:
           throw new ConnectionProblemError('github-unauthorized', body.error_description ?? body.error ?? 'Falha no login');
       }

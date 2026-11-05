@@ -55,6 +55,7 @@ export function createDemoWorld(search: string): DemoWorld {
     world.github.unauthorized = github === 'github-unauthorized';
     world.github.missingScope = github === 'github-missing-scope';
     if (github === 'github-org-access') world.github.orgAccess = 'sso-required';
+    if (github === 'github-not-member') world.github.orgAccess = 'not-member';
   }
 
   const microsoft = scenario.get('microsoft');
@@ -65,6 +66,7 @@ export function createDemoWorld(search: string): DemoWorld {
 
   const notifications = scenario.get('notifications');
   if (notifications === 'notifications-blocked') world.notifications = 'denied';
+  if (notifications === 'notifications-unverifiable') world.notifications = 'unknown';
   if (notifications === 'disconnected') world.notifications = 'prompt';
 
   for (const [id, value] of scenario) if (value === 'unexpected') world.failOnce.add(id);

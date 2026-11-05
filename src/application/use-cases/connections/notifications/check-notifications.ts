@@ -5,6 +5,7 @@ import type { NotificationPermission, NotificationPermissionState } from '../../
 export function statusOfPermission(state: NotificationPermissionState): ConnectionStatus {
   if (state === 'granted') return { state: 'connected' };
   if (state === 'denied') return errorStatus('notifications-blocked');
+  if (state === 'unknown') return errorStatus('notifications-unverifiable');
   return { state: 'disconnected' };
 }
 

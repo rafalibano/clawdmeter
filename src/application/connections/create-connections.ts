@@ -93,7 +93,15 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
     fix: new FixConnection(
       {
         claude: new FixClaudeConnection(checkClaude, adapters.terminal, adapters.urlOpener),
-        github: new FixGitHubConnection(adapters.prefs, checkGitHub, disconnectGitHub, adapters.terminal, adapters.urlOpener),
+        github: new FixGitHubConnection(
+          adapters.prefs,
+          checkGitHub,
+          disconnectGitHub,
+          adapters.terminal,
+          adapters.urlOpener,
+          tokens,
+          adapters.githubAccounts,
+        ),
         microsoft: new FixMicrosoftConnection(checkMicrosoft, connectMicrosoft),
         notifications: new FixNotifications(checkNotifications, adapters.systemSettings),
       },
@@ -102,13 +110,14 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
     report: new ReportConnectionProblem(monitor),
     openUrl: new OpenUrl(adapters.urlOpener),
     github: {
-      startDeviceFlow: new StartGitHubDeviceFlow(adapters.githubDeviceFlow),
+      startDeviceFlow: new StartGitHubDeviceFlow(adapters.githubDeviceFlow, monitor),
       completeDeviceFlow: new CompleteGitHubDeviceFlow(
         adapters.githubDeviceFlow,
         adapters.secrets,
         adapters.prefs,
         adapters.githubAccounts,
         runner,
+        adapters.urlOpener,
       ),
       connectWithPat: new ConnectGitHubWithPat(adapters.secrets, adapters.prefs, adapters.githubAccounts, runner),
     },

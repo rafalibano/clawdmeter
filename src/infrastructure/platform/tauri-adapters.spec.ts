@@ -3,7 +3,7 @@ import { ConnectionProblemError } from '../../domain/connections';
 import { createFakeCommands, rejectWith } from '../testing/fakes';
 import { PlatformCommandError, toDomainError } from './tauri-commands';
 import { TauriClaudeCredentialSource } from './tauri-claude-credential-source';
-import { TauriNotificationPermission } from './tauri-notification-permission';
+import { TauriNotificationPermission, toPermissionState } from './tauri-notification-permission';
 import { TauriOAuthLoopback } from './tauri-oauth-loopback';
 import { TauriProcessRunner } from './tauri-process-runner';
 import { TauriSecretStore } from './tauri-secret-store';
@@ -111,17 +111,28 @@ describe('TauriOAuthLoopback', () => {
 });
 
 describe('TauriNotificationPermission', () => {
-  it('concedida vira granted; não concedida vira prompt', async () => {
-    const granted = new TauriNotificationPermission({ isGranted: async () => true, request: async () => 'granted' });
-    const pending = new TauriNotificationPermission({ isGranted: async () => false, request: async () => 'default' });
-    expect(await granted.status()).toBe('granted');
-    expect(await pending.status()).toBe('prompt');
+  const plugin = (result: 'granted' | 'denied' | 'default' = 'granted') => ({ request: async () => result });
+
+  it.each(['granted', 'denied', 'prompt', 'unknown'] as const)('repassa o estado %s do command Rust', async (state) => {
+    const { commands, calls } = createFakeCommands(() => state);
+    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe(state);
+    expect(calls[0]?.command).toBe('notification_permission_state');
   });
 
-  it('request mapeia default para prompt e preserva denied', async () => {
-    const denied = new TauriNotificationPermission({ isGranted: async () => false, request: async () => 'denied' });
-    const ignored = new TauriNotificationPermission({ isGranted: async () => false, request: async () => 'default' });
-    expect(await denied.request()).toBe('denied');
-    expect(await ignored.request()).toBe('prompt');
+  it('valor desconhecido do Rust vira "unknown", nunca "granted"', async () => {
+    const { commands } = createFakeCommands(() => 'qualquer-coisa');
+    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe('unknown');
+    expect(toPermissionState(undefined)).toBe('unknown');
+  });
+
+  it('falha do command vira "unknown"', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('io', 'falhou'));
+    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe('unknown');
+  });
+
+  it('o plugin sempre devolver granted no desktop não esconde o bloqueio do sistema', async () => {
+    const { commands } = createFakeCommands(() => 'denied');
+    const permission = new TauriNotificationPermission(commands, plugin('granted'));
+    expect(await permission.request()).toBe('denied');
   });
 });

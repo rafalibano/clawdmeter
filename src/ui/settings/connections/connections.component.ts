@@ -19,6 +19,7 @@ export class ConnectionsComponent {
   protected readonly deviceCode = signal<DeviceCode | null>(null);
   protected readonly patOpen = signal(false);
   protected readonly githubStarting = signal(false);
+  private deviceFlow: AbortController | null = null;
 
   constructor() {
     void this.facade.refresh(false);
@@ -33,27 +34,40 @@ export class ConnectionsComponent {
   }
 
   protected run(id: ConnectionId, action: ConnectionAction): void {
+    this.cancelDeviceFlow();
     this.deviceCode.set(null);
     this.patOpen.set(false);
     void this.facade.act(id, action);
   }
 
   protected async startDeviceFlow(): Promise<void> {
+    const flow = new AbortController();
+    this.deviceFlow = flow;
     this.githubStarting.set(true);
     this.patOpen.set(false);
     try {
       const code = await this.facade.startGitHubDeviceFlow();
+      if (code === null || flow.signal.aborted) return;
       this.deviceCode.set(code);
-      await this.facade.completeGitHubDeviceFlow(code);
-    } catch {
-      return;
+      await this.facade.completeGitHubDeviceFlow(code, flow.signal);
     } finally {
-      this.deviceCode.set(null);
-      this.githubStarting.set(false);
+      if (this.deviceFlow === flow) {
+        this.deviceFlow = null;
+        this.deviceCode.set(null);
+        this.githubStarting.set(false);
+      }
     }
   }
 
+  protected cancelDeviceFlow(): void {
+    this.deviceFlow?.abort();
+    this.deviceFlow = null;
+    this.deviceCode.set(null);
+    this.githubStarting.set(false);
+  }
+
   protected openPat(): void {
+    this.cancelDeviceFlow();
     this.deviceCode.set(null);
     this.patOpen.update((open) => !open);
   }

@@ -12,9 +12,14 @@ export class FixNotifications implements StatusUseCase<FixAction> {
     switch (fix) {
       case 'retry':
         return this.check.execute();
-      case 'open-system-settings':
+      case 'open-system-settings': {
+        const before = await this.check.execute();
         await this.settings.openNotifications();
-        return errorStatus('notifications-blocked', 'Libere as notificações e clique em "Verificar de novo".');
+        return errorStatus(
+          before.state === 'error' ? before.problem : 'notifications-blocked',
+          'Libere as notificações e clique em "Verificar de novo".',
+        );
+      }
       default:
         throw new ConnectionProblemError('unexpected', `Conserto não se aplica às notificações: ${fix}`);
     }

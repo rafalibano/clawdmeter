@@ -66,6 +66,21 @@ describe('GitHubRestAccountGateway', () => {
     expect((await api.inspect('tok')).orgAccess).toBe('sso-required');
   });
 
+  it('guarda a URL de SSO enviada pelo GitHub quando é https em github.com', async () => {
+    const url = 'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC';
+    const { gateway: api } = gateway({ status: 403, headers: { 'x-github-sso': `required; url=${url}` } });
+    expect(await api.inspect('tok')).toMatchObject({ orgAccess: 'sso-required', ssoUrl: url });
+  });
+
+  it('descarta URL de SSO de outro host ou sem https', async () => {
+    for (const header of ['required; url=https://evil.example/sso', 'required; url=http://github.com/sso']) {
+      const { gateway: api } = gateway({ status: 403, headers: { 'x-github-sso': header } });
+      const account = await api.inspect('tok');
+      expect(account.orgAccess).toBe('sso-required');
+      expect(account.ssoUrl).toBeUndefined();
+    }
+  });
+
   it('404 e convite pendente contam como não-membro', async () => {
     expect((await gateway({ status: 404 }).gateway.inspect('tok')).orgAccess).toBe('not-member');
     expect((await gateway({ status: 200, json: { state: 'pending' } }).gateway.inspect('tok')).orgAccess).toBe(
@@ -139,6 +154,35 @@ describe('GitHubDeviceFlowAuthorizer', () => {
         problem: 'github-unauthorized',
       });
     }
+  });
+
+  it('device_flow_disabled e incorrect_client_credentials viram unexpected, não github-unauthorized', async () => {
+    const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 5, expiresInSeconds: 900 };
+    for (const error of ['device_flow_disabled', 'incorrect_client_credentials']) {
+      const { fetcher } = createFakeFetch(() => ({ json: { error } }));
+      await expect(new GitHubDeviceFlowAuthorizer(fetcher, CONFIG, noSleep).complete(code)).rejects.toMatchObject({
+        problem: 'unexpected',
+      });
+    }
+  });
+
+  it('cancelar interrompe o polling sem pedir o token', async () => {
+    const { fetcher, requests } = createFakeFetch(() => ({ json: { error: 'authorization_pending' } }));
+    const controller = new AbortController();
+    const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG, async () => controller.abort());
+    const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 5, expiresInSeconds: 900 };
+    await expect(flow.complete(code, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(requests).toEqual([]);
+  });
+
+  it('o sleep real acorda com AbortError quando o sinal é abortado', async () => {
+    const { fetcher } = createFakeFetch(() => ({ json: {} }));
+    const controller = new AbortController();
+    const flow = new GitHubDeviceFlowAuthorizer(fetcher, CONFIG);
+    const code = { deviceCode: 'dc', userCode: 'U', verificationUri: 'v', intervalSeconds: 60, expiresInSeconds: 900 };
+    const pending = flow.complete(code, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('para quando o tempo do código acaba', async () => {

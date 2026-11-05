@@ -86,14 +86,19 @@ export const DEVICE_CODE: DeviceCode = {
 };
 
 export class FakeGitHubDeviceFlow implements GitHubDeviceFlow {
+  startOutcome: DeviceCode | Error = DEVICE_CODE;
   completion: string | Error = 'device-token';
+  waitForAbort = false;
 
   async start(): Promise<DeviceCode> {
-    return DEVICE_CODE;
+    return resolve(this.startOutcome);
   }
 
-  async complete(): Promise<string> {
-    return resolve(this.completion);
+  complete(_code: DeviceCode, signal?: AbortSignal): Promise<string> {
+    if (!this.waitForAbort) return Promise.resolve().then(() => resolve(this.completion));
+    return new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Login cancelado', 'AbortError')));
+    });
   }
 }
 

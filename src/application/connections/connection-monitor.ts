@@ -18,6 +18,7 @@ export class ConnectionMonitor {
 
   subscribe(listener: StatusListener): Unsubscribe {
     this.listeners.add(listener);
+    for (const [id, status] of this.statuses) listener(id, status);
     return () => this.listeners.delete(listener);
   }
 }

@@ -50,6 +50,9 @@
             <span class="muted">Digite este código em {{ code.verificationUri }}</span>
             <code class="user-code">{{ code.userCode }}</code>
             <span class="muted">Aguardando autorização…</span>
+            <button type="button" class="btn" data-action="cancel-device-flow" (click)="cancelDeviceFlow()">
+              Cancelar
+            </button>
           </div>
         }
         @if (patOpen()) {

@@ -109,15 +109,18 @@ Ajustes tem uma seção **Conexões** com as conexões exigidas pelas páginas l
 | `claude-code-missing` | Instalar Claude Code |
 | `github-unauthorized` | Refazer login do GitHub |
 | `github-missing-scope` | Refazer permissões |
-| `github-org-access` (SSO/não-membro) | Autorizar na org |
+| `github-org-access` (SSO pendente) | Autorizar na org (abre a URL de SSO enviada pelo GitHub no header `x-github-sso`, só se for https em github.com) |
+| `github-not-member` | Abrir página da org |
 | `microsoft-expired` | Refazer login da Microsoft |
 | `notifications-blocked` | Abrir ajustes do sistema |
+| `notifications-unverifiable` (SO sem como informar) | Abrir ajustes do sistema (a linha mostra "Não verificável", nunca "Conectado") |
 | `unexpected` (rede etc.) | Tentar de novo |
 
 - **Claude:** lê a credencial do Claude Code (Keychain `Claude Code-credentials` no macOS; `~/.claude/.credentials.json` como fallback e no Windows). O Rust devolve só `accessToken`, `expiresAt` e o plano; o refresh token nunca sai do Rust e o app nunca faz refresh. Desconectar só para de usar a credencial, não apaga nada do Claude Code.
 - **GitHub:** `gh auth token` (o token não é copiado) → Device Flow → PAT colado (os dois últimos ficam no cofre do SO). A validação confere escopos (`repo`, `read:org`) e o acesso à org `Mottu-ops`.
 - **Microsoft:** PKCE com listener em `127.0.0.1` (porta efêmera); o refresh token fica no cofre do SO. A agenda entra na F4.
-- **Notificações:** permissão do sistema; bloqueada leva aos ajustes do SO.
+- **Notificações:** o plugin do Tauri sempre devolve `granted` no desktop, então o estado vem do command `notification_permission_state` (macOS: `UNUserNotificationCenter`, só no app empacotado; Windows: `ToastNotifier.Setting`; fora disso `unknown`). Bloqueada leva aos ajustes do SO.
+- **Device Flow do GitHub:** tem botão Cancelar (`AbortSignal`); abrir "Colar token" também cancela o polling.
 - Preferências não secretas (método do GitHub, conta Microsoft, Claude ligado) ficam em `connections.json` ao lado do `settings.json`.
 
 `client_id` do GitHub OAuth App e do Entra ID são placeholders em `src/infrastructure/config/auth-config.ts` (`REPLACE_WITH_…`); enquanto forem placeholders, Device Flow e login Microsoft falham com estado `unexpected` explicando o que falta. Um 401 de gateway (ex.: Claude usage) marca a conexão com `connections.report.execute(id, problem)`.
@@ -128,11 +131,12 @@ Cada command tem permissão própria (`allow-<nome>` em `capabilities/default.js
 
 | Módulo | Commands | Observações |
 |---|---|---|
-| `secrets` | `secret_get/set/delete` | crate `keyring` (Keychain / Credential Manager), service `com.mottu.devpulse` |
+| `secrets` | `secret_get/set/delete` | crate `keyring` (Keychain / Credential Manager), service `com.mottu.devpulse`; segredos acima de 1200 bytes são fatiados em `<key>`, `<key>#1`… (o Credential Manager limita o blob a 2560 bytes) |
 | `claude_credentials` | `claude_credentials_read` | só leitura |
-| `process` | `process_run/spawn/kill/is_alive` | só `claude` e `gh`; `kill` só de filhos do app; eventos `process-output` e `process-exit` |
+| `process` | `process_run/spawn/kill/is_alive` | só `claude` e `gh`, com argumentos validados por programa (`process_policy.rs`): `gh auth token [-h github.com]`; `claude -p <prompt> --output-format stream-json --max-budget-usd <n> [--allowedTools <lista>]`, `--resume <uuid>` e `/login`, sem `--dangerously-skip-permissions`, `--permission-mode`, `--add-dir` e `--mcp-config`; `cwd` só a pasta do usuário ou subpastas; timeout encerra o grupo; `kill` só de filhos do app; eventos `process-output` e `process-exit` |
 | `oauth_loopback` | `oauth_loopback_listen/wait/cancel` | valida `state`, timeout, página de retorno local |
-| `terminal` | `terminal_run` | `claude`/`gh` com argumentos sem metacaracteres de shell |
+| `terminal` | `terminal_run` | `claude`/`gh` com a mesma política por programa (`gh auth login/refresh`) e argumentos sem metacaracteres de shell; no Windows abre na pasta do usuário |
+| `notification_permission` | `notification_permission_state` | `granted`, `denied`, `prompt` ou `unknown` |
 | `open_external` | `open_url`, `open_system_settings` | só `https` e painéis conhecidos |
 
 O acesso HTTP ao GitHub e à Microsoft passa pelo `tauri-plugin-http` (evita CORS do WebView), com allowlist de URLs na capability.

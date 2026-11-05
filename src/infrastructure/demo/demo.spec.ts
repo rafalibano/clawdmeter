@@ -46,6 +46,8 @@ describe('cenário demo', () => {
     ['github:github-org-access', 'github', 'github-org-access'],
     ['microsoft:microsoft-expired', 'microsoft', 'microsoft-expired'],
     ['notifications:notifications-blocked', 'notifications', 'notifications-blocked'],
+    ['notifications:notifications-unverifiable', 'notifications', 'notifications-unverifiable'],
+    ['github:github-not-member', 'github', 'github-not-member'],
     ['github:unexpected', 'github', 'unexpected'],
   ] as const)('?demo=%s mostra o estado %s/%s', async (scenario, id, problem) => {
     const { monitor } = await checkAll(`?demo=${scenario}`);
@@ -98,6 +100,7 @@ describe('cenário demo', () => {
   it('GitHub desconectado: device flow e PAT do demo conectam', async () => {
     const viaDevice = await checkAll('');
     const code = await viaDevice.github.startDeviceFlow.execute();
+    if (code === null) throw new Error('o demo sempre devolve um código');
     expect((await settle(viaDevice.github.completeDeviceFlow.execute(code))).state).toBe('connected');
 
     const viaPat = await checkAll('');

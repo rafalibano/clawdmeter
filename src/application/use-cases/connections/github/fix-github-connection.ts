@@ -1,13 +1,16 @@
 import {
   ConnectionProblemError,
+  GITHUB_ORG,
   GITHUB_ORG_SSO_URL,
+  GITHUB_ORG_URL,
   GITHUB_REQUIRED_SCOPES,
   errorStatus,
   type ConnectionStatus,
   type FixAction,
 } from '../../../../domain/connections';
+import type { GitHubTokenResolver } from '../../../connections/github-token-resolver';
 import type { StatusUseCase } from '../../../connections/connection-runner';
-import type { ConnectionPrefsStore, TerminalLauncher, UrlOpener } from '../../../ports';
+import type { ConnectionPrefsStore, GitHubAccountGateway, TerminalLauncher, UrlOpener } from '../../../ports';
 
 const AFTER_TERMINAL = 'Conclua no Terminal e clique em "Verificar de novo".';
 const AFTER_RESET = 'Entre de novo com o código do GitHub ou cole um novo token.';
@@ -19,6 +22,8 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
     private readonly disconnect: StatusUseCase,
     private readonly terminal: TerminalLauncher,
     private readonly urls: UrlOpener,
+    private readonly tokens: GitHubTokenResolver,
+    private readonly accounts: GitHubAccountGateway,
   ) {}
 
   async execute(fix: FixAction): Promise<ConnectionStatus> {
@@ -34,11 +39,25 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
           'github-missing-scope',
         );
       case 'authorize-org':
-        await this.urls.open(GITHUB_ORG_SSO_URL);
+        await this.urls.open(await this.ssoUrl());
         return errorStatus('github-org-access', 'Autorize o token na org e clique em "Verificar de novo".');
+      case 'open-org-page':
+        await this.urls.open(GITHUB_ORG_URL);
+        return errorStatus(
+          'github-not-member',
+          `Peça o convite para a org ${GITHUB_ORG} e clique em "Verificar de novo".`,
+        );
       default:
         throw new ConnectionProblemError('unexpected', `Conserto não se aplica ao GitHub: ${fix}`);
     }
+  }
+
+  private async ssoUrl(): Promise<string> {
+    const { method } = (await this.prefs.load()).github;
+    if (method === null) return GITHUB_ORG_SSO_URL;
+    const token = await this.tokens.resolve(method);
+    if (token === null) return GITHUB_ORG_SSO_URL;
+    return (await this.accounts.inspect(token)).ssoUrl ?? GITHUB_ORG_SSO_URL;
   }
 
   private async reauthenticate(

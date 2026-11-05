@@ -1,22 +1,35 @@
-import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
+import { requestPermission } from '@tauri-apps/plugin-notification';
 import type { NotificationPermission, NotificationPermissionState } from '../../application/ports';
+import type { TauriCommands } from './tauri-commands';
 
 export interface NotificationApi {
-  isGranted(): Promise<boolean>;
   request(): Promise<'granted' | 'denied' | 'default'>;
 }
 
-const pluginApi: NotificationApi = { isGranted: isPermissionGranted, request: requestPermission };
+const pluginApi: NotificationApi = { request: requestPermission };
+
+const KNOWN_STATES: readonly NotificationPermissionState[] = ['granted', 'denied', 'prompt', 'unknown'];
+
+export function toPermissionState(raw: unknown): NotificationPermissionState {
+  return KNOWN_STATES.find((state) => state === raw) ?? 'unknown';
+}
 
 export class TauriNotificationPermission implements NotificationPermission {
-  constructor(private readonly api: NotificationApi = pluginApi) {}
+  constructor(
+    private readonly commands: TauriCommands,
+    private readonly api: NotificationApi = pluginApi,
+  ) {}
 
   async status(): Promise<NotificationPermissionState> {
-    return (await this.api.isGranted()) ? 'granted' : 'prompt';
+    try {
+      return toPermissionState(await this.commands.call<string>('notification_permission_state'));
+    } catch {
+      return 'unknown';
+    }
   }
 
   async request(): Promise<NotificationPermissionState> {
-    const result = await this.api.request();
-    return result === 'default' ? 'prompt' : result;
+    await this.api.request();
+    return this.status();
   }
 }

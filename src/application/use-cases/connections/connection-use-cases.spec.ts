@@ -3,6 +3,8 @@ import {
   CLAUDE_CODE_INSTALL_URL,
   ConnectionProblemError,
   GITHUB_ORG_SSO_URL,
+  GITHUB_ORG_URL,
+  PROBLEM_MESSAGES,
   actionsFor,
   type ConnectionId,
   type ConnectionStatus,
@@ -107,14 +109,49 @@ describe('GitHub', () => {
     expect(world.prefs.current.github.method).toBeNull();
   });
 
-  it('Device Flow guarda o token no cofre e conecta', async () => {
+  it('Device Flow abre a página de verificação, guarda o token no cofre e conecta', async () => {
     const code = await connections.github.startDeviceFlow.execute();
     expect(code).toEqual(DEVICE_CODE);
-    const status = await connections.github.completeDeviceFlow.execute(code);
+    const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
+    expect(world.urls.opened).toEqual([DEVICE_CODE.verificationUri]);
     expect(status).toEqual({ state: 'connected', account: 'dev' });
     expect(world.secrets.values.get(SECRET_KEYS.githubToken)).toBe('device-token');
     expect(world.prefs.current.github.method).toBe('device-flow');
     expect(await connections.check.execute('github')).toMatchObject({ state: 'connected' });
+  });
+
+  it('start com falha (client_id placeholder) vira estado de erro com botão, não engole o erro', async () => {
+    world.deviceFlow.startOutcome = new ConnectionProblemError('unexpected', 'client_id do GitHub OAuth App não configurado');
+    expect(await connections.github.startDeviceFlow.execute()).toBeNull();
+    const status = connections.monitor.get('github');
+    expect(status).toEqual({
+      state: 'error',
+      problem: 'unexpected',
+      message: 'client_id do GitHub OAuth App não configurado',
+    });
+    expect(fixLabel('github', status)).toBe('Tentar de novo');
+  });
+
+  it('falha ao abrir a página de verificação também vira estado de erro', async () => {
+    world.urls.open = async () => {
+      throw new Error('sem navegador');
+    };
+    const status = await connections.github.completeDeviceFlow.execute(DEVICE_CODE);
+    expect(status).toEqual({ state: 'error', problem: 'unexpected', message: 'sem navegador' });
+    expect(world.secrets.values.size).toBe(0);
+  });
+
+  it('cancelar o Device Flow volta a desconectado sem gravar nada', async () => {
+    world.deviceFlow.waitForAbort = true;
+    const controller = new AbortController();
+    const pending = connections.github.completeDeviceFlow.execute(DEVICE_CODE, controller.signal);
+    await Promise.resolve();
+    expect(connections.monitor.get('github').state).toBe('checking');
+    controller.abort();
+    expect(await pending).toEqual({ state: 'disconnected' });
+    expect(connections.monitor.get('github')).toEqual({ state: 'disconnected' });
+    expect(world.secrets.values.size).toBe(0);
+    expect(world.prefs.current.github.method).toBeNull();
   });
 
   it('Device Flow negado não grava nada', async () => {
@@ -168,12 +205,38 @@ describe('GitHub', () => {
     ]);
   });
 
-  it('sem acesso à org/SSO -> "Autorizar na org" abre a página de SSO', async () => {
-    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required' };
+  it('SSO pendente -> "Autorizar na org" abre a URL de SSO enviada pelo GitHub', async () => {
+    const ssoUrl = 'https://github.com/orgs/Mottu-ops/sso?authorization_request=ABC';
+    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required', ssoUrl };
     const status = await connections.connect.execute('github');
+    expect(status).toMatchObject({ problem: 'github-org-access' });
     expect(fixLabel('github', status)).toBe('Autorizar na org');
+    const after = await runFix('github', 'authorize-org');
+    expect(world.urls.opened).toEqual([ssoUrl]);
+    expect(after).toMatchObject({ problem: 'github-org-access' });
+    expect(after.state === 'error' && after.message).toContain('Verificar de novo');
+  });
+
+  it('SSO pendente sem URL no header cai na página de SSO da org', async () => {
+    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'sso-required' };
+    await connections.connect.execute('github');
     await runFix('github', 'authorize-org');
     expect(world.urls.opened).toEqual([GITHUB_ORG_SSO_URL]);
+  });
+
+  it('não-membro tem problema e botão próprios e abre a página da org', async () => {
+    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'read:org'], orgAccess: 'not-member' };
+    const status = await connections.connect.execute('github');
+    expect(status).toEqual({ state: 'error', problem: 'github-not-member' });
+    expect(PROBLEM_MESSAGES['github-not-member']).toBe('Você não é membro da org Mottu-ops.');
+    expect(fixLabel('github', status)).toBe('Abrir página da org');
+    await runFix('github', 'open-org-page');
+    expect(world.urls.opened).toEqual([GITHUB_ORG_URL]);
+  });
+
+  it('escopos maiores (admin:org) satisfazem read:org', async () => {
+    world.githubAccounts.outcome = { login: 'dev', scopes: ['repo', 'admin:org'], orgAccess: 'ok' };
+    expect(await connections.connect.execute('github')).toMatchObject({ state: 'connected' });
   });
 
   it('token sumiu do cofre -> github-unauthorized', async () => {
@@ -233,6 +296,16 @@ describe('Notificações', () => {
     expect(world.systemSettings.notificationsOpened).toBe(1);
   });
 
+  it('estado não verificável nunca mostra Conectado: "Não verificável" com botão para os ajustes', async () => {
+    world.notifications.state = 'unknown';
+    const status = await connections.check.execute('notifications');
+    expect(status).toMatchObject({ state: 'error', problem: 'notifications-unverifiable' });
+    expect(fixLabel('notifications', status)).toBe('Abrir ajustes do sistema');
+    const after = await runFix('notifications', 'open-system-settings');
+    expect(world.systemSettings.notificationsOpened).toBe(1);
+    expect(after).toMatchObject({ problem: 'notifications-unverifiable' });
+  });
+
   it('ainda não pedidas -> Conectar pede a permissão', async () => {
     world.notifications.state = 'prompt';
     world.notifications.requestResult = 'granted';
@@ -259,6 +332,17 @@ describe('erros inesperados e monitor', () => {
 
   it('conserto que não se aplica à conexão vira erro tipado', async () => {
     expect(await runFix('claude', 'authorize-org')).toMatchObject({ state: 'error', problem: 'unexpected' });
+  });
+
+  it('assinante tardio recebe o problema reportado antes e vê o botão de conserto', () => {
+    connections.report.execute('claude', 'claude-expired');
+    const seen: Array<[ConnectionId, ConnectionStatus]> = [];
+    connections.monitor.subscribe((id, status) => seen.push([id, status]));
+    expect(seen).toHaveLength(1);
+    const [id, status] = seen[0] ?? ['claude', { state: 'unknown' } as ConnectionStatus];
+    expect(id).toBe('claude');
+    expect(status).toMatchObject({ state: 'error', problem: 'claude-expired' });
+    expect(actionsFor(id, status).some((action) => action.kind === 'fix')).toBe(true);
   });
 
   it('o monitor passa por "checking" e termina no estado final', async () => {

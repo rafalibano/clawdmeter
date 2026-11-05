@@ -34,7 +34,11 @@ function describe(status: ConnectionStatus): { tone: ConnectionTone; summary: st
         message: status.detail ?? null,
       };
     case 'error':
-      return { tone: 'error', summary: 'Atenção', message: status.message ?? PROBLEM_MESSAGES[status.problem] };
+      return {
+        tone: 'error',
+        summary: status.problem === 'notifications-unverifiable' ? 'Não verificável' : 'Atenção',
+        message: status.message ?? PROBLEM_MESSAGES[status.problem],
+      };
   }
 }
 
