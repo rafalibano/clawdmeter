@@ -17,6 +17,7 @@ const CALLBACK_PATH: &str = "/callback";
 const MAX_REQUEST_BYTES: usize = 8_192;
 const ACCEPT_POLL_MS: u64 = 40;
 const READ_TIMEOUT_MS: u64 = 2_000;
+const HEAD_DEADLINE_MS: u64 = 5_000;
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 const MAX_TIMEOUT_MS: u64 = 600_000;
 const LISTENER_TTL_MS: u64 = MAX_TIMEOUT_MS + 5_000;
@@ -164,17 +165,35 @@ fn page(status: &str, title: &str) -> String {
 }
 
 fn read_head(stream: &mut TcpStream) -> Option<String> {
+    read_head_within(
+        stream,
+        Duration::from_millis(READ_TIMEOUT_MS),
+        Duration::from_millis(HEAD_DEADLINE_MS),
+    )
+}
+
+fn read_head_within(
+    stream: &mut TcpStream,
+    per_read: Duration,
+    deadline: Duration,
+) -> Option<String> {
     stream.set_nonblocking(false).ok()?;
-    stream
-        .set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)))
-        .ok()?;
+    let started = Instant::now();
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 1024];
     while buffer.len() < MAX_REQUEST_BYTES && !buffer.windows(4).any(|window| window == b"\r\n\r\n")
     {
+        let remaining = deadline.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        stream
+            .set_read_timeout(Some(per_read.min(remaining)))
+            .ok()?;
         match stream.read(&mut chunk) {
             Ok(0) => break,
             Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+            Err(error) if error.kind() == IoErrorKind::Interrupted => continue,
             Err(_) => break,
         }
     }
@@ -455,6 +474,76 @@ mod tests {
         let (forged, real) = client.join().unwrap();
         assert!(forged.starts_with("HTTP/1.1 400"));
         assert!(real.starts_with("HTTP/1.1 400"));
+    }
+
+    #[test]
+    fn a_client_dripping_bytes_cannot_hold_the_connection_past_the_deadline() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+            for byte in b"GET /callback?code=x&state=s-1 HTTP/1.1".iter() {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(60));
+            }
+        });
+        let (mut server_side, _) = listener.accept().unwrap();
+        let started = Instant::now();
+        let head = read_head_within(
+            &mut server_side,
+            Duration::from_secs(2),
+            Duration::from_millis(400),
+        )
+        .unwrap();
+        let elapsed = started.elapsed();
+        assert!(elapsed >= Duration::from_millis(350), "{elapsed:?}");
+        assert!(elapsed < Duration::from_millis(1_200), "{elapsed:?}");
+        assert!(!head.is_empty() && !head.contains("\r\n\r\n"));
+        assert!(head.len() < "GET /callback?code=x&state=s-1 HTTP/1.1".len());
+        drop(server_side);
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn a_complete_head_is_read_well_before_the_deadline() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+            stream
+                .write_all(b"GET /callback?code=x&state=s-1 HTTP/1.1\r\nHost: x\r\n\r\n")
+                .unwrap();
+            thread::sleep(Duration::from_millis(300));
+        });
+        let (mut server_side, _) = listener.accept().unwrap();
+        let started = Instant::now();
+        let head = read_head_within(
+            &mut server_side,
+            Duration::from_secs(2),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert!(started.elapsed() < Duration::from_millis(250));
+        assert_eq!(request_target(&head).unwrap(), "/callback?code=x&state=s-1");
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn a_slow_client_does_not_stop_the_next_real_callback() {
+        let (listener, port) = listener_on_free_port();
+        let slow = thread::spawn(move || {
+            let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+            let _ = stream.write_all(b"GET /call");
+            thread::sleep(Duration::from_millis(300));
+        });
+        thread::sleep(Duration::from_millis(100));
+        let real = thread::spawn(move || send_get(port, "/callback?code=the-code&state=s-1"));
+        let code = serve_until_callback(&listener, "s-1", Duration::from_secs(15)).unwrap();
+        assert_eq!(code, "the-code");
+        slow.join().unwrap();
+        assert!(real.join().unwrap().starts_with("HTTP/1.1 200"));
     }
 
     #[test]

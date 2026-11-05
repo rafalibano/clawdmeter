@@ -272,10 +272,13 @@ impl Capture {
         let sink = Arc::clone(&buffer);
         let reader = thread::spawn(move || {
             let mut chunk = [0u8; 4096];
-            while let Ok(read) = source.read(&mut chunk) {
-                if read == 0 {
-                    break;
-                }
+            loop {
+                let read = match source.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(read) => read,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                };
                 if let Ok(mut captured) = sink.lock() {
                     let room = limit.saturating_sub(captured.bytes.len());
                     let kept = read.min(room);
@@ -766,6 +769,30 @@ mod tests {
         let capture = Capture::start_with_limit(source, 100);
         let text = capture.finish_within(Duration::from_secs(5));
         assert_eq!(text, format!("{}{CAPTURE_TRUNCATED_MARK}", "a".repeat(100)));
+    }
+
+    #[test]
+    fn capture_keeps_reading_after_an_interrupted_read() {
+        struct Flaky(u8);
+        impl Read for Flaky {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                match self.0 {
+                    1 | 3 => Err(std::io::ErrorKind::Interrupted.into()),
+                    2 => {
+                        buf[..4].copy_from_slice(b"ab\ncd"[..4].as_ref());
+                        Ok(4)
+                    }
+                    4 => {
+                        buf[..2].copy_from_slice(b"ef");
+                        Ok(2)
+                    }
+                    _ => Ok(0),
+                }
+            }
+        }
+        let text = Capture::start(Flaky(0)).finish_within(Duration::from_secs(5));
+        assert_eq!(text, "ab\ncef");
     }
 
     #[test]
