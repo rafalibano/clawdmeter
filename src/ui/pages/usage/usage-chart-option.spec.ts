@@ -6,7 +6,7 @@ import { buildChartModel, FUTURE_SHARE } from './usage-chart-model';
 import { buildChartOption } from './usage-chart-option';
 
 const NOW = 1_800_000_000_000;
-const palette = chartPalette('#6366f1', null, 'light');
+const palette = chartPalette('#00b131', null, 'light');
 const points = Array.from({ length: 10 }, (_, index) => ({
   at: NOW - (9 - index) * MINUTE_MS,
   utilization: 20 + index,
@@ -72,6 +72,18 @@ describe('buildChartOption', () => {
     expect(option.series.map((series) => series.name)).toEqual(['Uso', 'Tendência']);
     expect(option.series[1]!.lineStyle.type).toBe('dashed');
     expect((option.series[1]!.data as number[][])[0]).toEqual([NOW, 29]);
+  });
+
+  it('série, área e tendência em verde Mottu; 100% em alert; fonte Helvetica', () => {
+    const full = option as unknown as {
+      textStyle: { fontFamily: string };
+      series: { lineStyle: { color: string }; areaStyle?: { color: string; opacity: number }; markLine?: { data: { yAxis?: number; lineStyle: { color: string } }[] } }[];
+    };
+    expect(full.series[0]!.lineStyle.color).toBe('#00b131');
+    expect(full.series[0]!.areaStyle).toEqual({ color: '#00b131', opacity: 0.12 });
+    expect(full.series[1]!.lineStyle.color).toBe('#1bd60b');
+    expect(full.series[0]!.markLine!.data.find((mark) => mark.yAxis === 100)!.lineStyle.color).toBe('#ff5449');
+    expect(full.textStyle.fontFamily).toBe('"Helvetica Neue", Helvetica, Arial, sans-serif');
   });
 
   it('sem previsão só desenha a série real', () => {

@@ -8,6 +8,7 @@ const AXIS_MAX = 100;
 export function buildChartOption(model: UsageChartModel, palette: ChartPalette): EChartsCoreOption {
   return {
     animation: false,
+    textStyle: { fontFamily: palette.fontFamily },
     grid: { left: 34, right: 10, top: 8, bottom: 22 },
     xAxis: {
       type: 'time',
@@ -46,7 +47,7 @@ export function buildChartOption(model: UsageChartModel, palette: ChartPalette):
         data: model.series,
         lineStyle: { width: 2, color: palette.line },
         itemStyle: { color: palette.line },
-        areaStyle: { color: palette.line, opacity: 0.12 },
+        areaStyle: { color: palette.area, opacity: 0.12 },
         markLine: {
           silent: true,
           symbol: 'none',
