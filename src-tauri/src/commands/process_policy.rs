@@ -31,12 +31,15 @@ const DENIED_CLAUDE_FLAGS: &[&str] = &[
     "--disallowedTools",
     "--disallowed-tools",
 ];
-const CLAUDE_HARDENING_ARGS: [&str; 4] = [
-    "--setting-sources",
-    "user",
-    "--disallowedTools",
-    "Write,Edit,MultiEdit,NotebookEdit",
+const CLAUDE_DISALLOWED_TOOLS: &[&str] = &[
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "WebFetch",
+    "WebSearch",
 ];
+const CLAUDE_PERMISSION_MODE: &str = "dontAsk";
 
 fn invalid(message: impl Into<String>) -> CommandError {
     CommandError::new(ErrorKind::InvalidArgument, message)
@@ -74,13 +77,24 @@ pub fn validate_invocation(program: &str, args: &[String]) -> CommandResult<()> 
     }
 }
 
+fn claude_hardening_args() -> Vec<String> {
+    vec![
+        "--setting-sources".to_string(),
+        "user".to_string(),
+        "--permission-mode".to_string(),
+        CLAUDE_PERMISSION_MODE.to_string(),
+        "--disallowedTools".to_string(),
+        CLAUDE_DISALLOWED_TOOLS.join(","),
+    ]
+}
+
 pub fn prepare_invocation(program: &str, args: &[String]) -> CommandResult<Vec<String>> {
     validate_invocation(program, args)?;
     let mut argv = args.to_vec();
     let is_print =
         validate_program(program)? == "claude" && args.first().map(String::as_str) == Some("-p");
     if is_print {
-        argv.extend(CLAUDE_HARDENING_ARGS.iter().map(|arg| arg.to_string()));
+        argv.extend(claude_hardening_args());
     }
     Ok(argv)
 }
@@ -460,11 +474,13 @@ mod tests {
         assert!(validate_invocation("claude", &args(&with_value)).is_err());
     }
 
-    const HARDENING: [&str; 4] = [
+    const HARDENING: [&str; 6] = [
         "--setting-sources",
         "user",
+        "--permission-mode",
+        "dontAsk",
         "--disallowedTools",
-        "Write,Edit,MultiEdit,NotebookEdit",
+        "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch",
     ];
 
     #[test]
@@ -483,6 +499,27 @@ mod tests {
         let argv = prepare_invocation("claude", &args(&from_ts)).unwrap();
         let expected: Vec<&str> = from_ts.iter().chain(HARDENING.iter()).copied().collect();
         assert_eq!(argv, args(&expected));
+        assert_eq!(
+            argv,
+            args(&[
+                "-p",
+                "/acabativa",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--max-budget-usd",
+                "2",
+                "--allowedTools",
+                "Read(./**),Grep,Bash(gh pr diff:*)",
+                "--setting-sources",
+                "user",
+                "--permission-mode",
+                "dontAsk",
+                "--disallowedTools",
+                "Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch",
+            ])
+        );
+        assert_eq!(prepare_invocation("claude", &args(&from_ts)).unwrap(), argv);
         let without_tools = prepare_invocation(
             "claude",
             &args(&[
@@ -528,6 +565,19 @@ mod tests {
             vec!["--disallowed-tools", "Write"],
             vec!["--settings", "{}"],
             vec!["--setting-sources=project"],
+            vec!["--permission-mode", "dontAsk"],
+            vec!["--permission-mode", "bypassPermissions"],
+            vec!["--permission-mode", "default"],
+            vec!["--permission-mode=acceptEdits"],
+            vec!["--disallowedTools=Write"],
+            vec!["--disallowed-tools=Write"],
+            vec!["--dangerously-skip-permissions"],
+            vec!["--add-dir", "/"],
+            vec!["--add-dir=/"],
+            vec!["--mcp-config", "{}"],
+            vec!["--mcp-config=x.json"],
+            vec!["--strict-mcp-config=true"],
+            vec!["--settings=x.json"],
         ] {
             let call: Vec<&str> = base.iter().chain(extra.iter()).copied().collect();
             assert!(
