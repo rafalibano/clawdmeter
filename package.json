@@ -1,0 +1,40 @@
+{
+  "name": "dev-pulse",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "ng serve",
+    "dev": "tauri dev",
+    "dev:web": "ng serve --configuration demo",
+    "build": "ng build",
+    "build:demo": "ng build --configuration demo",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit",
+    "test": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@angular/common": "^19.2",
+    "@angular/compiler": "^19.2",
+    "@angular/core": "^19.2",
+    "@angular/platform-browser": "^19.2",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "rxjs": "~7.8",
+    "tslib": "^2.9.1",
+    "zone.js": "~0.15"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^19.2",
+    "@angular/cli": "^19.2",
+    "@angular/compiler-cli": "^19.2",
+    "@eslint/js": "^9",
+    "@tauri-apps/cli": "^2",
+    "eslint": "^9",
+    "eslint-plugin-boundaries": "^7.4.1",
+    "typescript": "~5.7",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}

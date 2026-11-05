@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dev Pulse",
+  "version": "0.1.0",
+  "identifier": "com.mottu.devpulse",
+  "build": {
+    "beforeDevCommand": "yarn start",
+    "devUrl": "http://localhost:4200",
+    "beforeBuildCommand": "yarn build",
+    "frontendDist": "../dist/dev-pulse/browser"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "macOSPrivateApi": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dev Pulse",
+        "width": 380,
+        "height": 520,
+        "decorations": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "focus": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    }
+  }
+}
