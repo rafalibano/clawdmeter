@@ -183,7 +183,36 @@ fn claude_expired() -> CommandError {
     CommandError::new(ErrorKind::ClaudeExpired, "login do Claude expirado")
 }
 
+fn usage_too_large() -> CommandError {
+    CommandError::new(ErrorKind::Http, "resposta de usage grande demais")
+}
+
+async fn read_limited(mut response: reqwest::Response, limit: usize) -> CommandResult<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > limit as u64)
+    {
+        return Err(usage_too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if body.len() + chunk.len() > limit {
+            return Err(usage_too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 async fn request_usage(url: &str, access_token: &str) -> CommandResult<serde_json::Value> {
+    request_usage_limited(url, access_token, MAX_USAGE_BYTES).await
+}
+
+async fn request_usage_limited(
+    url: &str,
+    access_token: &str,
+    limit: usize,
+) -> CommandResult<serde_json::Value> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(USAGE_TIMEOUT_SECS))
         .build()?;
@@ -207,13 +236,7 @@ async fn request_usage(url: &str, access_token: &str) -> CommandResult<serde_jso
             ),
         ));
     }
-    let body = response.bytes().await?;
-    if body.len() > MAX_USAGE_BYTES {
-        return Err(CommandError::new(
-            ErrorKind::Http,
-            "resposta de usage grande demais",
-        ));
-    }
+    let body = read_limited(response, limit).await?;
     serde_json::from_slice(&body)
         .map_err(|_| CommandError::new(ErrorKind::Http, "resposta de usage não é um JSON válido"))
 }
@@ -398,6 +421,65 @@ mod tests {
         let error = tauri::async_runtime::block_on(request_usage(&url, "t")).unwrap_err();
         server.join().unwrap();
         assert_eq!(error.kind, ErrorKind::Http);
+    }
+
+    fn serve_raw(response: Vec<u8>) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/usage",
+            listener.local_addr().unwrap().port()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let _ = stream.write_all(&response);
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn usage_body_over_the_limit_is_refused_from_the_content_length_alone() {
+        let head = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 5000\r\nConnection: close\r\n\r\n".to_vec();
+        let (url, server) = serve_raw(head);
+        let error =
+            tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert_eq!(error.message, "resposta de usage grande demais");
+    }
+
+    #[test]
+    fn usage_body_without_a_content_length_is_cut_at_the_limit_while_reading() {
+        let mut response =
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".to_vec();
+        for _ in 0..8 {
+            response.extend_from_slice(b"200\r\n");
+            response.extend(std::iter::repeat_n(b'a', 0x200));
+            response.extend_from_slice(b"\r\n");
+        }
+        response.extend_from_slice(b"0\r\n\r\n");
+        let (url, server) = serve_raw(response);
+        let error =
+            tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.message, "resposta de usage grande demais");
+    }
+
+    #[test]
+    fn usage_body_exactly_at_the_limit_is_still_parsed() {
+        let body = format!(r#"{{"k":"{}"}}"#, "a".repeat(1_024 - 8));
+        assert_eq!(body.len(), 1_024);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let (url, server) = serve_raw(response.into_bytes());
+        let usage =
+            tauri::async_runtime::block_on(request_usage_limited(&url, "t", 1_024)).unwrap();
+        server.join().unwrap();
+        assert_eq!(usage["k"].as_str().unwrap().len(), 1_016);
     }
 
     #[test]
