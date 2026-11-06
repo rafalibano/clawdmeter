@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createApplication } from '../../application/application';
 import { pageRef } from '../../application/pages';
 import { FakeClock, flushPromises } from '../../application/testing/fake-clock';
+import { FakeLaunchAtLogin } from '../../application/testing/fake-launch-at-login';
 import { createFakeConnectionWorld } from '../../application/testing/fake-connection-adapters';
 import { fakePage } from '../../application/testing/fake-page';
 import { createFakeSkills } from '../../application/testing/fake-skills';
@@ -26,6 +27,7 @@ function setup() {
     connectionAdapters: createFakeConnectionWorld().adapters,
     usageHistories: new FakeUsageHistoryStores(),
     updateChecker: new FakeUpdateChecker(),
+    launchAtLogin: new FakeLaunchAtLogin(),
     skills: createFakeSkills(clock),
     pages: [fakePage({ id: 'once', pollIntervalMs: null, load: async (): Promise<Count> => ({ n: 7 }) })],
   });
@@ -59,8 +61,9 @@ describe('PageStateService', () => {
       clock,
       settingsStore: new FakeSettingsStore(),
       connectionAdapters: createFakeConnectionWorld().adapters,
-    usageHistories: new FakeUsageHistoryStores(),
-    updateChecker: new FakeUpdateChecker(),
+      usageHistories: new FakeUsageHistoryStores(),
+      updateChecker: new FakeUpdateChecker(),
+      launchAtLogin: new FakeLaunchAtLogin(),
       skills: createFakeSkills(clock),
       pages: [
         fakePage({

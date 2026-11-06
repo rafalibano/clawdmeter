@@ -188,7 +188,7 @@ import { badgesFor, slaFor, type PullRequestBadge } from './pull-request-view';
                 <span class="title">{{ pr.title }}</span>
                 <span class="meta">
                   <span>#{{ pr.number }}</span>
-                  @if (showAuthor()) {
+                  @if (section.showAuthor) {
                     <span>{{ pr.author }}</span>
                   }
                   <span class="age" [attr.data-sla]="sla(pr)" [attr.title]="slaTitle(pr)">{{ age(pr) }}</span>
@@ -220,7 +220,6 @@ export class PullRequestSectionsComponent {
   readonly scope = input.required<string>();
   readonly sections = input.required<readonly PullRequestSection[]>();
   readonly now = input.required<number>();
-  readonly showAuthor = input(false);
 
   protected countLabel(section: PullRequestSection): string {
     return section.total > section.shown ? `${section.shown}+` : String(section.shown);
@@ -230,7 +229,7 @@ export class PullRequestSectionsComponent {
   protected readonly allOpen = computed(() => this.groups.allOpen(this.scope(), this.sections()));
 
   protected sectionTitle(section: PullRequestSection): string {
-    return this.i18n.t(`prs.section.${section.id as 'mine' | 'to-review' | 'reviewed'}`);
+    return this.i18n.t(`prs.section.${section.id as 'mine' | 'assigned' | 'to-review' | 'reviewed'}`);
   }
 
   protected groupTitle(group: PullRequestGroup): string {

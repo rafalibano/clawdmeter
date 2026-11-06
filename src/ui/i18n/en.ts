@@ -137,6 +137,14 @@ export const en = {
   'preset.gray': 'Gray',
   'preset.component': 'Component',
   'preset.black': 'Black',
+  'settings.system': 'System',
+  'settings.launchAtLogin': 'Launch at login',
+  'settings.launchAtLogin.hint': 'Opens ClawdMeter when you sign in to the computer.',
+  'settings.launchAtLogin.error': 'Could not change launch at login. Showing the current system state.',
+  'settings.launchAtLogin.readError': 'Could not read the launch at login setting.',
+  'settings.launchAtLogin.unknown': 'Status unavailable',
+  'settings.launchAtLogin.on': 'Launches at login',
+  'settings.launchAtLogin.off': 'Does not launch at login',
 
   'connections.heading': 'Connections',
   'connections.summary.attention': '{count} need attention',
@@ -272,6 +280,7 @@ export const en = {
   'session.attention.long': 'Busy for {span}',
 
   'prs.section.mine': 'My open PRs',
+  'prs.section.assigned': 'Assigned to me (by others)',
   'prs.section.to-review': 'To review',
   'prs.section.reviewed': 'Reviewed by me (open and last 30 days)',
   'prs.group.deploy': 'Deploy',

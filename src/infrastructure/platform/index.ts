@@ -4,6 +4,7 @@ export * from './tauri-commands';
 export * from './tauri-fetch';
 export * from './tauri-json-directory';
 export * from './tauri-json-file';
+export * from './tauri-launch-at-login';
 export * from './tauri-notification-permission';
 export * from './tauri-notifier';
 export * from './tauri-oauth-loopback';

@@ -22,7 +22,7 @@ import { PullRequestSectionsComponent } from './pull-request-sections.component'
     } @else if (state.status === 'error') {
       <cm-page-error [pageId]="page().id" connection="github" [message]="state.error" [problem]="state.problem" [code]="state.code" [args]="state.args" />
     } @else {
-      <cm-pull-request-sections [scope]="page().id" [sections]="state.data.sections" [now]="state.at" [showAuthor]="showAuthor()" />
+      <cm-pull-request-sections [scope]="page().id" [sections]="state.data.sections" [now]="state.at" />
     }
   `,
 })
@@ -31,7 +31,6 @@ export class PullRequestsViewComponent {
   protected readonly i18n = inject(I18n);
 
   readonly page = input.required<PageRef<PullRequestsData>>();
-  readonly showAuthor = input(false);
 
   protected readonly update = computed(() => this.pageState.get(this.page()));
 }

@@ -1,0 +1,28 @@
+:host {
+  display: block;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--cm-accent);
+}
+
+.hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cm-muted);
+}
+
+.error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--cm-danger-text);
+}

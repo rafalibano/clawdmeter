@@ -6,6 +6,7 @@ export interface PullRequestSection {
   shown: number;
   total: number;
   searchUrl: string;
+  showAuthor: boolean;
 }
 
 export interface PullRequestsData {

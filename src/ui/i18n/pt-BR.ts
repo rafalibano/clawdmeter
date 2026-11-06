@@ -127,6 +127,14 @@ export const ptBR: Record<MessageKey, string> = {
   'preset.gray': 'Cinza',
   'preset.component': 'Componente',
   'preset.black': 'Preto',
+  'settings.system': 'Sistema',
+  'settings.launchAtLogin': 'Iniciar com o sistema',
+  'settings.launchAtLogin.hint': 'Abre o ClawdMeter quando você entra no computador.',
+  'settings.launchAtLogin.error': 'Não foi possível alterar o início com o sistema. Mostrando o estado atual do sistema.',
+  'settings.launchAtLogin.readError': 'Não foi possível ler a configuração de início com o sistema.',
+  'settings.launchAtLogin.unknown': 'Status indisponível',
+  'settings.launchAtLogin.on': 'Inicia com o sistema',
+  'settings.launchAtLogin.off': 'Não inicia com o sistema',
 
   'connections.heading': 'Conexões',
   'connections.summary.attention': '{count} com atenção',
@@ -262,6 +270,7 @@ export const ptBR: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada há {span}',
 
   'prs.section.mine': 'Meus PRs abertos',
+  'prs.section.assigned': 'Atribuídos a mim (de outros)',
   'prs.section.to-review': 'Para revisar',
   'prs.section.reviewed': 'Revisados por mim (abertos e últimos 30 dias)',
   'prs.group.deploy': 'Deploy',

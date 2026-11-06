@@ -11,6 +11,7 @@ import {
   DemoClaudeAccountGateway,
   applyDemoLanguage,
   DemoExternalUsageHistorySource,
+  DemoLaunchAtLogin,
   DemoNotifier,
   DemoProcessProbe,
   DemoPullRequestGateway,
@@ -67,6 +68,7 @@ export function createComposition(): Application {
     connectionAdapters,
     usageHistories,
     updateChecker: new DemoUpdateChecker(world.update),
+    launchAtLogin: new DemoLaunchAtLogin(),
     skills: ({ connections }) =>
       createSkills(
         createDemoSkillAdapters(world, {

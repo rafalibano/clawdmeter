@@ -11,6 +11,7 @@ import {
   settingsWithAccounts,
   type FakeConnectionWorld,
 } from '../../application/testing/fake-connection-adapters';
+import { FakeLaunchAtLogin } from '../../application/testing/fake-launch-at-login';
 import { fakePage } from '../../application/testing/fake-page';
 import { createFakeSkills } from '../../application/testing/fake-skills';
 import { FakeUpdateChecker } from '../../application/testing/fake-update-checker';
@@ -49,6 +50,7 @@ async function setup(accounts: ClaudeAccount[] = [FAKE_ACCOUNT, WORK]): Promise<
     connectionAdapters: world.adapters,
     usageHistories: new FakeUsageHistoryStores(),
     updateChecker: new FakeUpdateChecker(),
+    launchAtLogin: new FakeLaunchAtLogin(),
     skills: createFakeSkills(clock),
     newAccountId: () => 'account-new-1',
     pages: [

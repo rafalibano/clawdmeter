@@ -32,3 +32,18 @@ export function projectionSummary(l: Localizer, method: ProjectionMethod): strin
 export function appearanceSummary(l: Localizer, theme: ThemeMode): string {
   return l.t(`theme.${theme}`);
 }
+
+export interface LaunchAtLoginView {
+  loaded: boolean;
+  enabled: boolean;
+  failed: 'read' | 'write' | false;
+}
+
+export function launchAtLoginSummary(l: Localizer, view: LaunchAtLoginView): string {
+  if (!view.loaded || view.failed === 'read') return l.t('settings.launchAtLogin.unknown');
+  return l.t(view.enabled ? 'settings.launchAtLogin.on' : 'settings.launchAtLogin.off');
+}
+
+export function launchAtLoginDescribedBy(failed: 'read' | 'write' | false): string {
+  return failed ? 'launch-at-login-hint launch-at-login-error' : 'launch-at-login-hint';
+}

@@ -6,7 +6,7 @@ import { REVIEWS_PAGE } from './reviews-page-ref';
   selector: 'cm-reviews-page',
   imports: [PullRequestsViewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<cm-pull-requests-view [page]="page" [showAuthor]="true" />`,
+  template: `<cm-pull-requests-view [page]="page" />`,
 })
 export class ReviewsComponent {
   protected readonly page = REVIEWS_PAGE;

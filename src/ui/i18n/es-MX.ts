@@ -127,6 +127,14 @@ export const esMX: Record<MessageKey, string> = {
   'preset.gray': 'Gris',
   'preset.component': 'Componente',
   'preset.black': 'Negro',
+  'settings.system': 'Sistema',
+  'settings.launchAtLogin': 'Iniciar con el sistema',
+  'settings.launchAtLogin.hint': 'Abre ClawdMeter cuando inicias sesión en la computadora.',
+  'settings.launchAtLogin.error': 'No se pudo cambiar el inicio con el sistema. Mostrando el estado actual del sistema.',
+  'settings.launchAtLogin.readError': 'No se pudo leer la configuración de inicio con el sistema.',
+  'settings.launchAtLogin.unknown': 'Estado no disponible',
+  'settings.launchAtLogin.on': 'Inicia con el sistema',
+  'settings.launchAtLogin.off': 'No inicia con el sistema',
 
   'connections.heading': 'Conexiones',
   'connections.summary.attention': '{count} requieren atención',
@@ -262,6 +270,7 @@ export const esMX: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada desde hace {span}',
 
   'prs.section.mine': 'Mis PRs abiertos',
+  'prs.section.assigned': 'Asignados a mí (de otros)',
   'prs.section.to-review': 'Por revisar',
   'prs.section.reviewed': 'Revisados por mí (abiertos y últimos 30 días)',
   'prs.group.deploy': 'Deploy',

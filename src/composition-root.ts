@@ -29,6 +29,7 @@ import {
   TauriCommands,
   TauriJsonDirectory,
   TauriJsonFile,
+  TauriLaunchAtLogin,
   TauriNotificationPermission,
   TauriNotifier,
   TauriOAuthLoopback,
@@ -101,6 +102,7 @@ export function createComposition(): Application {
     connectionAdapters,
     usageHistories,
     updateChecker: new TauriUpdateChecker(commands),
+    launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>
       createSkills(
         {

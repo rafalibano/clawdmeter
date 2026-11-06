@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatAge } from './age';
 import { DEPLOY_GROUP_KEY, groupByRepo, isDeployRepo, mergeUnique } from './grouping';
 import { isTruncated, type PullRequest } from './pull-request';
-import { MINE_QUERY, REVIEWED_OPEN_QUERY, TO_REVIEW_QUERY, reviewedAllQuery, reviewedRecentQuery, searchPageUrl } from './search';
+import { ASSIGNED_QUERY, MINE_QUERY, REVIEWED_OPEN_QUERY, TO_REVIEW_QUERY, reviewedAllQuery, reviewedRecentQuery, searchPageUrl } from './search';
 
 function pr(overrides: Partial<PullRequest>): PullRequest {
   return {
@@ -79,9 +79,13 @@ describe('busca', () => {
     );
   });
 
-  it('the four searches sort by most recently updated', () => {
+  it('the assigned search is open PRs assigned to me, excluding my own', () => {
+    expect(ASSIGNED_QUERY).toBe('assignee:@me -author:@me is:open is:pr archived:false sort:updated-desc');
+  });
+
+  it('the five searches sort by most recently updated', () => {
     const now = Date.UTC(2026, 10, 5, 12);
-    for (const query of [MINE_QUERY, TO_REVIEW_QUERY, REVIEWED_OPEN_QUERY, reviewedRecentQuery(now)]) {
+    for (const query of [MINE_QUERY, ASSIGNED_QUERY, TO_REVIEW_QUERY, REVIEWED_OPEN_QUERY, reviewedRecentQuery(now)]) {
       expect(query.endsWith(' sort:updated-desc')).toBe(true);
     }
   });
