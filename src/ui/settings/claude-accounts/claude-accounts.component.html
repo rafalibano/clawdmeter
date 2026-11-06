@@ -1,9 +1,4 @@
-<cm-settings-section
-  [name]="section"
-  [heading]="i18n.t('settings.claudeAccounts')"
-  [defaultOpen]="claude().accounts.length === 0"
-  (openChange)="sectionToggled($event)"
->
+<cm-settings-section [name]="section" [heading]="i18n.t('settings.claudeAccounts')" [defaultOpen]="startOpen()" (openChange)="sectionToggled($event)">
   <span summary>{{ summary() }}</span>
 
   @if (error(); as message) {
@@ -24,16 +19,18 @@
                 type="text"
                 autocomplete="off"
                 spellcheck="false"
+                data-action="rename-input"
                 [maxLength]="maxName"
                 [value]="row.name"
                 [attr.aria-label]="i18n.t('claudeAccounts.name')"
+                (keydown)="renameKey($event, row.id)"
               />
-              <button type="submit" class="btn primary" [disabled]="busy()">{{ i18n.t('claudeAccounts.save') }}</button>
-              <button type="button" class="link" (click)="renaming.set(null)">{{ i18n.t('claudeAccounts.cancel') }}</button>
+              <button type="submit" class="btn primary" [disabled]="loginBusy() || busy()">{{ i18n.t('claudeAccounts.save') }}</button>
+              <button type="button" class="link" (click)="cancelRename(row.id)">{{ i18n.t('claudeAccounts.cancel') }}</button>
             </form>
           } @else {
             <div class="head">
-              <span class="name">{{ row.name }}</span>
+              <span class="name" [title]="row.name">{{ row.name }}</span>
               @if (row.active) {
                 <span class="badge">{{ i18n.t('claudeAccounts.active') }}</span>
               }
@@ -42,10 +39,18 @@
             @if (removing() === row.id) {
               <div class="confirm" role="group" [attr.aria-label]="i18n.t('claudeAccounts.remove')">
                 <span class="confirm-text">{{ i18n.t('claudeAccounts.remove.confirm', { name: row.name }) }}</span>
-                <button type="button" class="btn danger" data-action="confirm-remove" [disabled]="busy()" (click)="confirmRemove(row.id)">
+                <button
+                  type="button"
+                  class="btn danger"
+                  data-action="confirm-remove"
+                  [disabled]="loginBusy() || busy()"
+                  (click)="confirmRemove(row.id)"
+                >
                   {{ i18n.t('claudeAccounts.remove') }}
                 </button>
-                <button type="button" class="link" (click)="removing.set(null)">{{ i18n.t('claudeAccounts.cancel') }}</button>
+                <button type="button" class="link" data-action="cancel-remove" (click)="cancelRemove(row.id)">
+                  {{ i18n.t('claudeAccounts.cancel') }}
+                </button>
               </div>
             } @else {
               <div class="actions">
@@ -64,7 +69,7 @@
                   type="button"
                   class="btn"
                   data-action="rename"
-                  [disabled]="busy()"
+                  [disabled]="loginBusy() || busy()"
                   [attr.aria-label]="i18n.t('claudeAccounts.rename') + ' · ' + row.name"
                   (click)="startRename(row.id)"
                 >
@@ -74,7 +79,7 @@
                   type="button"
                   class="btn danger"
                   data-action="remove"
-                  [disabled]="busy()"
+                  [disabled]="loginBusy() || busy()"
                   [attr.aria-label]="i18n.t('claudeAccounts.remove') + ' · ' + row.name"
                   (click)="askRemove(row.id)"
                 >
@@ -88,55 +93,59 @@
     </ul>
   }
 
+  <p class="login-status" role="status">{{ statusText() }}</p>
+
   @if (login(); as pending) {
     <div class="login" data-login>
-      <p class="login-text" role="status" aria-live="polite">{{ pending.text }}</p>
-      @if (pending.kind === 'waiting') {
-        <div class="actions">
-          <button type="button" class="btn" data-action="cancel-login" (click)="cancelLogin()">{{ i18n.t('claudeAccounts.cancel') }}</button>
-          @if (!pending.pasting) {
-            <button type="button" class="link" data-action="paste-code" (click)="showCodeEntry()">{{ i18n.t('claudeAccounts.paste') }}</button>
-          }
-        </div>
-        @if (pending.pasting) {
-          <form class="inline" (submit)="$event.preventDefault(); submitCode(codeInput)">
-            <input
-              #codeInput
-              id="claude-login-code"
-              class="input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              [attr.aria-label]="i18n.t('claudeAccounts.paste.label')"
-              [placeholder]="i18n.t('claudeAccounts.paste.label')"
-            />
-            <button type="submit" class="btn primary" [disabled]="pending.submitting">{{ i18n.t('claudeAccounts.paste.submit') }}</button>
-          </form>
+      <div class="actions">
+        <button type="button" class="btn" data-action="cancel-login" (click)="cancelLogin()">{{ i18n.t('claudeAccounts.cancel') }}</button>
+        @if (pending.kind === 'waiting' && !pending.pasting) {
+          <button type="button" class="link" data-action="paste-code" (click)="showCodeEntry()">{{ i18n.t('claudeAccounts.paste') }}</button>
         }
+      </div>
+      @if (pending.kind === 'waiting' && pending.pasting) {
+        <form class="inline" (submit)="$event.preventDefault(); submitCode(codeInput)">
+          <input
+            #codeInput
+            id="claude-login-code"
+            class="input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            [attr.aria-label]="i18n.t('claudeAccounts.paste.label')"
+            [placeholder]="i18n.t('claudeAccounts.paste.label')"
+          />
+          <button type="submit" class="btn primary" [disabled]="pending.submitting">{{ i18n.t('claudeAccounts.paste.submit') }}</button>
+        </form>
       }
     </div>
   } @else {
-    <form class="add" (submit)="$event.preventDefault(); add(nameInput)">
+    <form class="add" novalidate (submit)="$event.preventDefault(); add()">
       <label class="label" for="claude-account-name">{{ i18n.t('claudeAccounts.name') }}</label>
       <div class="inline">
         <input
-          #nameInput
           id="claude-account-name"
           class="input"
           type="text"
           autocomplete="off"
           spellcheck="false"
-          required
+          aria-required="true"
+          [class.invalid]="nameError() !== null"
+          [attr.aria-invalid]="nameError() !== null"
+          [attr.aria-describedby]="nameDescription()"
           [maxLength]="maxName"
           [placeholder]="i18n.t('claudeAccounts.name.placeholder')"
           [disabled]="addView().disabled"
-          [attr.aria-describedby]="addView().limitReached ? 'claude-account-limit' : 'claude-account-hint'"
+          [value]="nameDraft()"
+          (input)="typeName($event)"
         />
         <button type="submit" class="btn primary" data-action="add-account" [disabled]="addView().disabled">
           {{ i18n.t('claudeAccounts.add') }}
         </button>
       </div>
-      @if (addView().limitReached) {
+      @if (nameError(); as message) {
+        <span id="claude-account-name-error" class="hint invalid">{{ message }}</span>
+      } @else if (addView().limitReached) {
         <span id="claude-account-limit" class="hint">{{ limitText() }}</span>
       } @else {
         <span id="claude-account-hint" class="hint">{{ i18n.t('claudeAccounts.add.hint') }}</span>
@@ -153,7 +162,6 @@
         type="text"
         autocomplete="off"
         spellcheck="false"
-        maxlength="36"
         [class.invalid]="clientId().invalid"
         [attr.aria-invalid]="clientId().invalid"
         [attr.aria-describedby]="clientId().invalid ? 'claude-client-id-error' : 'claude-client-id-hint'"
@@ -168,7 +176,7 @@
     } @else {
       <span id="claude-client-id-hint" class="hint">{{ i18n.t('claudeAccounts.clientId.hint') }}</span>
     }
-    <button type="button" class="link" [disabled]="clientId().isDefault || busy()" (click)="resetClientId()">
+    <button type="button" class="link" [disabled]="(clientId().isDefault && !clientId().dirty) || busy()" (click)="resetClientId()">
       {{ i18n.t('claudeAccounts.clientId.reset') }}
     </button>
   </form>

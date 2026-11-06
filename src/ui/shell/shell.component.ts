@@ -11,10 +11,13 @@ import { ClaudeAccountsFacade } from './claude-accounts.facade';
 import { PageStateService } from './page-state.service';
 import { SettingsFacade } from './settings.facade';
 import { ShellNavigation } from './shell-navigation.service';
+import { errorText } from '../settings/claude-accounts/claude-accounts-view';
 import { SettingsComponent } from '../settings/settings.component';
 import { UpdateBannerComponent } from '../updates/update-banner.component';
 
 const CLOCK_TICK_MS = 1_000;
+const SWITCH_ERROR_MS = 10_000;
+const ACCOUNT_OPTION_ID = 'cm-account-option';
 
 @Component({
   selector: 'cm-shell',
@@ -36,10 +39,13 @@ export class ShellComponent {
 
   private readonly refreshing = signal(false);
   private readonly cooldowns = signal<ReadonlyMap<string, number>>(new Map());
+  private readonly switchFailure = signal<{ error: unknown; at: number } | null>(null);
 
   protected readonly showingSettings = this.navigation.settingsOpen;
   protected readonly pages = this.facade.enabledPages;
   protected readonly errorMessage = computed(() => {
+    const failed = this.switchFailure();
+    if (failed !== null && this.now() - failed.at < SWITCH_ERROR_MS) return errorText(failed.error, this.i18n.localizer());
     const error = this.facade.error();
     return error === null ? null : this.i18n.t(`shell.error.${error}`);
   });
@@ -47,7 +53,9 @@ export class ShellComponent {
     () => this.pages().find((page) => page.id === this.requestedPageId()) ?? this.pages()[0] ?? null,
   );
   protected readonly accountSwitch = computed(() =>
-    this.showingSettings() ? null : accountSwitchView(this.facade.settings().claude, this.current()?.id ?? null, USAGE_PAGE.id),
+    this.showingSettings()
+      ? null
+      : accountSwitchView(this.facade.settings().claude, this.current()?.id ?? null, USAGE_PAGE.id, ACCOUNT_OPTION_ID),
   );
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
@@ -85,8 +93,11 @@ export class ShellComponent {
     this.navigation.closeSettings();
   }
 
-  protected selectAccount(accountId: string): void {
-    void this.claudeAccounts.select(accountId);
+  protected async selectAccount(accountId: string): Promise<void> {
+    this.switchFailure.set(null);
+    if (await this.claudeAccounts.select(accountId)) return;
+    this.switchFailure.set({ error: this.claudeAccounts.failure(), at: this.clock.now() });
+    this.claudeAccounts.clearFailure();
   }
 
   protected async reload(): Promise<void> {

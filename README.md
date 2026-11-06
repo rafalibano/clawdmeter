@@ -35,7 +35,7 @@ The `.dmg` is for Macs with an Apple chip (M1 or newer). Claude usage no longer 
 
 - Click the mascot icon in the menu bar to open the panel. If the icon is hidden, use the **Ctrl + Option + D** shortcut.
 - Click the gear (⚙) in the bottom right corner to open **Settings**: enabled tabs, connections, projection method, language, colors and light/dark theme. The app opens in English; pick Português (Brasil) or Español (México) under Settings > Language.
-- **Claude accounts:** add up to 5 accounts in **Settings > Claude accounts**, each with its own name. With two or more, the Usage tab shows a selector with the account names to the right of the tabs; each account keeps its own history and alerts. In the same section you can rename, remove or sign in again to an account. If the browser does not come back to the app after the sign-in, click **Paste code**, authorize on the page that opens and paste the code it shows.
+- **Claude accounts:** add up to 5 accounts in **Settings > Claude accounts**, each with its own name. With two or more, the Usage tab shows a compact selector to the right of the tabs (the initials of the active account) that lists the account names; each account keeps its own history and alerts. In the same section you can rename, remove or sign in again to an account. If the browser does not come back to the app after the sign-in, click **Paste code**, authorize on the page that opens and paste the code it shows.
 - To see Pull Requests and Reviews, connect GitHub in **Settings > Connections**. There are three ways: use the `gh` CLI that is already signed in on your Mac, sign in through the browser, or paste an access token.
 - To quit the app, right-click the menu bar icon.
 

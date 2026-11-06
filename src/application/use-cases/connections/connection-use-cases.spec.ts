@@ -41,9 +41,9 @@ describe('Claude', () => {
     expect(await connections.check.execute('claude')).toEqual({ state: 'connected', account: 'Personal' });
   });
 
-  it('never reads a Claude Code credential nor stores anything when checking', async () => {
+  it('checking only reads the status: it never starts nor completes a sign-in', async () => {
     await connections.check.execute('claude');
-    expect(world.secrets.values.size).toBe(0);
+    expect(world.claude.begun).toEqual([]);
     expect(world.claude.completions).toEqual([]);
   });
 

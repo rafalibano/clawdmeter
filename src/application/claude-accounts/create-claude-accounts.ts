@@ -36,7 +36,7 @@ export function createClaudeAccounts(deps: ClaudeAccountDeps): ClaudeAccounts {
     completeWithCode: new CompleteClaudeLoginWithCode(logins),
     cancelLogin: new CancelClaudeLogin(logins),
     rename: new RenameClaudeAccount(deps),
-    remove: new RemoveClaudeAccount(deps),
+    remove: new RemoveClaudeAccount(deps, logins),
     select: new SelectClaudeAccount(deps),
     setClientId: new SetClaudeClientId(deps),
   };

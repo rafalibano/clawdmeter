@@ -38,6 +38,7 @@ const ERROR_CODES: readonly ErrorCode[] = [
   'keychain-unavailable',
   'claude-login-timeout',
   'claude-login-cancelled',
+  'claude-login-rate-limited',
   'claude-login-failed',
 ];
 

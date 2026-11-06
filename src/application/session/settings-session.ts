@@ -108,10 +108,7 @@ export class SettingsSession {
       this.flushing = null;
     }
     if (failure) this.emit({ ...this.state, error: failure });
-    else if (saved) {
-      const settings = { ...saved, claude: this.state.settings.claude };
-      this.emit({ ...this.state, settings, error: this.state.error === 'save' ? null : this.state.error });
-    }
+    else if (saved) this.emit({ ...this.state, settings: saved, error: this.state.error === 'save' ? null : this.state.error });
   }
 
   private emit(state: SettingsSessionState): void {

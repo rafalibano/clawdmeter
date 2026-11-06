@@ -4,7 +4,7 @@ import { DAY_MS, MINUTE_MS } from '../../../domain/time';
 import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID } from '../../../domain/settings';
 import { createEmptyHistory, type UsageSnapshot } from '../../../domain/usage';
 import { createConnections, type Connections } from '../../connections/create-connections';
-import { FakeClock } from '../../testing/fake-clock';
+import { FakeClock, flushPromises } from '../../testing/fake-clock';
 import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
 import { FAKE_ACCOUNT, settingsWithAccounts } from '../../testing/fake-connection-adapters';
 import {
@@ -15,7 +15,7 @@ import {
   FakeUsageIndicator,
 } from '../../testing/fake-usage-adapters';
 import { ImportExternalUsageHistory } from './import-external-usage-history';
-import { LoadUsage } from './load-usage';
+import { LoadUsage, type UsageData } from './load-usage';
 import type { NotifyUsageQuartiles } from './notify-usage-quartiles';
 
 const START = 1_800_000_000_000;
@@ -182,6 +182,41 @@ describe('LoadUsage and the tray indicator', () => {
     expect(data.snapshot).toEqual(gateway.outcome);
     gateway.outcome = new Error('500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
+  });
+});
+
+describe('LoadUsage when the active account changes during the fetch', () => {
+  const work = { id: 'account-2', name: 'Work' };
+
+  async function switchDuringFetch(): Promise<Promise<unknown>> {
+    world.settings.emitExternalChange(settingsWithAccounts([FAKE_ACCOUNT, work], FAKE_ACCOUNT.id));
+    const release = gateway.hold();
+    const loading = loadUsage.execute().catch((error: unknown) => error);
+    await flushPromises();
+    world.settings.emitExternalChange(settingsWithAccounts([FAKE_ACCOUNT, work], work.id));
+    release();
+    return loading;
+  }
+
+  it('records the reading in the history of the account it belongs to but leaves the tray and the connection alone', async () => {
+    gateway.outcome = new ConnectionProblemError('claude-signin-required');
+    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-signin-required' });
+    gateway.outcome = { fiveHour: { utilization: 33, resetsAt: null }, sevenDay: null };
+    indicator.updates.length = 0;
+    const data = (await switchDuringFetch()) as UsageData;
+    expect(data.accountId).toBe(FAKE_ACCOUNT.id);
+    expect(history.current.fiveHour.map((point) => point.utilization)).toEqual([33]);
+    expect(histories.forAccount(work.id).saved).toEqual([]);
+    expect(indicator.updates).toEqual([]);
+    expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'claude-signin-required' });
+  });
+
+  it('a failure of the previous account neither blanks the tray nor marks the connection of the new one', async () => {
+    gateway.outcome = new ConnectionProblemError('claude-signin-required', 'refresh rejected');
+    const error = await switchDuringFetch();
+    expect(error).toMatchObject({ problem: 'claude-signin-required', args: { account: 'Personal' } });
+    expect(indicator.updates).toEqual([]);
+    expect(connections.monitor.get('claude').state).toBe('unknown');
   });
 });
 

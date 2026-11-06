@@ -51,7 +51,13 @@ export class PendingClaudeLogin {
 
 export type PendingLoginListener = (login: PendingClaudeLogin) => void;
 
+function takenOverByPaste(error: unknown): boolean {
+  return error instanceof CodedError && error.code === 'claude-login-cancelled';
+}
+
 export class ClaudeLogins {
+  private readonly open = new Set<PendingClaudeLogin>();
+
   constructor(private readonly deps: ClaudeAccountDeps) {}
 
   newAccount(name: string, accounts: readonly ClaudeAccount[]): ClaudeAccount {
@@ -65,6 +71,7 @@ export class ClaudeLogins {
     const { claude } = await this.deps.settings.load();
     const start = await this.deps.gateway.begin(claude.clientId);
     const login = new PendingClaudeLogin(start.loginId, account, mode, start.manualAuthorizeUrl);
+    this.open.add(login);
     onPending?.(login);
     if (login.status() !== 'waiting') {
       await this.release(login);
@@ -85,11 +92,10 @@ export class ClaudeLogins {
     try {
       await this.deps.gateway.complete({ loginId: login.loginId, accountId: login.account.id, timeoutMs: this.timeoutMs });
     } catch (error) {
-      const pasteTried = login.pasteTried();
-      if (login.status() === 'succeeded' || (pasteTried && (await login.pasted()))) return this.finish(login);
+      if (login.status() === 'succeeded' || (login.pasteTried() && (await login.pasted()))) return this.finish(login);
       const cancelled = !login.settle('failed') && login.status() === 'cancelled';
       await this.release(login);
-      if (cancelled || pasteTried) return null;
+      if (cancelled || (login.pasteTried() && takenOverByPaste(error))) return null;
       throw error;
     }
     return this.finish(login);
@@ -123,11 +129,17 @@ export class ClaudeLogins {
     await this.release(login);
   }
 
+  async cancelFor(accountId: string): Promise<void> {
+    const logins = [...this.open].filter((login) => login.account.id === accountId);
+    await Promise.all(logins.map((login) => this.cancel(login)));
+  }
+
   private get timeoutMs(): number {
     return this.deps.loginTimeoutMs ?? CLAUDE_LOGIN_TIMEOUT_MS;
   }
 
   private release(login: PendingClaudeLogin): Promise<void> {
+    this.open.delete(login);
     return this.deps.gateway.cancel(login.loginId).catch(() => undefined);
   }
 
@@ -136,11 +148,13 @@ export class ClaudeLogins {
   }
 
   private async conclude(login: PendingClaudeLogin): Promise<ClaudeAccount | null> {
-    if (!login.settle('succeeded')) {
-      if (login.mode === 'add') await this.deps.gateway.remove(login.account.id).catch(() => undefined);
+    this.open.delete(login);
+    const settled = login.settle('succeeded');
+    if (login.mode === 'reauthenticate') return this.concludeReauthentication(login, settled);
+    if (!settled) {
+      await this.deps.gateway.remove(login.account.id).catch(() => undefined);
       return null;
     }
-    if (login.mode === 'reauthenticate') return login.account;
     try {
       await this.record(login.account);
     } catch (error) {
@@ -150,21 +164,24 @@ export class ClaudeLogins {
     return login.account;
   }
 
+  private async concludeReauthentication(login: PendingClaudeLogin, settled: boolean): Promise<ClaudeAccount | null> {
+    const { claude } = await this.deps.settings.load();
+    if (claude.accounts.some((account) => account.id === login.account.id)) return settled ? login.account : null;
+    await this.deps.gateway.remove(login.account.id).catch(() => undefined);
+    return null;
+  }
+
   private async record(account: ClaudeAccount): Promise<void> {
     const first = (await this.deps.settings.load()).claude.accounts.length === 0;
-    const adopted = first ? await this.deps.histories.adoptLegacy(account.id).catch(() => false) : false;
-    if (!first) await this.deps.histories.forAccount(account.id).markImported(this.deps.clock.now()).catch(() => undefined);
+    let adopted = false;
     try {
+      if (first) adopted = await this.deps.histories.adoptLegacy(account.id).catch(() => false);
+      else await this.deps.histories.forAccount(account.id).markImported(this.deps.clock.now());
       await this.deps.updateSettings.execute((current) => {
         const { accounts, activeAccountId } = current.claude;
         if (accounts.some((existing) => existing.id === account.id)) return {};
         const name = checkedNewAccount(account.name, accounts);
-        return {
-          claude: {
-            accounts: [...accounts, { id: account.id, name }],
-            activeAccountId: accounts.length === 0 ? account.id : activeAccountId,
-          },
-        };
+        return { claude: { accounts: [...accounts, { id: account.id, name }], activeAccountId: first ? account.id : activeAccountId } };
       });
     } catch (error) {
       if (adopted) await this.deps.histories.releaseLegacy(account.id).catch(() => undefined);

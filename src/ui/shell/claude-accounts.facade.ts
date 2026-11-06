@@ -1,15 +1,16 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { ClaudeAccountStatus } from '../../application/ports';
 import type { ClaudeLoginMode, PendingClaudeLogin } from '../../application/use-cases';
+import { CodedError } from '../../domain/coded-error';
 import type { ClaudeAccount } from '../../domain/settings';
 import { USAGE_PAGE } from '../pages/usage/usage-page-ref';
-import type { ClaudeLoginView } from '../settings/claude-accounts/claude-accounts-view';
+import type { ClaudeLoginSuccess, ClaudeLoginView } from '../settings/claude-accounts/claude-accounts-view';
 import { APPLICATION } from './application.token';
 import { SettingsFacade } from './settings.facade';
 
 type LoginPhase =
   | { kind: 'idle' }
-  | { kind: 'starting'; mode: ClaudeLoginMode }
+  | { kind: 'starting'; mode: ClaudeLoginMode; cancelRequested: boolean }
   | { kind: 'waiting'; login: PendingClaudeLogin; pasting: boolean; submitting: boolean };
 
 @Injectable({ providedIn: 'root' })
@@ -18,12 +19,18 @@ export class ClaudeAccountsFacade {
   private readonly settings = inject(SettingsFacade);
   private readonly phase = signal<LoginPhase>({ kind: 'idle' });
   private readonly statusMap = signal<ReadonlyMap<string, ClaudeAccountStatus | null>>(new Map());
+  private readonly failureState = signal<unknown>(null);
+  private readonly busyState = signal(false);
+  private readonly successState = signal<ClaudeLoginSuccess | null>(null);
   private readonly concluded = new WeakSet<PendingClaudeLogin>();
+  private activeBeforeSignIn: string | null = null;
+  private running = 0;
 
   readonly claude = computed(() => this.settings.settings().claude);
   readonly statuses = this.statusMap.asReadonly();
-  readonly failure = signal<unknown>(null);
-  readonly busy = signal(false);
+  readonly failure = this.failureState.asReadonly();
+  readonly busy = this.busyState.asReadonly();
+  readonly success = this.successState.asReadonly();
   readonly loginBusy = computed(() => this.phase().kind !== 'idle');
   readonly login = computed<ClaudeLoginView | null>(() => {
     const phase = this.phase();
@@ -57,21 +64,21 @@ export class ClaudeAccountsFacade {
   async showCodeEntry(): Promise<void> {
     const phase = this.phase();
     if (phase.kind !== 'waiting' || phase.pasting) return;
-    this.failure.set(null);
+    this.failureState.set(null);
     this.phase.set({ ...phase, pasting: true });
-    await this.app.claudeAccounts.openCodePage.execute(phase.login).catch((error: unknown) => this.failure.set(error));
+    await this.app.claudeAccounts.openCodePage.execute(phase.login).catch((error: unknown) => this.failureState.set(error));
   }
 
   async submitCode(code: string): Promise<void> {
     const phase = this.phase();
     if (phase.kind !== 'waiting' || phase.submitting) return;
-    this.failure.set(null);
+    this.failureState.set(null);
     this.phase.set({ ...phase, submitting: true });
     try {
       const account = await this.app.claudeAccounts.completeWithCode.execute(phase.login, code);
       await this.conclude(phase.login, account);
     } catch (error) {
-      this.failure.set(error);
+      this.failureState.set(error);
       const current = this.phase();
       if (current.kind === 'waiting' && current.login === phase.login) this.phase.set({ ...current, submitting: false });
     }
@@ -79,6 +86,10 @@ export class ClaudeAccountsFacade {
 
   async cancelLogin(): Promise<void> {
     const phase = this.phase();
+    if (phase.kind === 'starting') {
+      this.phase.set({ ...phase, cancelRequested: true });
+      return;
+    }
     if (phase.kind !== 'waiting') return;
     await this.app.claudeAccounts.cancelLogin.execute(phase.login);
   }
@@ -91,17 +102,24 @@ export class ClaudeAccountsFacade {
   }
 
   async remove(accountId: string): Promise<boolean> {
+    const phase = this.phase();
+    if (phase.kind === 'starting' || (phase.kind === 'waiting' && phase.login.account.id === accountId)) {
+      this.failureState.set(new CodedError('claude-login-busy'));
+      return false;
+    }
+    const previous = this.claude().activeAccountId;
     return this.change(async () => {
       await this.app.claudeAccounts.remove.execute(accountId);
-      await this.afterAccountsChanged();
+      await this.afterAccountsChanged(previous);
     });
   }
 
   async select(accountId: string): Promise<boolean> {
-    if (this.claude().activeAccountId === accountId) return true;
+    const previous = this.claude().activeAccountId;
+    if (previous === accountId) return true;
     return this.change(async () => {
       await this.app.claudeAccounts.select.execute(accountId);
-      await this.afterAccountsChanged();
+      await this.afterAccountsChanged(previous);
     });
   }
 
@@ -112,7 +130,8 @@ export class ClaudeAccountsFacade {
   }
 
   clearFailure(): void {
-    this.failure.set(null);
+    this.failureState.set(null);
+    this.successState.set(null);
   }
 
   private async signIn(
@@ -120,17 +139,21 @@ export class ClaudeAccountsFacade {
     start: (onPending: (login: PendingClaudeLogin) => void) => Promise<ClaudeAccount | null>,
   ): Promise<boolean> {
     if (this.phase().kind !== 'idle') return false;
-    this.failure.set(null);
-    this.phase.set({ kind: 'starting', mode });
+    this.failureState.set(null);
+    this.successState.set(null);
+    this.phase.set({ kind: 'starting', mode, cancelRequested: false });
+    this.activeBeforeSignIn = this.claude().activeAccountId;
     const started: { login: PendingClaudeLogin | null } = { login: null };
     try {
       const account = await start((login) => {
         started.login = login;
-        this.phase.set({ kind: 'waiting', login, pasting: false, submitting: false });
+        const phase = this.phase();
+        if (phase.kind === 'starting' && phase.cancelRequested) void this.app.claudeAccounts.cancelLogin.execute(login);
+        else this.phase.set({ kind: 'waiting', login, pasting: false, submitting: false });
       });
       return await this.conclude(started.login, account);
     } catch (error) {
-      if (started.login === null || !this.concluded.has(started.login)) this.failure.set(error);
+      if (started.login === null || !this.concluded.has(started.login)) this.failureState.set(error);
       this.release(started.login);
       return false;
     }
@@ -141,7 +164,9 @@ export class ClaudeAccountsFacade {
     if (login !== null) this.concluded.add(login);
     this.release(login);
     if (account === null) return false;
-    await this.afterAccountsChanged();
+    this.successState.set({ mode: login?.mode ?? 'add', name: account.name });
+    if (login?.mode === 'reauthenticate') await this.refreshStatuses();
+    await this.afterAccountsChanged(this.activeBeforeSignIn);
     return true;
   }
 
@@ -151,21 +176,24 @@ export class ClaudeAccountsFacade {
   }
 
   private async change(work: () => Promise<void>): Promise<boolean> {
-    this.failure.set(null);
-    this.busy.set(true);
+    this.failureState.set(null);
+    this.running += 1;
+    this.busyState.set(true);
     try {
       await work();
       return true;
     } catch (error) {
-      this.failure.set(error);
+      this.failureState.set(error);
       return false;
     } finally {
-      this.busy.set(false);
+      this.running -= 1;
+      this.busyState.set(this.running > 0);
     }
   }
 
-  private async afterAccountsChanged(): Promise<void> {
-    await Promise.all([this.app.connections.check.execute('claude'), this.refreshStatuses()]);
-    await this.app.scheduler.refresh(USAGE_PAGE.id);
+  private async afterAccountsChanged(previousActiveId: string | null): Promise<void> {
+    await this.app.connections.check.execute('claude');
+    const switched = this.claude().activeAccountId !== previousActiveId;
+    await this.app.scheduler.refresh(USAGE_PAGE.id, { resetBackoff: switched });
   }
 }

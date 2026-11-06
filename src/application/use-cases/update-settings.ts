@@ -3,9 +3,19 @@ import type { SettingsStore, Unsubscribe } from '../ports';
 
 export type SettingsChange = SettingsPatch | ((current: AppSettings) => SettingsPatch);
 
+type SettingsListener = (settings: AppSettings) => void;
+
+function deliver(listener: SettingsListener, settings: AppSettings): void {
+  try {
+    listener(settings);
+  } catch {
+    return;
+  }
+}
+
 export class UpdateSettings {
   private queue: Promise<unknown> = Promise.resolve();
-  private readonly listeners = new Set<(settings: AppSettings) => void>();
+  private readonly listeners = new Set<SettingsListener>();
 
   constructor(private readonly store: SettingsStore) {}
 
@@ -15,7 +25,7 @@ export class UpdateSettings {
     return write;
   }
 
-  subscribe(listener: (settings: AppSettings) => void): Unsubscribe {
+  subscribe(listener: SettingsListener): Unsubscribe {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -24,7 +34,7 @@ export class UpdateSettings {
     const current = await this.store.load();
     const next = applyPatch(current, typeof change === 'function' ? change(current) : change);
     await this.store.save(next);
-    for (const listener of this.listeners) listener(next);
+    for (const listener of this.listeners) deliver(listener, next);
     return next;
   }
 }

@@ -3,13 +3,14 @@
   class="switch"
   aria-haspopup="listbox"
   [attr.aria-expanded]="open()"
-  [attr.aria-controls]="listId"
+  [attr.aria-controls]="open() ? listId : null"
   [attr.aria-label]="label() + ': ' + view().activeName"
   [title]="label() + ': ' + view().activeName"
+  (mousedown)="press($event)"
   (click)="toggle()"
   (keydown)="buttonKey($event)"
 >
-  <span class="switch-name">{{ view().activeName }}</span>
+  <span class="avatar" aria-hidden="true">{{ view().activeInitials }}</span>
   <span class="caret" aria-hidden="true">▾</span>
 </button>
 @if (open()) {
@@ -26,7 +27,7 @@
       <li
         class="option"
         role="option"
-        [id]="optionId(option.id)"
+        [id]="option.domId"
         [attr.aria-selected]="option.active"
         [class.highlighted]="index === highlighted()"
         [class.active]="option.active"

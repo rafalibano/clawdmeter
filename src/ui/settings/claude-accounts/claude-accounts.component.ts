@@ -1,20 +1,38 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
-import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, MAX_CLAUDE_ACCOUNTS, MAX_CLAUDE_ACCOUNT_NAME } from '../../../domain/settings';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
+import {
+  DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+  MAX_CLAUDE_ACCOUNTS,
+  MAX_CLAUDE_ACCOUNT_NAME,
+  accountNameProblem,
+  type ClaudeAccountNameProblem,
+} from '../../../domain/settings';
 import { I18n } from '../../i18n';
-import { APPLICATION } from '../../shell/application.token';
 import { ClaudeAccountsFacade } from '../../shell/claude-accounts.facade';
 import { CLAUDE_ACCOUNTS_SECTION } from '../../shell/shell-navigation.service';
 import { SettingsSectionComponent } from '../settings-section.component';
 import {
+  accountNameProblemText,
   addAccountView,
   claudeAccountRows,
   claudeAccountsSummary,
   clientIdView,
   errorText,
-  loginText,
+  loginStatusText,
 } from './claude-accounts-view';
 
-const STATUS_TICK_MS = 30_000;
+const NAME_INPUT = '#claude-account-name';
 
 @Component({
   selector: 'cm-claude-accounts',
@@ -25,8 +43,8 @@ const STATUS_TICK_MS = 30_000;
 })
 export class ClaudeAccountsComponent {
   private readonly facade = inject(ClaudeAccountsFacade);
-  private readonly clock = inject(APPLICATION).clock;
-  private readonly now = signal(this.clock.now());
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
   protected readonly i18n = inject(I18n);
 
   protected readonly section = CLAUDE_ACCOUNTS_SECTION;
@@ -35,20 +53,29 @@ export class ClaudeAccountsComponent {
   protected readonly claude = this.facade.claude;
   protected readonly busy = this.facade.busy;
   protected readonly loginBusy = this.facade.loginBusy;
+  protected readonly login = this.facade.login;
+  protected readonly startOpen = computed(() => untracked(() => this.claude().accounts.length === 0));
   protected readonly renaming = signal<string | null>(null);
   protected readonly removing = signal<string | null>(null);
+  protected readonly nameDraft = signal('');
+  private readonly nameProblem = signal<ClaudeAccountNameProblem | null>(null);
   private readonly clientIdDraft = signal<string | null>(null);
+  private readonly accountIds = computed(() => this.claude().accounts.map((account) => account.id).join(','));
+  private readonly loginShown = computed(() => this.login() !== null);
 
-  protected readonly rows = computed(() =>
-    claudeAccountRows(this.claude(), this.facade.statuses(), this.now(), this.i18n.localizer()),
-  );
+  protected readonly rows = computed(() => claudeAccountRows(this.claude(), this.facade.statuses(), this.i18n.localizer()));
   protected readonly summary = computed(() => claudeAccountsSummary(this.claude(), this.i18n.localizer()));
   protected readonly addView = computed(() => addAccountView(this.claude(), this.loginBusy()));
   protected readonly limitText = computed(() => this.i18n.t('error.claude-account-limit', { max: MAX_CLAUDE_ACCOUNTS }));
   protected readonly clientId = computed(() => clientIdView(this.clientIdDraft(), this.claude().clientId));
-  protected readonly login = computed(() => {
-    const login = this.facade.login();
-    return login === null ? null : { ...login, text: loginText(login, this.i18n.localizer()) };
+  protected readonly statusText = computed(() => loginStatusText(this.login(), this.facade.success(), this.i18n.localizer()));
+  protected readonly nameError = computed(() => {
+    const problem = this.nameProblem();
+    return problem === null ? null : accountNameProblemText(problem, this.i18n.localizer());
+  });
+  protected readonly nameDescription = computed(() => {
+    if (this.nameError() !== null) return 'claude-account-name-error';
+    return this.addView().limitReached ? 'claude-account-limit' : 'claude-account-hint';
   });
   protected readonly error = computed(() => {
     const failure = this.facade.failure();
@@ -56,13 +83,15 @@ export class ClaudeAccountsComponent {
   });
 
   constructor() {
-    const stop = this.clock.every(STATUS_TICK_MS, () => this.now.set(this.clock.now()));
+    this.facade.clearFailure();
     effect(() => {
-      this.claude().accounts.map((account) => account.id).join(',');
+      this.accountIds();
       untracked(() => void this.facade.refreshStatuses());
     });
+    effect(() => {
+      if (this.loginShown()) untracked(() => this.focusLater('[data-action="cancel-login"]'));
+    });
     inject(DestroyRef).onDestroy(() => {
-      stop();
       void this.facade.cancelLogin();
       this.facade.clearFailure();
     });
@@ -72,9 +101,20 @@ export class ClaudeAccountsComponent {
     if (!open) void this.facade.cancelLogin();
   }
 
-  protected async add(input: HTMLInputElement): Promise<void> {
-    const added = await this.facade.add(input.value);
-    if (added) input.value = '';
+  protected typeName(event: Event): void {
+    this.nameDraft.set((event.target as HTMLInputElement).value);
+    this.nameProblem.set(null);
+  }
+
+  protected async add(): Promise<void> {
+    const name = this.nameDraft();
+    const problem = accountNameProblem(name, this.claude().accounts);
+    if (problem !== null) {
+      this.nameProblem.set(problem);
+      this.focusLater(NAME_INPUT);
+      return;
+    }
+    if (await this.facade.add(name)) this.nameDraft.set('');
   }
 
   protected reauthenticate(accountId: string): void {
@@ -87,24 +127,47 @@ export class ClaudeAccountsComponent {
     this.facade.clearFailure();
     this.removing.set(null);
     this.renaming.set(accountId);
+    this.focusLater(this.rowAction(accountId, 'rename-input'), true);
+  }
+
+  protected renameKey(event: KeyboardEvent, accountId: string): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    this.cancelRename(accountId);
+  }
+
+  protected cancelRename(accountId: string): void {
+    this.renaming.set(null);
+    this.focusLater(this.rowAction(accountId, 'rename'));
   }
 
   protected async saveRename(accountId: string, name: string): Promise<void> {
-    if (await this.facade.rename(accountId, name)) this.renaming.set(null);
+    if (!(await this.facade.rename(accountId, name))) return;
+    this.renaming.set(null);
+    this.focusLater(this.rowAction(accountId, 'rename'));
   }
 
   protected askRemove(accountId: string): void {
     this.facade.clearFailure();
     this.renaming.set(null);
     this.removing.set(accountId);
+    this.focusLater(this.rowAction(accountId, 'cancel-remove'));
+  }
+
+  protected cancelRemove(accountId: string): void {
+    this.removing.set(null);
+    this.focusLater(this.rowAction(accountId, 'remove'));
   }
 
   protected async confirmRemove(accountId: string): Promise<void> {
-    if (await this.facade.remove(accountId)) this.removing.set(null);
+    if (!(await this.facade.remove(accountId))) return;
+    this.removing.set(null);
+    this.focusLater(NAME_INPUT);
   }
 
   protected showCodeEntry(): void {
     void this.facade.showCodeEntry();
+    this.focusLater('#claude-login-code');
   }
 
   protected submitCode(input: HTMLInputElement): void {
@@ -126,6 +189,26 @@ export class ClaudeAccountsComponent {
   }
 
   protected async resetClientId(): Promise<void> {
+    const view = this.clientId();
+    if (view.isDefault) {
+      this.clientIdDraft.set(null);
+      return;
+    }
     if (await this.facade.setClientId(null)) this.clientIdDraft.set(null);
+  }
+
+  private rowAction(accountId: string, action: string): string {
+    return `[data-account="${CSS.escape(accountId)}"] [data-action="${action}"]`;
+  }
+
+  private focusLater(selector: string, select = false): void {
+    afterNextRender(
+      () => {
+        const element = this.host.querySelector<HTMLElement>(selector);
+        element?.focus();
+        if (select && element instanceof HTMLInputElement) element.select();
+      },
+      { injector: this.injector },
+    );
   }
 }

@@ -10,7 +10,16 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { isListboxKey, moveHighlight, type AccountSwitchView } from './account-switch-view';
+import {
+  CLOSED_MENU,
+  clickTrigger,
+  isListboxKey,
+  leaveSwitch,
+  moveHighlight,
+  pressTrigger,
+  type AccountSwitchView,
+  type SwitchMenuState,
+} from './account-switch-view';
 
 @Component({
   selector: 'cm-account-switch',
@@ -26,21 +35,20 @@ export class AccountSwitchComponent {
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly injector = inject(Injector);
-  protected readonly open = signal(false);
+  private readonly menu = signal<SwitchMenuState>(CLOSED_MENU);
+  protected readonly open = computed(() => this.menu().open);
   protected readonly highlighted = signal(-1);
   protected readonly listId = `cm-account-list-${Math.random().toString(36).slice(2, 8)}`;
-  protected readonly activeDescendant = computed(() => {
-    const option = this.view().options[this.highlighted()];
-    return option === undefined ? null : this.optionId(option.id);
-  });
+  protected readonly activeDescendant = computed(() => this.view().options[this.highlighted()]?.domId ?? null);
 
-  protected optionId(accountId: string): string {
-    return `${this.listId}-${accountId}`;
+  protected press(event: MouseEvent): void {
+    event.preventDefault();
+    this.menu.update(pressTrigger);
   }
 
   protected toggle(): void {
-    if (this.open()) this.close(true);
-    else this.show();
+    if (clickTrigger(this.menu()).open) this.show();
+    else this.close(true);
   }
 
   protected buttonKey(event: KeyboardEvent): void {
@@ -77,7 +85,7 @@ export class AccountSwitchComponent {
   protected leave(event: FocusEvent): void {
     const next = event.relatedTarget;
     if (next instanceof Node && this.host.contains(next)) return;
-    this.close(false);
+    this.menu.update(leaveSwitch);
   }
 
   protected outside(event: MouseEvent): void {
@@ -87,7 +95,7 @@ export class AccountSwitchComponent {
   private show(): void {
     const options = this.view().options;
     this.highlighted.set(Math.max(0, options.findIndex((option) => option.active)));
-    this.open.set(true);
+    this.menu.set({ open: true, pressed: false });
     afterNextRender(
       () => {
         this.host.querySelector<HTMLElement>('[role="listbox"]')?.focus();
@@ -98,9 +106,9 @@ export class AccountSwitchComponent {
   }
 
   private close(refocus: boolean): void {
-    if (!this.open()) return;
-    this.open.set(false);
-    if (refocus) this.host.querySelector<HTMLElement>('.switch')?.focus();
+    const wasOpen = this.open();
+    this.menu.set(CLOSED_MENU);
+    if (wasOpen && refocus) this.host.querySelector<HTMLElement>('.switch')?.focus();
   }
 
   private scrollHighlighted(): void {

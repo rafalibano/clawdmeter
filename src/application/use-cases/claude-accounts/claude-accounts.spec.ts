@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { CodedError } from '../../../domain/coded-error';
 import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, type ClaudeAccount } from '../../../domain/settings';
 import { createClaudeAccounts, type ClaudeAccounts } from '../../claude-accounts';
+import { SettingsWriteBlockedError } from '../../ports';
 import { FakeClock, flushPromises } from '../../testing/fake-clock';
 import {
   FAKE_ACCOUNT,
@@ -126,6 +127,15 @@ describe('AddClaudeAccount', () => {
     expect(settings.saved).toEqual([]);
   });
 
+  it('a cancel requested while Rust was still starting the sign-in never opens the browser', async () => {
+    const adding = accounts.add.execute('Personal', (login) => void accounts.cancelLogin.execute(login));
+    expect(await adding).toBeNull();
+    expect(urls.opened).toEqual([]);
+    expect(gateway.cancelled).toContain('login-1');
+    expect(gateway.completions).toEqual([]);
+    expect(settings.saved).toEqual([]);
+  });
+
   it('a failure to open the browser cancels the login', async () => {
     urls.open = async () => {
       throw new Error('no browser');
@@ -207,9 +217,29 @@ describe('legacy usage history', () => {
     const legacy = new FakeUsageHistoryStore();
     histories.legacy = legacy;
     settings.fileStatus = 'invalid';
-    await expect(accounts.add.execute('Personal')).rejects.toThrow();
+    await expect(accounts.add.execute('Personal')).rejects.toBeInstanceOf(SettingsWriteBlockedError);
     expect(histories.legacy).toBe(legacy);
     expect(gateway.removed).toEqual(['account-new-1']);
+  });
+
+  it('when the settings cannot be written for a later account its new history and tokens are removed', async () => {
+    await setup([FAKE_ACCOUNT]);
+    settings.fileStatus = 'invalid';
+    await expect(accounts.add.execute('Work')).rejects.toMatchObject({ reason: 'invalid' });
+    expect(histories.removed).toEqual(['account-new-1']);
+    expect(gateway.removed).toEqual(['account-new-1']);
+    expect((await claude()).accounts).toEqual([FAKE_ACCOUNT]);
+  });
+
+  it('a failure marking the history of a later account as imported undoes the sign-in', async () => {
+    await setup([FAKE_ACCOUNT]);
+    histories.forAccount('account-new-1').markImported = async () => {
+      throw new Error('disk full');
+    };
+    await expect(accounts.add.execute('Work')).rejects.toThrow('disk full');
+    expect(histories.removed).toEqual(['account-new-1']);
+    expect(gateway.removed).toEqual(['account-new-1']);
+    expect(settings.saved).toEqual([]);
   });
 });
 
@@ -240,6 +270,7 @@ describe('CompleteClaudeLoginWithCode', () => {
     expect(settings.saved).toHaveLength(1);
     expect((await claude()).accounts).toEqual([{ id: 'account-new-1', name: 'Personal' }]);
     expect(gateway.removed).toEqual([]);
+    expect(gateway.cancelled).toContain('login-1');
   });
 
   it('an empty code is rejected without calling Rust', async () => {
@@ -251,7 +282,7 @@ describe('CompleteClaudeLoginWithCode', () => {
     expect(gateway.completions).toHaveLength(1);
   });
 
-  it('a rejected code ends the login without writing and without a second error from the browser wait', async () => {
+  it('a code refused by the token exchange ends the login without writing and without a second error from the browser wait', async () => {
     gateway.browser = 'wait';
     gateway.pasted = new CodedError('claude-login-failed');
     const pending = capture();
@@ -261,6 +292,34 @@ describe('CompleteClaudeLoginWithCode', () => {
     expect(await adding).toBeNull();
     expect(settings.saved).toEqual([]);
     expect(gateway.cancelled).toContain('login-1');
+  });
+
+  it('a code of another sign-in keeps the login alive, so the browser timeout that follows still reaches the caller', async () => {
+    gateway.browser = 'wait';
+    gateway.pasted = new CodedError('claude-login-code-invalid');
+    const pending = capture();
+    const adding = accounts.add.execute('Personal', pending.listener);
+    await flushPromises();
+    await expect(accounts.completeWithCode.execute(pending.login(), 'wrong#state')).rejects.toMatchObject({ code: 'claude-login-code-invalid' });
+    expect(gateway.isWaiting()).toBe(true);
+    expect(pending.login().status()).toBe('waiting');
+    gateway.fail(new CodedError('claude-login-timeout'));
+    await expect(adding).rejects.toMatchObject({ code: 'claude-login-timeout' });
+    expect(gateway.cancelled).toContain('login-1');
+    expect(settings.saved).toEqual([]);
+  });
+
+  it('after a code of another sign-in, the right code still completes the login', async () => {
+    gateway.browser = 'wait';
+    gateway.pasted = new CodedError('claude-login-code-invalid');
+    const pending = capture();
+    const adding = accounts.add.execute('Personal', pending.listener);
+    await flushPromises();
+    await expect(accounts.completeWithCode.execute(pending.login(), 'wrong#state')).rejects.toMatchObject({ code: 'claude-login-code-invalid' });
+    gateway.pasted = { expiresAt: SIGNED_IN.expiresAt, email: null };
+    expect(await accounts.completeWithCode.execute(pending.login(), 'the-code#state-1')).toEqual({ id: 'account-new-1', name: 'Personal' });
+    expect(await adding).toEqual({ id: 'account-new-1', name: 'Personal' });
+    expect(settings.saved).toHaveLength(1);
   });
 
   it('after the login was cancelled a pasted code is refused', async () => {
@@ -294,6 +353,41 @@ describe('ReauthenticateClaudeAccount', () => {
     expect(await signingIn).toBeNull();
     expect(gateway.removed).toEqual([]);
     expect((await claude()).accounts).toEqual([FAKE_ACCOUNT, WORK]);
+  });
+
+  it('a cancel that arrives after Rust stored the new tokens resolves with null and keeps them for the account', async () => {
+    gateway.browser = 'wait';
+    const pending = capture();
+    const signingIn = accounts.reauthenticate.execute(WORK.id, pending.listener);
+    await flushPromises();
+    pending.login().settle('cancelled');
+    gateway.approve();
+    expect(await signingIn).toBeNull();
+    expect(gateway.removed).toEqual([]);
+    expect((await claude()).accounts).toEqual([FAKE_ACCOUNT, WORK]);
+  });
+
+  it('removing the account during its sign-in cancels the sign-in and leaves no tokens in Rust', async () => {
+    gateway.browser = 'wait';
+    const signingIn = accounts.reauthenticate.execute(WORK.id);
+    await flushPromises();
+    await accounts.remove.execute(WORK.id);
+    expect(gateway.cancelled).toContain('login-1');
+    gateway.approve();
+    expect(await signingIn).toBeNull();
+    expect(gateway.statuses.has(WORK.id)).toBe(false);
+    expect((await claude()).accounts).toEqual([FAKE_ACCOUNT]);
+  });
+
+  it('tokens stored for an account that left the settings during the sign-in are deleted', async () => {
+    gateway.browser = 'wait';
+    const signingIn = accounts.reauthenticate.execute(WORK.id);
+    await flushPromises();
+    settings.emitExternalChange(settingsWithAccounts([FAKE_ACCOUNT]));
+    gateway.approve();
+    expect(await signingIn).toBeNull();
+    expect(gateway.removed).toEqual([WORK.id]);
+    expect(gateway.statuses.has(WORK.id)).toBe(false);
   });
 
   it('an unknown account is refused', async () => {

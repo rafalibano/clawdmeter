@@ -226,6 +226,30 @@ describe('SettingsSession and the Claude accounts written by the use cases', () 
     expect(store.saved.at(-1)?.appearance.theme).toBe('dark');
   });
 
+  it('a Claude write that lands between two batches of the session survives the end of the flush', async () => {
+    const store = new FakeSettingsStore();
+    const release: Array<() => void> = [];
+    const originalSave = store.save.bind(store);
+    store.save = (settings: AppSettings) => new Promise<void>((resolve) => release.push(() => void originalSave(settings).then(resolve)));
+    const deps = depsFor(store);
+    const states: SettingsSessionState[] = [];
+    const session = new SettingsSession(deps, (state) => states.push(state));
+    await session.start();
+    session.update({ appearance: { theme: 'dark' } });
+    await delay(0);
+    session.update({ language: 'pt-BR' });
+    const accounts = deps.updateSettings.execute({ claude: ACCOUNTS });
+    for (let index = 0; index < 3; index++) {
+      await delay(0);
+      release[index]?.();
+    }
+    await accounts;
+    await session.idle();
+    expect(release).toHaveLength(3);
+    expect(states.at(-1)?.settings).toMatchObject({ language: 'pt-BR', appearance: { theme: 'dark' }, claude: ACCOUNTS });
+    expect(store.saved.at(-1)).toMatchObject({ language: 'pt-BR', claude: ACCOUNTS });
+  });
+
   it('stops adopting after dispose', async () => {
     const store = new FakeSettingsStore();
     const deps = depsFor(store);
@@ -262,6 +286,19 @@ describe('UpdateSettings', () => {
     await update.execute({ language: 'pt-BR' });
     expect(store.saved).toHaveLength(1);
     expect(seen.map((settings) => settings.language)).toEqual(['pt-BR']);
+  });
+
+  it('a listener that throws neither fails the saved write nor keeps the other listeners from hearing it', async () => {
+    const store = new FakeSettingsStore();
+    const update = new UpdateSettings(store);
+    const seen: string[] = [];
+    update.subscribe(() => {
+      throw new Error('listener broke');
+    });
+    update.subscribe((settings) => seen.push(settings.language));
+    await expect(update.execute({ language: 'pt-BR' })).resolves.toMatchObject({ language: 'pt-BR' });
+    expect(store.saved).toHaveLength(1);
+    expect(seen).toEqual(['pt-BR']);
   });
 });
 

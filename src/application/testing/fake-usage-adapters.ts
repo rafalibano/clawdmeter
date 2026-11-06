@@ -23,10 +23,23 @@ export class FakeUsageGateway implements UsageGateway {
   outcome: UsageSnapshot | Error = SAMPLE_SNAPSHOT;
   fetches = 0;
   readonly requests: { accountId: string; clientId: string }[] = [];
+  private held: Promise<void> | null = null;
+
+  hold(): () => void {
+    let release!: () => void;
+    this.held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      this.held = null;
+      release();
+    };
+  }
 
   async fetch(accountId: string, clientId: string): Promise<UsageSnapshot> {
     this.fetches += 1;
     this.requests.push({ accountId, clientId });
+    if (this.held !== null) await this.held;
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
   }

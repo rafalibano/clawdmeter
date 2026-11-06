@@ -7,6 +7,7 @@ import type {
 } from '../../application/ports';
 import { CodedError, type ErrorCode } from '../../domain/coded-error';
 import { ConnectionProblemError } from '../../domain/connections';
+import { RateLimitedError } from '../../domain/rate-limit';
 import { PlatformCommandError, type TauriCommands } from './tauri-commands';
 
 const BEGIN_ERRORS: Readonly<Record<string, ErrorCode>> = {
@@ -26,6 +27,7 @@ const PASTE_ERRORS: Readonly<Record<string, ErrorCode>> = {
 
 function loginError(error: unknown, known: Readonly<Record<string, ErrorCode>>): unknown {
   if (error instanceof CodedError && error.code === 'too-many-processes') return new CodedError('claude-login-busy');
+  if (error instanceof RateLimitedError) return new CodedError('claude-login-rate-limited');
   if (error instanceof ConnectionProblemError && error.code !== undefined) return error;
   if (error instanceof CodedError) return error;
   const kind = error instanceof PlatformCommandError ? error.kind : '';

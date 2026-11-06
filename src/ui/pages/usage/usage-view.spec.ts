@@ -260,7 +260,7 @@ describe('toUsageErrorView', () => {
     const status = claudeSignInStatus('Trabalho');
     const row = toRowView('claude', status, PT);
     const view = toUsageErrorView('claude-signin-required', row);
-    expect(view.message).toBe('Entre de novo na conta Trabalho.');
+    expect(view.message).toBe('Faça login de novo na conta Trabalho.');
     expect(view.actions.map((action) => action.label)).toEqual(['reauthenticate-claude', 'recheck']);
     expect(actionsFor('claude', status).some((action) => action.kind === 'disconnect')).toBe(true);
     expect(view.actions.some((action) => action.kind === 'disconnect')).toBe(false);

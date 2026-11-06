@@ -84,6 +84,22 @@ describe('PollingScheduler with rate limit', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
+  it('a refresh that resets the backoff calls the source right away and restarts the steps', async () => {
+    outcome = limited();
+    scheduler.sync(createDefaultSettings());
+    await flushPromises();
+    await scheduler.refresh('usage');
+    expect(load).toHaveBeenCalledTimes(1);
+    await scheduler.refresh('usage', { resetBackoff: true });
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(scheduler.backoffUntil('usage')! - clock.now()).toBe(5 * MINUTE_MS);
+    outcome = async () => 'ok';
+    await scheduler.refresh('usage', { resetBackoff: true });
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(updates.at(-1)).toMatchObject({ status: 'ok' });
+    expect(scheduler.backoffUntil('usage')).toBeNull();
+  });
+
   it('a success resets the backoff and returns to the normal pace', async () => {
     outcome = limited();
     scheduler.sync(createDefaultSettings());

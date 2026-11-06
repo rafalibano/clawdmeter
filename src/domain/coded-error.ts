@@ -29,6 +29,7 @@ export type ErrorCode =
   | 'keychain-unavailable'
   | 'claude-login-timeout'
   | 'claude-login-cancelled'
+  | 'claude-login-rate-limited'
   | 'claude-login-failed';
 
 export type ErrorArgs = Record<string, string | number>;

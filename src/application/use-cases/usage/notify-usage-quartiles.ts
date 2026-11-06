@@ -36,7 +36,7 @@ export class NotifyUsageQuartiles {
     try {
       const { usageAlerts, claude } = await this.settings.load();
       if (claude.activeAccountId !== accountId) {
-        this.lastAccountId = claude.activeAccountId;
+        this.lastAccountId = null;
         return;
       }
       const silent = this.lastAccountId !== accountId;

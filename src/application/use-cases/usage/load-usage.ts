@@ -41,7 +41,8 @@ export class LoadUsage {
   async execute(): Promise<UsageData> {
     const now = this.clock.now();
     const { account, snapshot } = await this.fetchSnapshot(now);
-    this.indicate(snapshot, now);
+    const current = await this.stillActive(account.id);
+    if (current) this.indicate(snapshot, now);
     this.alerts?.execute(account.id, snapshot).catch(() => undefined);
     const store = this.histories.forAccount(account.id);
     const stored = await store.load();
@@ -50,7 +51,7 @@ export class LoadUsage {
     const history = retainHistory(imported.history, now);
     await store.save(history);
     if (imported.markAt !== null) await store.markImported(imported.markAt);
-    await this.recoverConnection();
+    if (current) await this.recoverConnection();
     return { accountId: account.id, at: now, snapshot, history };
   }
 
@@ -66,21 +67,28 @@ export class LoadUsage {
   }
 
   private async fetchSnapshot(now: number): Promise<{ account: ClaudeAccount; snapshot: UsageSnapshot }> {
+    let account: ClaudeAccount | null = null;
     try {
       if (!(await this.prefs.load()).claude.enabled) {
         throw new CodedError('usage-disconnected');
       }
       const { claude } = await this.settings.load();
-      const account = activeClaudeAccount(claude);
+      account = activeClaudeAccount(claude);
       if (account === null) throw new ConnectionProblemError('claude-no-account');
       return { account, snapshot: await this.fetchFor(account, claude.clientId) };
     } catch (error) {
-      this.indicate(null, now);
-      if (error instanceof ConnectionProblemError) {
-        this.connections.report.execute('claude', error.problem, customMessage(error), error.code, error.args);
+      if (account === null || (await this.stillActive(account.id))) {
+        this.indicate(null, now);
+        if (error instanceof ConnectionProblemError) {
+          this.connections.report.execute('claude', error.problem, customMessage(error), error.code, error.args);
+        }
       }
       throw error;
     }
+  }
+
+  private async stillActive(accountId: string): Promise<boolean> {
+    return (await this.settings.load()).claude.activeAccountId === accountId;
   }
 
   private async fetchFor(account: ClaudeAccount, clientId: string): Promise<UsageSnapshot> {

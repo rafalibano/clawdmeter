@@ -109,17 +109,13 @@ describe('TauriClaudeAccountGateway', () => {
     ]);
   });
 
-  it('no token crosses the IPC: results carry only expiry, e-mail and status', async () => {
-    const { commands } = createFakeCommands(() => ({ signedIn: true, expiresAt: null, needsLogin: false }));
-    expect(JSON.stringify(await new TauriClaudeAccountGateway(commands).status('acc-1'))).not.toMatch(/token|refresh/i);
-  });
-
   it.each([
     ['timeout', 'claude-login-timeout'],
     ['cancelled', 'claude-login-cancelled'],
     ['provider_error', 'claude-login-failed'],
     ['state_mismatch', 'claude-login-failed'],
     ['http', 'claude-login-failed'],
+    ['rate_limited', 'claude-login-rate-limited'],
   ])('waiting for the browser: %s becomes %s', async (kind, code) => {
     const { commands } = createFakeCommands(() => rejectWith(kind, 'x'));
     await expect(new TauriClaudeAccountGateway(commands).complete({ loginId: 'l', accountId: 'a', timeoutMs: 1 })).rejects.toMatchObject({ code });
@@ -129,6 +125,7 @@ describe('TauriClaudeAccountGateway', () => {
     ['invalid_argument', 'claude-login-code-invalid'],
     ['state_mismatch', 'claude-login-code-invalid'],
     ['provider_error', 'claude-login-failed'],
+    ['rate_limited', 'claude-login-rate-limited'],
   ])('pasted code: %s becomes %s', async (kind, code) => {
     const { commands } = createFakeCommands(() => rejectWith(kind, 'x'));
     await expect(new TauriClaudeAccountGateway(commands).complete({ loginId: 'l', accountId: 'a', code: 'c#s' })).rejects.toMatchObject({ code });

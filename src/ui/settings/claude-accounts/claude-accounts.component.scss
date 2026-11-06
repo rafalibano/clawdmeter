@@ -33,12 +33,15 @@
 
 .head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px 8px;
   min-width: 0;
 }
 
 .name {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -95,9 +98,17 @@
   margin-bottom: 14px;
 }
 
-.login-text {
-  margin: 0;
+.login-status {
+  margin: 0 0 6px;
   font-size: 12px;
+}
+
+.login-status:empty {
+  margin: 0;
+}
+
+.login .actions {
+  margin-top: 0;
 }
 
 .login .inline {

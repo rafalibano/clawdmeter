@@ -103,6 +103,7 @@ export class FakeClaudeAccountGateway implements ClaudeAccountGateway {
   async complete(request: ClaudeLoginRequest): Promise<ClaudeLoginResult> {
     this.completions.push(request);
     if (request.code !== undefined) {
+      if (this.pasted instanceof CodedError && this.pasted.code === 'claude-login-code-invalid') throw this.pasted;
       this.fail(new CodedError('claude-login-cancelled'), request.loginId);
       return this.signIn(request.accountId, resolve(this.pasted));
     }

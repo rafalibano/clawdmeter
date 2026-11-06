@@ -79,7 +79,7 @@ describe('toRowView', () => {
       'Nenhuma conta do Claude ainda. Adicione uma em Ajustes > Contas do Claude.',
     );
     const view = toRowView('claude', claudeSignInStatus('Trabalho'));
-    expect(view.message).toBe('Entre de novo na conta Trabalho.');
+    expect(view.message).toBe('Faça login de novo na conta Trabalho.');
     expect(view.actions.map((action) => action.label)).toEqual(['reauthenticate-claude', 'recheck', 'disconnect']);
     expect(toRowView('claude', { state: 'connected', account: 'Trabalho' }).summary).toBe('Conectado · Trabalho');
   });

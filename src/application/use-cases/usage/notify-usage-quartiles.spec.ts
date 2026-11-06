@@ -177,17 +177,28 @@ describe('NotifyUsageQuartiles per account', () => {
     await notify.execute(ACCOUNT, snapshot(10, 10));
     await notify.execute(ACCOUNT, snapshot(60, 10));
     activate(WORK.id);
-    await notify.execute(WORK.id, snapshot(10, 10));
-    await notify.execute(WORK.id, snapshot(60, 10));
-    expect(notifier.sent.map((notice) => notice.title)).toEqual(['5h usage at 60%', '5h usage at 60%']);
+    await notify.execute(WORK.id, snapshot(47, 10));
+    await notify.execute(WORK.id, snapshot(52, 10));
+    expect(notifier.sent.map((notice) => notice.title)).toEqual(['5h usage at 60%', '5h usage at 52%']);
   });
 
-  it('the first reading after switching accounts is silent, even above a quartile', async () => {
+  it('the first reading after switching accounts is silent even when that account already has a state', async () => {
     await notify.execute(ACCOUNT, snapshot(10, 10));
     activate(WORK.id);
-    await notify.execute(WORK.id, snapshot(80, 80));
+    await notify.execute(WORK.id, snapshot(10, 10));
+    activate(ACCOUNT);
+    await notify.execute(ACCOUNT, snapshot(60, 10));
     expect(notifier.sent).toEqual([]);
-    await notify.execute(WORK.id, snapshot(80, 80));
+  });
+
+  it('a late reading of the previous account does not make the next reading of the active one count as a continuation', async () => {
+    await notify.execute(ACCOUNT, snapshot(10, 10));
+    activate(WORK.id);
+    await notify.execute(WORK.id, snapshot(10, 10));
+    activate(ACCOUNT);
+    activate(WORK.id);
+    await notify.execute(ACCOUNT, snapshot(12, 10));
+    await notify.execute(WORK.id, snapshot(80, 10));
     expect(notifier.sent).toEqual([]);
   });
 
