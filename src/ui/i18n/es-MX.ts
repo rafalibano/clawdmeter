@@ -209,6 +209,7 @@ export const esMX: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada desde hace {span}',
 
   'prs.section.mine': 'Mis PRs abiertos',
+  'prs.section.assigned': 'Asignados a mí (de otros)',
   'prs.section.to-review': 'Por revisar',
   'prs.section.reviewed': 'Revisados por mí (abiertos y últimos 30 días)',
   'prs.group.deploy': 'Deploy',
