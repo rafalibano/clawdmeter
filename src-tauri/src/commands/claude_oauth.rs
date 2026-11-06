@@ -18,7 +18,7 @@ use super::claude_usage::{
 };
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::oauth_loopback::{self, same_state, ListenInfo, LoopbackRegistry};
-use super::secrets::{app_store, delete_secret, get_secret, set_secret, SecretBackend};
+use super::secrets::{app_store, SecretStore};
 
 pub const AUTHORIZE_URL: &str = "https://claude.ai/oauth/authorize";
 pub const TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
@@ -276,28 +276,28 @@ pub fn token_key(account_id: &str) -> CommandResult<String> {
 }
 
 pub fn load_tokens(
-    store: &dyn SecretBackend,
+    store: &dyn SecretStore,
     account_id: &str,
 ) -> CommandResult<Option<StoredTokens>> {
-    let raw = get_secret(store, &token_key(account_id)?)?;
+    let raw = store.get(&token_key(account_id)?)?;
     Ok(raw
         .and_then(|raw| serde_json::from_str::<StoredTokens>(&raw).ok())
         .filter(|tokens| !tokens.access_token.is_empty()))
 }
 
 pub fn save_tokens(
-    store: &dyn SecretBackend,
+    store: &dyn SecretStore,
     account_id: &str,
     tokens: &StoredTokens,
 ) -> CommandResult<()> {
     let key = token_key(account_id)?;
     let raw = serde_json::to_string(tokens)
         .map_err(|_| CommandError::new(ErrorKind::Io, "could not encode the Claude tokens"))?;
-    set_secret(store, &key, &raw)
+    store.set(&key, &raw)
 }
 
-pub fn delete_tokens(store: &dyn SecretBackend, account_id: &str) -> CommandResult<()> {
-    delete_secret(store, &token_key(account_id)?)
+pub fn delete_tokens(store: &dyn SecretStore, account_id: &str) -> CommandResult<()> {
+    store.delete(&token_key(account_id)?)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -821,7 +821,7 @@ mod tests {
 
     use super::*;
     use crate::commands::claude_usage::fetch_usage;
-    use crate::commands::secrets::{secret_get, ALLOWED_SECRET_KEYS};
+    use crate::commands::secrets::{secret_get, SecretBackend, ALLOWED_SECRET_KEYS};
     use crate::commands::test_support::{json_response, MemoryStore, TestServer};
 
     const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -1195,6 +1195,20 @@ mod tests {
                 .kind,
             ErrorKind::InvalidArgument
         );
+    }
+
+    #[test]
+    fn saved_and_removed_tokens_are_served_from_the_cache() {
+        let store = MemoryStore::cached();
+        assert_eq!(load_tokens(store, "acc").unwrap(), None);
+        save_tokens(store, "acc", &tokens(Some("rt"), None)).unwrap();
+        let loaded = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(loaded.refresh_token.as_deref(), Some("rt"));
+        assert!(account_status(Some(&loaded), 0).signed_in);
+        block_on(remove_account(&AccountLocks::default(), store, "acc")).unwrap();
+        assert_eq!(load_tokens(store, "acc").unwrap(), None);
+        assert!(store.backend().keys().is_empty());
+        assert_eq!(store.backend().reads(), 1);
     }
 
     fn pending(logins: &ClaudeLogins, listener_id: &str) -> PendingLogin {

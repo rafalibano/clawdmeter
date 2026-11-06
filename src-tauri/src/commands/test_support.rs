@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::io::{ErrorKind as IoErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::secrets::SecretBackend;
+use super::secrets::{CachedStore, SecretBackend};
 
 pub struct Gate {
     arrived: Receiver<()>,
@@ -146,6 +146,7 @@ fn read_request(stream: &mut TcpStream) -> String {
 pub struct MemoryStore {
     entries: Mutex<HashMap<String, String>>,
     failing_writes: Mutex<usize>,
+    reads: AtomicUsize,
 }
 
 impl MemoryStore {
@@ -162,10 +163,19 @@ impl MemoryStore {
         keys.sort();
         keys
     }
+
+    pub fn reads(&self) -> usize {
+        self.reads.load(Ordering::SeqCst)
+    }
+
+    pub fn cached() -> &'static CachedStore<MemoryStore> {
+        Box::leak(Box::new(CachedStore::new(MemoryStore::default())))
+    }
 }
 
 impl SecretBackend for MemoryStore {
     fn read(&self, key: &str) -> CommandResult<Option<String>> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
         Ok(self.entries.lock().unwrap().get(key).cloned())
     }
 

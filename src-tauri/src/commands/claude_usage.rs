@@ -10,7 +10,7 @@ use super::claude_oauth::{
     validate_client_id, AccountLocks, Endpoints, StoredTokens,
 };
 use super::error::{CommandError, CommandResult, ErrorKind};
-use super::secrets::{app_store, SecretBackend};
+use super::secrets::{app_store, SecretStore};
 
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 pub const OAUTH_BETA: &str = "oauth-2025-04-20";
@@ -20,7 +20,7 @@ const MAX_USAGE_BYTES: usize = 256 * 1024;
 const MAX_RETRY_AFTER_SECS: u64 = 3_600;
 const SAVE_RETRY_DELAY: Duration = Duration::from_millis(200);
 
-pub type TokenStore = &'static (dyn SecretBackend + Sync);
+pub type TokenStore = &'static (dyn SecretStore + Sync);
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -273,6 +273,7 @@ pub async fn claude_usage_fetch(
 mod tests {
     use super::*;
     use crate::commands::claude_oauth::account_status;
+    use crate::commands::secrets::CachedStore;
     use crate::commands::test_support::{json_response, MemoryStore, TestServer};
 
     const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -861,5 +862,63 @@ mod tests {
         });
         let refreshes = token.requests();
         assert_eq!(refreshes.len(), 1, "{refreshes:?}");
+    }
+
+    fn cached_with(stored: &StoredTokens) -> (&'static CachedStore<MemoryStore>, usize) {
+        let store = MemoryStore::cached();
+        save_tokens(store.backend(), "acc", stored).unwrap();
+        (store, store.backend().reads())
+    }
+
+    fn cached_fetch(
+        store: TokenStore,
+        token: &TestServer,
+        usage: &TestServer,
+    ) -> CommandResult<serde_json::Value> {
+        block_on(fetch_usage(
+            &AccountLocks::default(),
+            store,
+            &endpoints(token, usage),
+            "acc",
+            CLIENT_ID,
+        ))
+    }
+
+    #[test]
+    fn fetches_and_status_read_the_account_tokens_from_the_keychain_once() {
+        let (store, before) = cached_with(&tokens("at-1", Some("rt-1"), in_minutes(60)));
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::start(
+            "/usage",
+            vec![
+                json_response("200 OK", USAGE_JSON),
+                json_response("200 OK", USAGE_JSON),
+            ],
+        );
+        for _ in 0..2 {
+            cached_fetch(store, &token, &usage).unwrap();
+            let loaded = load_tokens(store, "acc").unwrap();
+            assert!(!account_status(loaded.as_ref(), now_ms()).needs_login);
+        }
+        assert_eq!(store.backend().reads() - before, 1);
+        assert!(token.requests().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_is_saved_and_the_next_read_sees_it_without_the_keychain() {
+        let (store, before) = cached_with(&tokens("at-old", Some("rt-old"), in_minutes(4)));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":28800,"scope":"user:profile user:inference"}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        cached_fetch(store, &token, &usage).unwrap();
+        let saved = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(saved.access_token, "at-new");
+        assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
+        assert_eq!(store.backend().reads() - before, 1);
+        let stored = load_tokens(store.backend(), "acc").unwrap().unwrap();
+        assert_eq!(stored, saved);
     }
 }

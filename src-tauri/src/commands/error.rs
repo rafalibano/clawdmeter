@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    // A denied prompt only settles the legacy secrets migration (N6); the webview sees `keychain`.
+    // A denied prompt settles the legacy migration (N6) and pauses keychain reads; the webview sees `keychain`.
     #[serde(rename = "keychain")]
     KeychainDenied,
     Keychain,
