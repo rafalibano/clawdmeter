@@ -28,6 +28,7 @@ import {
   TauriClaudeCredentialSource,
   TauriCommands,
   TauriJsonFile,
+  TauriLaunchAtLogin,
   TauriNotificationPermission,
   TauriNotifier,
   TauriOAuthLoopback,
@@ -97,6 +98,7 @@ export function createComposition(): Application {
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
     updateChecker: new TauriUpdateChecker(commands),
+    launchAtLogin: new TauriLaunchAtLogin(),
     skills: ({ connections }) =>
       createSkills(
         {

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -74,6 +74,21 @@ describe('capability default', () => {
       (typeof permission === 'string' ? permission : (permission.identifier ?? '')).startsWith('updater:'),
     );
     expect(plugin).toEqual([]);
+  });
+
+  it('autostart exposes only enable, disable and is-enabled to the webview', () => {
+    const dir = join(__dirname, '../src-tauri/capabilities');
+    const found = readdirSync(dir)
+      .filter((file) => file.endsWith('.json'))
+      .flatMap((file) =>
+        (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { permissions?: Array<string | Permission> }).permissions ?? [],
+      )
+      .map((permission) => (typeof permission === 'string' ? permission : (permission.identifier ?? '')))
+      .filter((identifier) => identifier.startsWith('autostart:'));
+    const allowed = ['autostart:allow-enable', 'autostart:allow-disable', 'autostart:allow-is-enabled'];
+    expect(found.filter((identifier) => !allowed.includes(identifier))).toEqual([]);
+    expect(found).not.toContain('autostart:default');
+    expect([...found].sort()).toEqual([...allowed].sort());
   });
 
   it('the updater config carries the public key and requires the signed version', () => {

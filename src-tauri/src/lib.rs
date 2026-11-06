@@ -12,6 +12,7 @@ use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
 use commands::updater::PendingUpdate;
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,6 +27,10 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(ProcessRegistry::default())
         .manage(LoopbackRegistry::default())
         .manage(PendingUpdate::default())

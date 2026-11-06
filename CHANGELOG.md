@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Settings has a new **System** section with a **Launch at login** switch (macOS and Windows). It is off by default, reads the state from the system each time Settings opens and, if the system refuses the change, goes back to the real state and says so (a failed read has its own message, and the collapsed summary shows "Status unavailable"). Uses `tauri-plugin-autostart` (a LaunchAgent on macOS, a `Run` registry value on Windows).
+
 ## 0.1.1
 
 - The panel opens again over apps in full screen on macOS (for example Safari). It was not turned into a non-activating panel when macOS had already wrapped the window for key-value observing.
