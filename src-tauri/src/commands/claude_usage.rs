@@ -1,3 +1,4 @@
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tauri::State;
@@ -17,6 +18,7 @@ const USER_AGENT: &str = concat!("ClawdMeter/", env!("CARGO_PKG_VERSION"));
 const USAGE_TIMEOUT_SECS: u64 = 15;
 const MAX_USAGE_BYTES: usize = 256 * 1024;
 const MAX_RETRY_AFTER_SECS: u64 = 3_600;
+const SAVE_RETRY_DELAY: Duration = Duration::from_millis(200);
 
 pub type TokenStore = &'static (dyn SecretBackend + Sync);
 
@@ -166,6 +168,25 @@ async fn save(store: TokenStore, account_id: &str, tokens: &StoredTokens) -> Com
     run_blocking(move || save_tokens(store, &account_id, &tokens)).await
 }
 
+async fn save_rotated(
+    store: TokenStore,
+    account_id: &str,
+    tokens: &StoredTokens,
+) -> CommandResult<()> {
+    let account_id = account_id.to_string();
+    let tokens = tokens.clone();
+    run_blocking(move || {
+        save_tokens(store, &account_id, &tokens).or_else(|error| {
+            if error.kind != ErrorKind::Keychain {
+                return Err(error);
+            }
+            thread::sleep(SAVE_RETRY_DELAY);
+            save_tokens(store, &account_id, &tokens)
+        })
+    })
+    .await
+}
+
 async fn reject(store: TokenStore, account_id: &str, tokens: StoredTokens) -> CommandError {
     let marked = StoredTokens {
         rejected: true,
@@ -198,7 +219,7 @@ pub async fn fetch_usage(
     if tokens.needs_refresh(now_ms()) {
         match refresh_tokens(endpoints.token, client_id, &tokens).await {
             Ok(fresh) => {
-                save(store, account_id, &fresh).await?;
+                save_rotated(store, account_id, &fresh).await?;
                 tokens = fresh;
                 renewed = true;
             }
@@ -225,7 +246,7 @@ pub async fn fetch_usage(
         }
         Err(error) => return Err(error),
     };
-    save(store, account_id, &fresh).await?;
+    save_rotated(store, account_id, &fresh).await?;
     match request_usage(endpoints.usage, &fresh.access_token).await {
         Err(error) if is_signin_required(&error) => Err(reject(store, account_id, fresh).await),
         outcome => outcome,
@@ -267,6 +288,7 @@ mod tests {
             refresh_token: refresh.map(str::to_string),
             expires_at,
             scopes: vec!["user:profile".into(), "user:inference".into()],
+            client_id: None,
             rejected: false,
         }
     }
@@ -531,6 +553,108 @@ mod tests {
         assert_eq!(saved.access_token, "at-new");
         assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
         assert!(saved.expires_at.unwrap() > now_ms() + 7 * 3_600_000);
+        assert_eq!(saved.client_id.as_deref(), Some(CLIENT_ID));
+    }
+
+    const OTHER_CLIENT_ID: &str = "00000000-0000-4000-8000-000000000000";
+
+    fn refreshed_with(stored: StoredTokens, fallback_client_id: &str) -> (String, StoredTokens) {
+        let store = store_with("acc", &stored);
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        block_on(fetch_usage(
+            &AccountLocks::default(),
+            store,
+            &endpoints(&token, &usage),
+            "acc",
+            fallback_client_id,
+        ))
+        .unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(token.requests().remove(0).split("\r\n\r\n").nth(1).unwrap())
+                .unwrap();
+        let client = body["client_id"].as_str().unwrap().to_string();
+        (client, load_tokens(store, "acc").unwrap().unwrap())
+    }
+
+    #[test]
+    fn the_refresh_uses_the_client_that_issued_the_token_not_the_one_in_settings() {
+        let stored = StoredTokens {
+            client_id: Some(CLIENT_ID.into()),
+            ..tokens("at-old", Some("rt-old"), in_minutes(1))
+        };
+        let (client, saved) = refreshed_with(stored, OTHER_CLIENT_ID);
+        assert_eq!(client, CLIENT_ID);
+        assert_eq!(saved.client_id.as_deref(), Some(CLIENT_ID));
+    }
+
+    #[test]
+    fn a_token_saved_without_a_client_falls_back_to_the_one_in_settings_and_keeps_it() {
+        let (client, saved) = refreshed_with(
+            tokens("at-old", Some("rt-old"), in_minutes(1)),
+            OTHER_CLIENT_ID,
+        );
+        assert_eq!(client, OTHER_CLIENT_ID);
+        assert_eq!(saved.client_id.as_deref(), Some(OTHER_CLIENT_ID));
+        let tampered = StoredTokens {
+            client_id: Some("not-a-uuid".into()),
+            ..tokens("at-old", Some("rt-old"), in_minutes(1))
+        };
+        let (client, _) = refreshed_with(tampered, OTHER_CLIENT_ID);
+        assert_eq!(client, OTHER_CLIENT_ID);
+    }
+
+    #[test]
+    fn a_refresh_without_expires_in_leaves_the_expiry_unknown() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(1)));
+        let token = TestServer::json("/token", "200 OK", r#"{"access_token":"at-new"}"#);
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        fetch(store, &token, &usage, "acc").unwrap();
+        let saved = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(saved.access_token, "at-new");
+        assert_eq!(saved.refresh_token.as_deref(), Some("rt-old"));
+        assert_eq!(saved.expires_at, None);
+        assert!(!account_status(Some(&saved), now_ms()).needs_login);
+    }
+
+    #[test]
+    fn a_rotated_token_whose_first_save_fails_is_saved_on_the_retry() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(1)));
+        store.fail_next_writes(1);
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        fetch(store, &token, &usage, "acc").unwrap();
+        let saved = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
+        assert!(usage.requests()[0]
+            .to_lowercase()
+            .contains("authorization: bearer at-new"));
+    }
+
+    #[test]
+    fn a_rotated_token_that_cannot_be_saved_twice_is_a_keychain_error() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(1)));
+        store.fail_next_writes(2);
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        let error = fetch(store, &token, &usage, "acc").unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Keychain);
+        assert!(usage.requests().is_empty());
+        let kept = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(kept.access_token, "at-old");
+        assert!(!kept.rejected);
     }
 
     #[test]
@@ -562,6 +686,75 @@ mod tests {
         assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
         assert!(again.requests().is_empty());
         assert!(usage_again.requests().is_empty());
+    }
+
+    #[test]
+    fn invalid_client_also_marks_the_account_for_a_new_sign_in() {
+        let store = store_with("acc", &tokens("at", Some("rt"), Some(now_ms() - 1)));
+        let token = TestServer::json(
+            "/token",
+            "401 Unauthorized",
+            r#"{"error":"invalid_client"}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        let error = fetch(store, &token, &usage, "acc").unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
+        assert!(load_tokens(store, "acc").unwrap().unwrap().rejected);
+    }
+
+    const TRANSIENT_REFUSALS: [(&str, &str); 6] = [
+        ("403 Forbidden", "<html>blocked by the firewall</html>"),
+        ("404 Not Found", "{}"),
+        ("405 Method Not Allowed", ""),
+        ("415 Unsupported Media Type", r#"{"error":"unsupported"}"#),
+        ("400 Bad Request", r#"{"error":"invalid_request"}"#),
+        (
+            "401 Unauthorized",
+            r#"{"type":"error","error":{"type":"authentication_error"}}"#,
+        ),
+    ];
+
+    #[test]
+    fn other_refresh_refusals_fall_back_to_a_token_that_has_not_expired() {
+        for (status, body) in TRANSIENT_REFUSALS {
+            let store = store_with("acc", &tokens("at", Some("rt"), in_minutes(2)));
+            let token = TestServer::json("/token", status, body);
+            let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+            assert!(fetch(store, &token, &usage, "acc").is_ok(), "{status}");
+            assert!(usage.requests()[0]
+                .to_lowercase()
+                .contains("authorization: bearer at"));
+            assert!(
+                !load_tokens(store, "acc").unwrap().unwrap().rejected,
+                "{status}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_refresh_refusals_with_an_expired_token_are_http_errors_without_marking() {
+        for (status, body) in TRANSIENT_REFUSALS {
+            let store = store_with("acc", &tokens("at", Some("rt"), Some(now_ms() - 1)));
+            let token = TestServer::json("/token", status, body);
+            let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+            let error = fetch(store, &token, &usage, "acc").unwrap_err();
+            assert_eq!(error.kind, ErrorKind::Http, "{status}");
+            assert!(usage.requests().is_empty());
+            assert!(
+                !load_tokens(store, "acc").unwrap().unwrap().rejected,
+                "{status}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_401_followed_by_a_refusal_that_is_not_a_grant_error_does_not_mark_the_account() {
+        let store = store_with("acc", &tokens("at", Some("rt"), None));
+        let token = TestServer::json("/token", "403 Forbidden", "<html>");
+        let usage = TestServer::json("/usage", "401 Unauthorized", "{}");
+        let error = fetch(store, &token, &usage, "acc").unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert!(!load_tokens(store, "acc").unwrap().unwrap().rejected);
     }
 
     #[test]

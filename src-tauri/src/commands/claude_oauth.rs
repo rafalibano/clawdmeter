@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::async_runtime::Mutex as AsyncMutex;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_http::reqwest::{header, StatusCode};
+use tauri_plugin_http::reqwest::{self, header, StatusCode};
 use url::Url;
 
 use super::blocking::run_blocking;
@@ -157,6 +157,8 @@ pub struct StoredTokens {
     pub expires_at: Option<u64>,
     #[serde(default)]
     pub scopes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub rejected: bool,
 }
@@ -172,6 +174,7 @@ impl std::fmt::Debug for StoredTokens {
             .field("has_refresh_token", &self.has_refresh_token())
             .field("expires_at", &self.expires_at)
             .field("scopes", &self.scopes)
+            .field("client_id", &self.client_id)
             .field("rejected", &self.rejected)
             .finish_non_exhaustive()
     }
@@ -254,9 +257,9 @@ pub fn parse_token_response(
             .expires_in
             .as_ref()
             .and_then(expires_in_ms)
-            .map(|lifetime| now.saturating_add(lifetime).min(MAX_EXPIRES_AT_MS))
-            .or_else(|| previous.and_then(|tokens| tokens.expires_at)),
+            .map(|lifetime| now.saturating_add(lifetime).min(MAX_EXPIRES_AT_MS)),
         scopes,
+        client_id: previous.and_then(|tokens| tokens.client_id.clone()),
         rejected: false,
     })
 }
@@ -346,23 +349,31 @@ struct PendingLogin {
     awaited: bool,
 }
 
+type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
 pub struct ClaudeLogins {
     pending: Mutex<HashMap<String, PendingLogin>>,
     ttl: Duration,
+    clock: Clock,
 }
 
 impl Default for ClaudeLogins {
     fn default() -> Self {
-        Self::with_ttl(LOGIN_TTL)
+        Self::with_clock(LOGIN_TTL, Arc::new(Instant::now))
     }
 }
 
 impl ClaudeLogins {
-    fn with_ttl(ttl: Duration) -> Self {
+    fn with_clock(ttl: Duration, clock: Clock) -> Self {
         Self {
             pending: Mutex::default(),
             ttl,
+            clock,
         }
+    }
+
+    fn now(&self) -> Instant {
+        (self.clock)()
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<String, PendingLogin>> {
@@ -372,7 +383,7 @@ impl ClaudeLogins {
     }
 
     fn alive(&self, login: &PendingLogin) -> bool {
-        login.started.elapsed() < self.ttl
+        self.now().saturating_duration_since(login.started) < self.ttl
     }
 
     fn insert(&self, login_id: String, login: PendingLogin) -> CommandResult<()> {
@@ -460,7 +471,7 @@ fn register_login(
         client_id: client_id.to_string(),
         redirect_uri,
         listener_id: listener.id.clone(),
-        started: Instant::now(),
+        started: logins.now(),
         awaited: false,
     };
     logins.insert(login_id, login)?;
@@ -473,14 +484,14 @@ pub fn begin_login(
     client_id: &str,
 ) -> CommandResult<LoginStart> {
     validate_client_id(client_id)?;
-    let listener = oauth_loopback::open_listener(loopback)?;
+    let listener = oauth_loopback::open_internal_listener(loopback)?;
     register_login(logins, client_id, &listener)
-        .inspect_err(|_| oauth_loopback::cancel_listener(loopback, &listener.id))
+        .inspect_err(|_| oauth_loopback::cancel_internal_listener(loopback, &listener.id))
 }
 
 pub fn cancel_login(logins: &ClaudeLogins, loopback: &LoopbackRegistry, login_id: &str) {
     if let Some(login) = logins.remove(login_id) {
-        oauth_loopback::cancel_listener(loopback, &login.listener_id);
+        oauth_loopback::cancel_internal_listener(loopback, &login.listener_id);
     }
 }
 
@@ -498,13 +509,37 @@ fn oauth_error_code(body: &[u8]) -> Option<String> {
     safe.then(|| code.to_string())
 }
 
-fn is_rejection(status: StatusCode) -> bool {
+fn is_refusal(status: StatusCode) -> bool {
     status.is_client_error()
         && status != StatusCode::REQUEST_TIMEOUT
         && status != StatusCode::TOO_MANY_REQUESTS
 }
 
-async fn post_token(url: &str, body: &Value) -> CommandResult<Vec<u8>> {
+fn is_rejection(status: StatusCode, code: Option<&str>) -> bool {
+    is_refusal(status) && matches!(code, Some("invalid_grant" | "invalid_client"))
+}
+
+struct TokenFailure {
+    error: CommandError,
+    rejected: bool,
+}
+
+impl From<CommandError> for TokenFailure {
+    fn from(error: CommandError) -> Self {
+        Self {
+            error,
+            rejected: false,
+        }
+    }
+}
+
+impl From<reqwest::Error> for TokenFailure {
+    fn from(error: reqwest::Error) -> Self {
+        CommandError::from(error).into()
+    }
+}
+
+async fn post_token(url: &str, body: &Value) -> Result<Vec<u8>, TokenFailure> {
     let response = claude_client(TOKEN_TIMEOUT_SECS)?
         .post(url)
         .header(header::CONTENT_TYPE, "application/json")
@@ -517,25 +552,30 @@ async fn post_token(url: &str, body: &Value) -> CommandResult<Vec<u8>> {
         return Err(rate_limited(
             &response,
             "Claude token endpoint rate-limited the request (429)",
-        ));
+        )
+        .into());
     }
     let payload = read_limited(response, MAX_TOKEN_BYTES, "token").await;
     if status.is_success() {
-        return payload;
+        return Ok(payload?);
     }
-    let message = match payload.ok().as_deref().and_then(oauth_error_code) {
+    let code = payload.ok().as_deref().and_then(oauth_error_code);
+    let message = match &code {
         Some(code) => format!(
             "Claude token endpoint answered {} ({code})",
             status.as_u16()
         ),
         None => format!("Claude token endpoint answered {}", status.as_u16()),
     };
-    let kind = if is_rejection(status) {
+    let kind = if is_refusal(status) {
         ErrorKind::ProviderError
     } else {
         ErrorKind::Http
     };
-    Err(CommandError::new(kind, message))
+    Err(TokenFailure {
+        error: CommandError::new(kind, message),
+        rejected: is_rejection(status, code.as_deref()),
+    })
 }
 
 async fn exchange_code(
@@ -552,13 +592,26 @@ async fn exchange_code(
         "redirect_uri": redirect_uri,
         "code_verifier": login.verifier,
     });
-    let raw = post_token(token_url, &body).await?;
-    parse_token_response(&raw, now_ms(), None)
+    let raw = post_token(token_url, &body)
+        .await
+        .map_err(|failure| failure.error)?;
+    Ok(StoredTokens {
+        client_id: Some(login.client_id.clone()),
+        ..parse_token_response(&raw, now_ms(), None)?
+    })
+}
+
+fn issuing_client<'a>(current: &'a StoredTokens, fallback_client_id: &'a str) -> &'a str {
+    current
+        .client_id
+        .as_deref()
+        .filter(|client_id| validate_client_id(client_id).is_ok())
+        .unwrap_or(fallback_client_id)
 }
 
 pub async fn refresh_tokens(
     token_url: &str,
-    client_id: &str,
+    fallback_client_id: &str,
     current: &StoredTokens,
 ) -> CommandResult<StoredTokens> {
     let refresh_token = current
@@ -566,6 +619,7 @@ pub async fn refresh_tokens(
         .as_deref()
         .filter(|token| !token.is_empty())
         .ok_or_else(signin_required)?;
+    let client_id = issuing_client(current, fallback_client_id);
     let mut body = json!({
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -574,17 +628,24 @@ pub async fn refresh_tokens(
     if !current.scopes.is_empty() {
         body["scope"] = Value::from(current.scopes.join(" "));
     }
-    let raw = post_token(token_url, &body).await.map_err(|error| {
-        if error.kind == ErrorKind::ProviderError {
-            CommandError::new(
-                ErrorKind::ClaudeSigninRequired,
-                format!("Claude refused the token refresh: {}", error.message),
-            )
-        } else {
-            error
-        }
-    })?;
-    parse_token_response(&raw, now_ms(), Some(current))
+    let raw = post_token(token_url, &body)
+        .await
+        .map_err(|TokenFailure { error, rejected }| {
+            if rejected {
+                CommandError::new(
+                    ErrorKind::ClaudeSigninRequired,
+                    format!("Claude refused the token refresh: {}", error.message),
+                )
+            } else if error.kind == ErrorKind::ProviderError {
+                CommandError::new(ErrorKind::Http, error.message)
+            } else {
+                error
+            }
+        })?;
+    Ok(StoredTokens {
+        client_id: Some(client_id.to_string()),
+        ..parse_token_response(&raw, now_ms(), Some(current))?
+    })
 }
 
 async fn fetch_email(profile_url: &str, access_token: &str) -> Option<String> {
@@ -632,13 +693,17 @@ async fn claim_code(
             .ok_or_else(unknown_login)?;
         let code = parse_pasted_code(pasted, &expected)?;
         let login = logins.take(completion.login_id).ok_or_else(unknown_login)?;
-        oauth_loopback::cancel_listener(context.loopback, &login.listener_id);
+        oauth_loopback::cancel_internal_listener(context.loopback, &login.listener_id);
         return Ok((login, code, MANUAL_REDIRECT_URI.to_string()));
     }
     let (state, listener_id) = logins.start_wait(completion.login_id)?;
-    let waited =
-        oauth_loopback::await_code(context.loopback, &listener_id, state, completion.timeout_ms)
-            .await;
+    let waited = oauth_loopback::await_internal_code(
+        context.loopback,
+        &listener_id,
+        state,
+        completion.timeout_ms,
+    )
+    .await;
     let login = logins.take(completion.login_id);
     let code = waited?;
     let login =
@@ -755,8 +820,9 @@ mod tests {
     use std::thread;
 
     use super::*;
+    use crate::commands::claude_usage::fetch_usage;
     use crate::commands::secrets::{secret_get, ALLOWED_SECRET_KEYS};
-    use crate::commands::test_support::{MemoryStore, TestServer};
+    use crate::commands::test_support::{json_response, MemoryStore, TestServer};
 
     const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     const TOKEN_JSON: &str = r#"{"access_token":"sk-ant-oat01-new","refresh_token":"sk-ant-ort01-new","expires_in":28800,"scope":"user:profile user:inference","token_type":"Bearer"}"#;
@@ -771,6 +837,7 @@ mod tests {
             refresh_token: refresh.map(str::to_string),
             expires_at,
             scopes: vec!["user:profile".into(), "user:inference".into()],
+            client_id: None,
             rejected: false,
         }
     }
@@ -944,21 +1011,26 @@ mod tests {
     }
 
     #[test]
-    fn a_token_response_without_refresh_token_or_expiry_keeps_what_was_known() {
+    fn a_token_response_without_refresh_token_keeps_it_but_never_inherits_the_expiry() {
         let bare = br#"{"access_token":"at-2"}"#;
         let fresh = parse_token_response(bare, 1_000, None).unwrap();
         assert_eq!(fresh.refresh_token, None);
         assert_eq!(fresh.expires_at, None);
+        assert_eq!(fresh.client_id, None);
         assert_eq!(fresh.scopes, vec!["user:profile", "user:inference"]);
         let previous = StoredTokens {
             scopes: vec!["user:inference".into()],
+            client_id: Some(CLIENT_ID.into()),
+            rejected: true,
             ..tokens(Some("rt-old"), Some(5_000))
         };
         let rotated = parse_token_response(bare, 1_000, Some(&previous)).unwrap();
         assert_eq!(rotated.access_token, "at-2");
         assert_eq!(rotated.refresh_token.as_deref(), Some("rt-old"));
-        assert_eq!(rotated.expires_at, Some(5_000));
+        assert_eq!(rotated.expires_at, None);
         assert_eq!(rotated.scopes, vec!["user:inference"]);
+        assert_eq!(rotated.client_id.as_deref(), Some(CLIENT_ID));
+        assert!(!rotated.rejected);
     }
 
     #[test]
@@ -1051,11 +1123,20 @@ mod tests {
 
     #[test]
     fn stored_tokens_use_the_agreed_json_and_hide_secrets_from_debug() {
-        let stored = tokens(Some("sk-ant-ort01-xyz"), Some(1_767_225_600_000));
+        let stored = StoredTokens {
+            client_id: Some(CLIENT_ID.into()),
+            ..tokens(Some("sk-ant-ort01-xyz"), Some(1_767_225_600_000))
+        };
         assert_eq!(
             serde_json::to_string(&stored).unwrap(),
-            r#"{"accessToken":"sk-ant-oat01-abc","refreshToken":"sk-ant-ort01-xyz","expiresAt":1767225600000,"scopes":["user:profile","user:inference"]}"#
+            r#"{"accessToken":"sk-ant-oat01-abc","refreshToken":"sk-ant-ort01-xyz","expiresAt":1767225600000,"scopes":["user:profile","user:inference"],"clientId":"9d1c250a-e61b-44d9-88ed-5944d1962f5e"}"#
         );
+        let legacy: StoredTokens = serde_json::from_str(
+            r#"{"accessToken":"a","refreshToken":"r","expiresAt":1,"scopes":["user:profile"]}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.client_id, None);
+        assert!(!serde_json::to_string(&legacy).unwrap().contains("clientId"));
         let rejected = StoredTokens {
             rejected: true,
             ..stored.clone()
@@ -1116,32 +1197,46 @@ mod tests {
         );
     }
 
-    fn pending(listener_id: &str) -> PendingLogin {
+    fn pending(logins: &ClaudeLogins, listener_id: &str) -> PendingLogin {
         PendingLogin {
             verifier: "v".into(),
             state: "s".into(),
             client_id: CLIENT_ID.into(),
             redirect_uri: "http://localhost:1/callback".into(),
             listener_id: listener_id.into(),
-            started: Instant::now(),
+            started: logins.now(),
             awaited: false,
         }
     }
 
+    fn manual_clock() -> (Clock, Arc<Mutex<Duration>>) {
+        let base = Instant::now();
+        let advanced = Arc::new(Mutex::new(Duration::ZERO));
+        let reading = Arc::clone(&advanced);
+        let clock: Clock = Arc::new(move || base + *reading.lock().unwrap());
+        (clock, advanced)
+    }
+
     #[test]
     fn at_most_two_sign_ins_wait_at_once_and_old_ones_expire() {
-        let logins = ClaudeLogins::with_ttl(Duration::from_millis(80));
-        logins.insert("a".into(), pending("1")).unwrap();
-        logins.insert("b".into(), pending("2")).unwrap();
+        let (clock, advanced) = manual_clock();
+        let logins = ClaudeLogins::with_clock(LOGIN_TTL, clock);
+        logins.insert("a".into(), pending(&logins, "1")).unwrap();
+        logins.insert("b".into(), pending(&logins, "2")).unwrap();
         assert_eq!(
-            logins.insert("c".into(), pending("3")).unwrap_err().kind,
+            logins
+                .insert("c".into(), pending(&logins, "3"))
+                .unwrap_err()
+                .kind,
             ErrorKind::TooManyProcesses
         );
-        thread::sleep(Duration::from_millis(120));
+        *advanced.lock().unwrap() = LOGIN_TTL - Duration::from_millis(1);
+        assert_eq!(logins.state_of("a").as_deref(), Some("s"));
+        *advanced.lock().unwrap() = LOGIN_TTL;
         assert_eq!(logins.state_of("a"), None);
         assert!(logins.take("a").is_none());
-        logins.insert("c".into(), pending("3")).unwrap();
-        logins.insert("d".into(), pending("4")).unwrap();
+        logins.insert("c".into(), pending(&logins, "3")).unwrap();
+        logins.insert("d".into(), pending(&logins, "4")).unwrap();
         assert!(logins.take("c").is_some());
         assert!(logins.take("c").is_none());
     }
@@ -1149,7 +1244,7 @@ mod tests {
     #[test]
     fn a_sign_in_can_be_awaited_only_once() {
         let logins = ClaudeLogins::default();
-        logins.insert("a".into(), pending("1")).unwrap();
+        logins.insert("a".into(), pending(&logins, "1")).unwrap();
         assert_eq!(logins.start_wait("a").unwrap(), ("s".into(), "1".into()));
         assert_eq!(
             logins.start_wait("a").unwrap_err().kind,
@@ -1229,9 +1324,20 @@ mod tests {
         Url::parse(redirect_uri).unwrap().port().unwrap()
     }
 
+    fn listener_of(logins: &ClaudeLogins, login_id: &str) -> String {
+        logins.lock().get(login_id).unwrap().listener_id.clone()
+    }
+
+    fn wait_until(condition: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !condition() {
+            assert!(Instant::now() < deadline, "condition never became true");
+            thread::yield_now();
+        }
+    }
+
     fn browser_hits(port: u16, target: String) -> thread::JoinHandle<String> {
         thread::spawn(move || {
-            thread::sleep(Duration::from_millis(50));
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream
                 .write_all(format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes())
@@ -1316,6 +1422,7 @@ mod tests {
         assert_eq!(saved.access_token, "sk-ant-oat01-new");
         assert_eq!(saved.refresh_token.as_deref(), Some("sk-ant-ort01-new"));
         assert_eq!(saved.expires_at, result.expires_at);
+        assert_eq!(saved.client_id.as_deref(), Some(CLIENT_ID));
     }
 
     #[test]
@@ -1348,14 +1455,63 @@ mod tests {
         let harness = ok_servers();
         let start = begin_login(&harness.logins, &harness.loopback, CLIENT_ID).unwrap();
         let pasted = format!("pasted-code#{}", start.state);
+        let listener_id = listener_of(&harness.logins, &start.login_id);
         let (waiting, pasting) = thread::scope(|scope| {
-            let waiting = scope.spawn(|| harness.complete(&start.login_id, None, Some(5_000)));
-            thread::sleep(Duration::from_millis(150));
+            let waiting = scope.spawn(|| harness.complete(&start.login_id, None, Some(10_000)));
+            wait_until(|| harness.loopback.is_claimed(&listener_id));
             let pasting = harness.complete(&start.login_id, Some(&pasted), None);
             (waiting.join().unwrap(), pasting)
         });
         assert!(pasting.is_ok());
         assert_eq!(waiting.unwrap_err().kind, ErrorKind::Cancelled);
+    }
+
+    #[test]
+    fn cancelling_during_a_loopback_wait_ends_it_and_frees_the_port() {
+        let harness = ok_servers();
+        let start = begin_login(&harness.logins, &harness.loopback, CLIENT_ID).unwrap();
+        let listener_id = listener_of(&harness.logins, &start.login_id);
+        let waited = thread::scope(|scope| {
+            let waiting = scope.spawn(|| harness.complete(&start.login_id, None, Some(10_000)));
+            wait_until(|| harness.loopback.is_claimed(&listener_id));
+            cancel_login(&harness.logins, &harness.loopback, &start.login_id);
+            waiting.join().unwrap()
+        });
+        assert_eq!(waited.unwrap_err().kind, ErrorKind::Cancelled);
+        assert_eq!(harness.logins.state_of(&start.login_id), None);
+        assert!(TcpListener::bind(("127.0.0.1", port_of(&start.redirect_uri))).is_ok());
+        cancel_login(&harness.logins, &harness.loopback, &start.login_id);
+        assert!(harness.store.keys().is_empty());
+        assert!(harness.token.requests().is_empty());
+    }
+
+    #[test]
+    fn the_sign_in_listener_is_out_of_reach_of_the_webview_loopback_commands() {
+        let harness = ok_servers();
+        let start = begin_login(&harness.logins, &harness.loopback, CLIENT_ID).unwrap();
+        let listener_id = listener_of(&harness.logins, &start.login_id);
+        let waited = block_on(oauth_loopback::await_code(
+            &harness.loopback,
+            &listener_id,
+            start.state.clone(),
+            Some(100),
+        ))
+        .unwrap_err();
+        assert_eq!(waited.kind, ErrorKind::Policy);
+        assert_eq!(
+            oauth_loopback::cancel_listener(&harness.loopback, &listener_id)
+                .unwrap_err()
+                .kind,
+            ErrorKind::Policy
+        );
+        let browser = browser_hits(
+            port_of(&start.redirect_uri),
+            format!("/callback?code=the-code&state={}", start.state),
+        );
+        harness
+            .complete(&start.login_id, None, Some(10_000))
+            .unwrap();
+        assert!(browser.join().unwrap().starts_with("HTTP/1.1 200"));
     }
 
     #[test]
@@ -1440,32 +1596,76 @@ mod tests {
     #[test]
     fn token_endpoint_failures_map_to_typed_errors() {
         let call = |server: TestServer| {
-            let error = block_on(post_token(&server.url, &json!({}))).unwrap_err();
-            (error.kind, error.retry_after_secs, error.message)
+            let failure = block_on(post_token(&server.url, &json!({}))).unwrap_err();
+            (
+                failure.error.kind,
+                failure.error.retry_after_secs,
+                failure.error.message,
+                failure.rejected,
+            )
         };
-        let (kind, _, message) = call(TestServer::json(
+        let (kind, _, message, rejected) = call(TestServer::json(
             "/token",
             "401 Unauthorized",
             r#"{"type":"error","error":{"type":"authentication_error","message":"x"}}"#,
         ));
         assert_eq!(kind, ErrorKind::ProviderError);
         assert!(message.contains("authentication_error"));
+        assert!(!rejected);
         let limited = TestServer::start(
             "/token",
             vec!["HTTP/1.1 429 Too Many Requests\r\nRetry-After: 30\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into()],
         );
-        let (kind, retry, _) = call(limited);
+        let (kind, retry, _, rejected) = call(limited);
         assert_eq!(kind, ErrorKind::RateLimited);
         assert_eq!(retry, Some(Some(30)));
-        let (kind, _, message) = call(TestServer::json(
+        assert!(!rejected);
+        let (kind, _, message, rejected) = call(TestServer::json(
             "/token",
             "503 Service Unavailable",
             "<html>",
         ));
         assert_eq!(kind, ErrorKind::Http);
         assert_eq!(message, "Claude token endpoint answered 503");
-        let (kind, _, _) = call(TestServer::json("/token", "408 Request Timeout", "{}"));
+        assert!(!rejected);
+        let (kind, _, _, rejected) = call(TestServer::json(
+            "/token",
+            "408 Request Timeout",
+            r#"{"error":"invalid_grant"}"#,
+        ));
         assert_eq!(kind, ErrorKind::Http);
+        assert!(!rejected);
+    }
+
+    #[test]
+    fn only_invalid_grant_and_invalid_client_count_as_a_rejection() {
+        let rejected = |status: &str, body: &str| {
+            let server = TestServer::json("/token", status, body);
+            block_on(post_token(&server.url, &json!({})))
+                .unwrap_err()
+                .rejected
+        };
+        assert!(rejected("400 Bad Request", r#"{"error":"invalid_grant"}"#));
+        assert!(rejected(
+            "401 Unauthorized",
+            r#"{"error":"invalid_client"}"#
+        ));
+        assert!(rejected(
+            "400 Bad Request",
+            r#"{"error":{"type":"invalid_grant"}}"#
+        ));
+        for (status, body) in [
+            ("403 Forbidden", "<html>blocked</html>"),
+            ("404 Not Found", "{}"),
+            ("405 Method Not Allowed", ""),
+            ("415 Unsupported Media Type", r#"{"error":"unsupported"}"#),
+            ("400 Bad Request", r#"{"error":"invalid_request"}"#),
+            ("400 Bad Request", r#"{"error":"invalid_scope"}"#),
+            ("401 Unauthorized", r#"{"error":"unauthorized_client"}"#),
+            ("500 Internal Server Error", r#"{"error":"invalid_grant"}"#),
+        ] {
+            assert!(!rejected(status, body), "{status} {body}");
+        }
     }
 
     #[test]
@@ -1479,6 +1679,15 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
         assert_eq!(server.requests().len(), 1);
+        let waf = TestServer::json("/token", "403 Forbidden", "<html>blocked</html>");
+        let error = block_on(refresh_tokens(
+            &waf.url,
+            CLIENT_ID,
+            &tokens(Some("rt"), Some(1)),
+        ))
+        .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert_eq!(error.message, "Claude token endpoint answered 403");
         let unused = TestServer::json("/token", "200 OK", TOKEN_JSON);
         let error = block_on(refresh_tokens(
             &unused.url,
@@ -1488,6 +1697,97 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
         assert!(unused.requests().is_empty());
+    }
+
+    const USAGE_JSON: &str = r#"{"five_hour":{"utilization":41.0}}"#;
+    const REFRESHED_JSON: &str =
+        r#"{"access_token":"at-refreshed","refresh_token":"rt-refreshed","expires_in":3600}"#;
+
+    struct InFlightFetch {
+        refresh: TestServer,
+        usage: TestServer,
+        gate: crate::commands::test_support::Gate,
+    }
+
+    impl InFlightFetch {
+        fn new() -> Self {
+            let refresh = TestServer::json("/token", "200 OK", REFRESHED_JSON);
+            let (usage, gate) = TestServer::gated(
+                "/usage",
+                vec![
+                    json_response("401 Unauthorized", "{}"),
+                    json_response("200 OK", USAGE_JSON),
+                ],
+            );
+            Self {
+                refresh,
+                usage,
+                gate,
+            }
+        }
+
+        fn endpoints(&self) -> Endpoints<'_> {
+            Endpoints {
+                token: &self.refresh.url,
+                profile: "http://127.0.0.1:9/profile",
+                usage: &self.usage.url,
+            }
+        }
+    }
+
+    #[test]
+    fn a_remove_issued_during_a_fetch_waits_for_it_and_wins() {
+        let store = MemoryStore::leaked();
+        save_tokens(store, "acc", &tokens(Some("rt-old"), None)).unwrap();
+        let locks = AccountLocks::default();
+        let fetch = InFlightFetch::new();
+        let endpoints = fetch.endpoints();
+        let (fetched, removed) = thread::scope(|scope| {
+            let fetching =
+                scope.spawn(|| block_on(fetch_usage(&locks, store, &endpoints, "acc", CLIENT_ID)));
+            fetch.gate.wait_for_request();
+            assert!(locks.for_account("acc").try_lock().is_err());
+            let removing = scope.spawn(|| block_on(remove_account(&locks, store, "acc")));
+            fetch.gate.release();
+            (fetching.join().unwrap(), removing.join().unwrap())
+        });
+        assert_eq!(fetched.unwrap()["five_hour"]["utilization"], 41.0);
+        removed.unwrap();
+        assert!(store.keys().is_empty(), "{:?}", store.keys());
+        assert_eq!(fetch.refresh.requests().len(), 1);
+    }
+
+    #[test]
+    fn a_sign_in_completed_during_a_fetch_waits_for_it_and_its_tokens_are_kept() {
+        let harness = ok_servers();
+        save_tokens(harness.store, "acc", &tokens(Some("rt-old"), None)).unwrap();
+        let start = begin_login(&harness.logins, &harness.loopback, CLIENT_ID).unwrap();
+        let pasted = format!("pasted-code#{}", start.state);
+        let fetch = InFlightFetch::new();
+        let endpoints = fetch.endpoints();
+        let (fetched, completed) = thread::scope(|scope| {
+            let fetching = scope.spawn(|| {
+                block_on(fetch_usage(
+                    &harness.locks,
+                    harness.store,
+                    &endpoints,
+                    "acc",
+                    CLIENT_ID,
+                ))
+            });
+            fetch.gate.wait_for_request();
+            assert!(harness.locks.for_account("acc").try_lock().is_err());
+            let completing = scope.spawn(|| harness.complete(&start.login_id, Some(&pasted), None));
+            fetch.gate.release();
+            (fetching.join().unwrap(), completing.join().unwrap())
+        });
+        assert!(fetched.is_ok());
+        completed.unwrap();
+        let saved = load_tokens(harness.store, "acc").unwrap().unwrap();
+        assert_eq!(saved.access_token, "sk-ant-oat01-new");
+        assert_eq!(saved.refresh_token.as_deref(), Some("sk-ant-ort01-new"));
+        assert!(!saved.rejected);
+        assert_eq!(fetch.refresh.requests().len(), 1);
     }
 
     #[test]

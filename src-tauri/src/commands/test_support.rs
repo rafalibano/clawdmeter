@@ -2,12 +2,30 @@ use std::collections::HashMap;
 use std::io::{ErrorKind as IoErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use super::error::CommandResult;
+use super::error::{CommandError, CommandResult, ErrorKind};
 use super::secrets::SecretBackend;
+
+pub struct Gate {
+    arrived: Receiver<()>,
+    release: Sender<()>,
+}
+
+impl Gate {
+    pub fn wait_for_request(&self) {
+        self.arrived
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the gated request never arrived");
+    }
+
+    pub fn release(&self) {
+        let _ = self.release.send(());
+    }
+}
 
 pub struct TestServer {
     pub url: String,
@@ -17,6 +35,17 @@ pub struct TestServer {
 
 impl TestServer {
     pub fn start(path: &str, responses: Vec<String>) -> Self {
+        Self::spawn(path, responses, None)
+    }
+
+    pub fn gated(path: &str, responses: Vec<String>) -> (Self, Gate) {
+        let (arrived_tx, arrived) = channel();
+        let (release, release_rx) = channel();
+        let server = Self::spawn(path, responses, Some((arrived_tx, release_rx)));
+        (server, Gate { arrived, release })
+    }
+
+    fn spawn(path: &str, responses: Vec<String>, gate: Option<(Sender<()>, Receiver<()>)>) -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!(
@@ -31,6 +60,10 @@ impl TestServer {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
                         let request = read_request(&mut stream);
+                        if let (true, Some((arrived, release))) = (seen.is_empty(), &gate) {
+                            let _ = arrived.send(());
+                            let _ = release.recv();
+                        }
                         let response = responses
                             .get(seen.len())
                             .or(responses.last())
@@ -112,11 +145,16 @@ fn read_request(stream: &mut TcpStream) -> String {
 #[derive(Default)]
 pub struct MemoryStore {
     entries: Mutex<HashMap<String, String>>,
+    failing_writes: Mutex<usize>,
 }
 
 impl MemoryStore {
     pub fn leaked() -> &'static Self {
         Box::leak(Box::default())
+    }
+
+    pub fn fail_next_writes(&self, count: usize) {
+        *self.failing_writes.lock().unwrap() = count;
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -132,6 +170,15 @@ impl SecretBackend for MemoryStore {
     }
 
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
+        let mut failing = self.failing_writes.lock().unwrap();
+        if *failing > 0 {
+            *failing -= 1;
+            return Err(CommandError::new(
+                ErrorKind::Keychain,
+                "keychain write failed",
+            ));
+        }
+        drop(failing);
         self.entries
             .lock()
             .unwrap()

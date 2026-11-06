@@ -25,16 +25,24 @@ const MAX_LISTENERS: usize = 2;
 
 type ListenerMap = Arc<Mutex<HashMap<String, Arc<LoopbackListener>>>>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Owner {
+    Webview,
+    Internal,
+}
+
 pub struct LoopbackListener {
     socket: TcpListener,
+    owner: Owner,
     cancelled: AtomicBool,
     claimed: AtomicBool,
 }
 
 impl LoopbackListener {
-    fn new(socket: TcpListener) -> Self {
+    fn new(socket: TcpListener, owner: Owner) -> Self {
         Self {
             socket,
+            owner,
             cancelled: AtomicBool::new(false),
             claimed: AtomicBool::new(false),
         }
@@ -77,9 +85,28 @@ impl LoopbackRegistry {
         Ok(id)
     }
 
-    fn claim(&self, id: &str) -> Option<Arc<LoopbackListener>> {
-        self.get(id)
+    fn owned(&self, id: &str, owner: Owner) -> CommandResult<Option<Arc<LoopbackListener>>> {
+        match self.get(id) {
+            Some(listener) if listener.owner != owner => Err(reserved_listener()),
+            found => Ok(found),
+        }
+    }
+
+    fn claim(&self, id: &str, owner: Owner) -> CommandResult<Arc<LoopbackListener>> {
+        self.owned(id, owner)?
             .filter(|listener| !listener.claimed.swap(true, Ordering::SeqCst))
+            .ok_or_else(|| {
+                CommandError::new(
+                    ErrorKind::InvalidArgument,
+                    "unknown or already awaited listener",
+                )
+            })
+    }
+
+    #[cfg(test)]
+    pub fn is_claimed(&self, id: &str) -> bool {
+        self.get(id)
+            .is_some_and(|listener| listener.claimed.load(Ordering::SeqCst))
     }
 
     fn get(&self, id: &str) -> Option<Arc<LoopbackListener>> {
@@ -94,6 +121,13 @@ impl LoopbackRegistry {
             listeners.remove(id);
         }
     }
+}
+
+fn reserved_listener() -> CommandError {
+    CommandError::new(
+        ErrorKind::Policy,
+        "this listener belongs to another sign-in",
+    )
 }
 
 fn too_many_listeners() -> CommandError {
@@ -290,11 +324,38 @@ fn serve_until_callback(
     }
 }
 
-pub fn open_listener(registry: &LoopbackRegistry) -> CommandResult<ListenInfo> {
+fn open(registry: &LoopbackRegistry, owner: Owner) -> CommandResult<ListenInfo> {
     let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let port = socket.local_addr()?.port();
-    let id = registry.insert(LoopbackListener::new(socket))?;
+    let id = registry.insert(LoopbackListener::new(socket, owner))?;
     Ok(ListenInfo { id, port })
+}
+
+async fn wait_for_code(
+    registry: &LoopbackRegistry,
+    id: &str,
+    owner: Owner,
+    expected_state: String,
+    timeout_ms: Option<u64>,
+) -> CommandResult<String> {
+    let listener = registry.claim(id, owner)?;
+    let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
+    let result =
+        run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
+    registry.remove(id);
+    result
+}
+
+fn cancel(registry: &LoopbackRegistry, id: &str, owner: Owner) -> CommandResult<()> {
+    if let Some(listener) = registry.owned(id, owner)? {
+        listener.cancelled.store(true, Ordering::SeqCst);
+    }
+    registry.remove(id);
+    Ok(())
+}
+
+pub fn open_listener(registry: &LoopbackRegistry) -> CommandResult<ListenInfo> {
+    open(registry, Owner::Webview)
 }
 
 pub async fn await_code(
@@ -303,24 +364,28 @@ pub async fn await_code(
     expected_state: String,
     timeout_ms: Option<u64>,
 ) -> CommandResult<String> {
-    let listener = registry.claim(id).ok_or_else(|| {
-        CommandError::new(
-            ErrorKind::InvalidArgument,
-            "unknown or already awaited listener",
-        )
-    })?;
-    let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
-    let result =
-        run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
-    registry.remove(id);
-    result
+    wait_for_code(registry, id, Owner::Webview, expected_state, timeout_ms).await
 }
 
-pub fn cancel_listener(registry: &LoopbackRegistry, id: &str) {
-    if let Some(listener) = registry.get(id) {
-        listener.cancelled.store(true, Ordering::SeqCst);
-    }
-    registry.remove(id);
+pub fn cancel_listener(registry: &LoopbackRegistry, id: &str) -> CommandResult<()> {
+    cancel(registry, id, Owner::Webview)
+}
+
+pub fn open_internal_listener(registry: &LoopbackRegistry) -> CommandResult<ListenInfo> {
+    open(registry, Owner::Internal)
+}
+
+pub async fn await_internal_code(
+    registry: &LoopbackRegistry,
+    id: &str,
+    expected_state: String,
+    timeout_ms: Option<u64>,
+) -> CommandResult<String> {
+    wait_for_code(registry, id, Owner::Internal, expected_state, timeout_ms).await
+}
+
+pub fn cancel_internal_listener(registry: &LoopbackRegistry, id: &str) {
+    let _ = cancel(registry, id, Owner::Internal);
 }
 
 #[tauri::command(async)]
@@ -341,8 +406,8 @@ pub async fn oauth_loopback_wait(
 }
 
 #[tauri::command(async)]
-pub fn oauth_loopback_cancel(registry: State<LoopbackRegistry>, id: String) {
-    cancel_listener(&registry, &id);
+pub fn oauth_loopback_cancel(registry: State<LoopbackRegistry>, id: String) -> CommandResult<()> {
+    cancel_listener(&registry, &id)
 }
 
 #[cfg(test)]
@@ -420,7 +485,10 @@ mod tests {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
         let id = registry
-            .insert_with_ttl(LoopbackListener::new(socket), Duration::from_millis(60))
+            .insert_with_ttl(
+                LoopbackListener::new(socket, Owner::Webview),
+                Duration::from_millis(60),
+            )
             .unwrap();
         let kept = registry.get(&id).unwrap();
         assert!(!kept.cancelled.load(Ordering::SeqCst));
@@ -438,7 +506,10 @@ mod tests {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
         let id = registry
-            .insert_with_ttl(LoopbackListener::new(socket), Duration::from_secs(60))
+            .insert_with_ttl(
+                LoopbackListener::new(socket, Owner::Webview),
+                Duration::from_secs(60),
+            )
             .unwrap();
         registry.remove(&id);
         assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
@@ -448,7 +519,7 @@ mod tests {
     fn serves_a_real_callback_over_loopback() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let listener = LoopbackListener::new(socket);
+        let listener = LoopbackListener::new(socket, Owner::Webview);
         let client = thread::spawn(move || {
             let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
             stream
@@ -476,7 +547,7 @@ mod tests {
     fn listener_on_free_port() -> (LoopbackListener, u16) {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
-        let listener = LoopbackListener::new(socket);
+        let listener = LoopbackListener::new(socket, Owner::Webview);
         (listener, port)
     }
 
@@ -585,7 +656,7 @@ mod tests {
     #[test]
     fn times_out_without_a_callback() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let listener = LoopbackListener::new(socket);
+        let listener = LoopbackListener::new(socket, Owner::Webview);
         let error = serve_until_callback(&listener, "s-1", Duration::from_millis(120)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::Timeout);
     }
@@ -593,14 +664,17 @@ mod tests {
     #[test]
     fn cancellation_stops_the_wait() {
         let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let listener = LoopbackListener::new(socket);
+        let listener = LoopbackListener::new(socket, Owner::Webview);
         listener.cancelled.store(true, Ordering::SeqCst);
         let error = serve_until_callback(&listener, "s-1", Duration::from_secs(5)).unwrap_err();
         assert_eq!(error.kind, ErrorKind::Cancelled);
     }
 
     fn fresh_listener() -> LoopbackListener {
-        LoopbackListener::new(TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap())
+        LoopbackListener::new(
+            TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap(),
+            Owner::Webview,
+        )
     }
 
     #[test]
@@ -618,14 +692,66 @@ mod tests {
     fn a_listener_can_be_awaited_only_once_and_still_cancelled() {
         let registry = LoopbackRegistry::default();
         let id = registry.insert(fresh_listener()).unwrap();
-        let waiting = registry.claim(&id).unwrap();
-        assert!(registry.claim(&id).is_none());
-        assert!(registry.claim("unknown").is_none());
+        let waiting = registry.claim(&id, Owner::Webview).unwrap();
+        assert!(registry.claim(&id, Owner::Webview).is_err());
+        assert!(registry.claim("unknown", Owner::Webview).is_err());
         registry
             .get(&id)
             .unwrap()
             .cancelled
             .store(true, Ordering::SeqCst);
         assert!(waiting.cancelled.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn the_webview_commands_cannot_wait_on_or_cancel_an_internal_listener() {
+        let registry = LoopbackRegistry::default();
+        let internal = open_internal_listener(&registry).unwrap();
+        let waited = tauri::async_runtime::block_on(await_code(
+            &registry,
+            &internal.id,
+            "s-1".into(),
+            Some(100),
+        ))
+        .unwrap_err();
+        assert_eq!(waited.kind, ErrorKind::Policy);
+        let cancelled = cancel_listener(&registry, &internal.id).unwrap_err();
+        assert_eq!(cancelled.kind, ErrorKind::Policy);
+        let kept = registry.get(&internal.id).unwrap();
+        assert!(!kept.claimed.load(Ordering::SeqCst));
+        assert!(!kept.cancelled.load(Ordering::SeqCst));
+        drop(kept);
+        let client = thread::spawn(move || send_get(internal.port, "/callback?code=c-1&state=s-1"));
+        let code = tauri::async_runtime::block_on(await_internal_code(
+            &registry,
+            &internal.id,
+            "s-1".into(),
+            Some(5_000),
+        ))
+        .unwrap();
+        assert_eq!(code, "c-1");
+        assert!(client.join().unwrap().starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn the_webview_flow_still_waits_on_and_cancels_its_own_listeners() {
+        let registry = LoopbackRegistry::default();
+        let public = open_listener(&registry).unwrap();
+        let client = thread::spawn(move || send_get(public.port, "/callback?code=c-2&state=s-2"));
+        let code = tauri::async_runtime::block_on(await_code(
+            &registry,
+            &public.id,
+            "s-2".into(),
+            Some(5_000),
+        ))
+        .unwrap();
+        assert_eq!(code, "c-2");
+        assert!(client.join().unwrap().starts_with("HTTP/1.1 200"));
+        let other = open_listener(&registry).unwrap();
+        cancel_listener(&registry, &other.id).unwrap();
+        assert!(registry.get(&other.id).is_none());
+        cancel_listener(&registry, "unknown").unwrap();
+        cancel_internal_listener(&registry, &open_listener(&registry).unwrap().id);
+        assert_eq!(registry.listeners.lock().unwrap().len(), 1);
     }
 }
