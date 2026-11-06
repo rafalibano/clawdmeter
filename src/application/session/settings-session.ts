@@ -19,7 +19,7 @@ export interface SettingsSessionState {
 export interface SettingsSessionDeps {
   getSettings: Pick<GetSettings, 'execute'>;
   getSettingsStatus: Pick<GetSettingsStatus, 'execute'>;
-  updateSettings: Pick<UpdateSettings, 'execute'>;
+  updateSettings: Pick<UpdateSettings, 'execute' | 'subscribe'>;
   watchSettings: Pick<WatchSettings, 'execute'>;
 }
 
@@ -28,6 +28,7 @@ export class SettingsSession {
   private pending: SettingsPatch[] = [];
   private flushing: Promise<void> | null = null;
   private stopWatching: Unsubscribe | null = null;
+  private stopSaved: Unsubscribe | null = null;
   private disposed = false;
 
   constructor(
@@ -40,6 +41,7 @@ export class SettingsSession {
   }
 
   async start(): Promise<void> {
+    this.stopSaved ??= this.deps.updateSettings.subscribe((saved) => this.adoptClaude(saved));
     try {
       const settings = await this.deps.getSettings.execute();
       this.emit({ settings, ready: true, error: this.blockedError() });
@@ -69,6 +71,13 @@ export class SettingsSession {
     this.disposed = true;
     this.stopWatching?.();
     this.stopWatching = null;
+    this.stopSaved?.();
+    this.stopSaved = null;
+  }
+
+  private adoptClaude(saved: AppSettings): void {
+    if (this.disposed || JSON.stringify(saved.claude) === JSON.stringify(this.state.settings.claude)) return;
+    this.emit({ ...this.state, settings: { ...this.state.settings, claude: saved.claude } });
   }
 
   private receive(settings: AppSettings): void {
@@ -99,7 +108,10 @@ export class SettingsSession {
       this.flushing = null;
     }
     if (failure) this.emit({ ...this.state, error: failure });
-    else if (saved) this.emit({ ...this.state, settings: saved, error: this.state.error === 'save' ? null : this.state.error });
+    else if (saved) {
+      const settings = { ...saved, claude: this.state.settings.claude };
+      this.emit({ ...this.state, settings, error: this.state.error === 'save' ? null : this.state.error });
+    }
   }
 
   private emit(state: SettingsSessionState): void {

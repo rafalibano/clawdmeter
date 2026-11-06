@@ -37,3 +37,7 @@ export function statusForProblem(problem: ConnectionProblem, message?: string, c
   if (status.state !== 'error' || code === undefined) return status;
   return { ...status, code, ...(args ? { args } : {}) };
 }
+
+export function claudeSignInStatus(account: string): ConnectionStatus {
+  return statusForProblem('claude-signin-required', undefined, 'claude-signin-required', { account });
+}

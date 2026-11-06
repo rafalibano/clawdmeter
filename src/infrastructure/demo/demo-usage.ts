@@ -1,8 +1,8 @@
 import type {
-  ClaudeCredentialSource,
   ExternalUsageHistorySource,
   UsageGateway,
   UsageHistoryStore,
+  UsageHistoryStores,
 } from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
 import { RateLimitedError } from '../../domain/rate-limit';
@@ -19,6 +19,8 @@ const FIVE_HOUR_MS = 5 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
 const WEEKLY_SHARE = 0.12;
 const CURRENT_WINDOW_TOTAL = 80;
+const OTHER_ACCOUNT_WINDOW_TOTAL = 45;
+const SALT_STRIDE = 10;
 const HIGH_WEEKLY_SHARE = 0.21;
 const HIGH_CURRENT_WINDOW_TOTAL = 195;
 const IDLE_BELOW = 8;
@@ -53,6 +55,7 @@ export class DemoUsageModel {
   constructor(
     readonly origin: number,
     private readonly high = false,
+    private readonly seed = 0,
   ) {
     this.fiveHourAnchor = origin - 1.5 * HOUR_MS;
     this.weekAnchor = origin - 3 * DAY_MS - 5 * HOUR_MS;
@@ -89,15 +92,15 @@ export class DemoUsageModel {
   }
 
   private windowTotal(index: number): number {
-    if (index === 0) return this.high ? HIGH_CURRENT_WINDOW_TOTAL : CURRENT_WINDOW_TOTAL;
+    if (index === 0) return this.high ? HIGH_CURRENT_WINDOW_TOTAL : this.seed === 0 ? CURRENT_WINDOW_TOTAL : OTHER_ACCOUNT_WINDOW_TOTAL;
     const middle = new Date(this.windowStart(index) + FIVE_HOUR_MS / 2);
-    const total = 110 * hash(index, 1) * weekdayFactor(middle.getDay()) * hourFactor(middle.getHours());
+    const total = 110 * hash(index, 1 + this.seed * SALT_STRIDE) * weekdayFactor(middle.getDay()) * hourFactor(middle.getHours());
     return total < IDLE_BELOW ? 0 : total;
   }
 
   private windowValue(index: number, at: number): number {
     const elapsed = Math.min(1, Math.max(0, (at - this.windowStart(index)) / FIVE_HOUR_MS));
-    const curve = 0.7 + 0.9 * hash(index, 2);
+    const curve = 0.7 + 0.9 * hash(index, 2 + this.seed * SALT_STRIDE);
     return Math.min(100, this.windowTotal(index) * elapsed ** curve);
   }
 
@@ -110,24 +113,70 @@ export class DemoUsageModel {
   }
 }
 
+export class DemoUsageModels {
+  private readonly models = new Map<string, DemoUsageModel>();
+
+  constructor(
+    readonly origin: number,
+    private readonly primaryAccountId: string,
+    private readonly high = false,
+  ) {}
+
+  forAccount(accountId: string): DemoUsageModel {
+    const known = this.models.get(accountId);
+    if (known !== undefined) return known;
+    const primary = accountId === this.primaryAccountId;
+    const created = new DemoUsageModel(this.origin, primary && this.high, primary ? 0 : 1 + this.models.size);
+    this.models.set(accountId, created);
+    return created;
+  }
+}
+
+export interface DemoSignIn {
+  requiresSignIn(accountId: string): boolean;
+}
+
 export class DemoUsageGateway implements UsageGateway {
   constructor(
-    private readonly model: DemoUsageModel,
+    private readonly models: DemoUsageModels,
     private readonly now: () => number = Date.now,
-    private readonly credentials?: ClaudeCredentialSource,
+    private readonly accounts?: DemoSignIn,
     private readonly rateLimitedAfterFirst = false,
   ) {}
 
   private calls = 0;
 
-  async fetch(): Promise<UsageSnapshot> {
+  async fetch(accountId: string): Promise<UsageSnapshot> {
     this.calls += 1;
     if (this.rateLimitedAfterFirst && this.calls > 1) throw new RateLimitedError(12 * MINUTE_MS);
-    const credential = await this.credentials?.read();
-    if (credential?.expiresAt != null && credential.expiresAt <= this.now()) {
-      throw new ConnectionProblemError('claude-expired');
-    }
-    return this.model.snapshotAt(this.now());
+    if (this.accounts?.requiresSignIn(accountId)) throw new ConnectionProblemError('claude-signin-required');
+    return this.models.forAccount(accountId).snapshotAt(this.now());
+  }
+}
+
+export class DemoUsageHistoryStores implements UsageHistoryStores {
+  private readonly stores = new Map<string, DemoUsageHistoryStore>();
+
+  constructor(private readonly models: DemoUsageModels) {}
+
+  forAccount(accountId: string): DemoUsageHistoryStore {
+    const known = this.stores.get(accountId);
+    if (known !== undefined) return known;
+    const created = new DemoUsageHistoryStore(this.models.forAccount(accountId).history(this.models.origin));
+    this.stores.set(accountId, created);
+    return created;
+  }
+
+  async adoptLegacy(): Promise<boolean> {
+    return false;
+  }
+
+  async releaseLegacy(): Promise<void> {
+    return undefined;
+  }
+
+  async remove(accountId: string): Promise<void> {
+    this.stores.delete(accountId);
   }
 }
 

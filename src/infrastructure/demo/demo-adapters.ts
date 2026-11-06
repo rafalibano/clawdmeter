@@ -1,9 +1,8 @@
 import type { ConnectionAdapters } from '../../application/connections/connection-adapters';
 import type {
   CalendarGateway,
-  ClaudeCredential,
+  ClaudeAccountGateway,
   Clock,
-  ClaudeCredentialSource,
   ConnectionPrefsStore,
   DeviceCode,
   GitHubAccountGateway,
@@ -31,6 +30,7 @@ import {
   type ConnectionPrefs,
   type GitHubAccount,
 } from '../../domain/connections';
+import { DemoClaudeAccountGateway } from './demo-claude-accounts';
 import type { DemoWorld } from './demo-world';
 
 const DEMO_LATENCY_MS = 350;
@@ -67,22 +67,6 @@ class DemoSecretStore implements SecretStore {
 
   async delete(key: string): Promise<void> {
     this.values.delete(key);
-  }
-}
-
-class DemoClaudeCredentials implements ClaudeCredentialSource {
-  constructor(private readonly world: DemoWorld) {}
-
-  async read(): Promise<ClaudeCredential> {
-    await pause(DEMO_LATENCY_MS);
-    failOnce(this.world, 'claude');
-    const { claude } = this.world;
-    if (claude.keychainDenied) {
-      claude.keychainDenied = false;
-      throw new ConnectionProblemError('keychain-denied');
-    }
-    if (claude.missing) throw new ConnectionProblemError('claude-code-missing');
-    return { expiresAt: claude.expired ? 0 : null, subscriptionType: 'max' };
   }
 }
 
@@ -221,10 +205,7 @@ class DemoUrlOpener implements UrlOpener {
   constructor(private readonly world: DemoWorld) {}
 
   async open(url: string): Promise<void> {
-    if (url === CLAUDE_CODE_INSTALL_URL) {
-      this.world.claude.missing = false;
-      this.world.skills.claudeMissing = false;
-    }
+    if (url === CLAUDE_CODE_INSTALL_URL) this.world.skills.claudeMissing = false;
     if (url === GITHUB_CLI_INSTALL_URL && this.world.github.cli === 'not-installed') this.world.github.cli = 'not-logged-in';
     if (url === GITHUB_ORG_SSO_URL || url === GITHUB_ORG_URL) this.world.github.orgAccess = 'ok';
   }
@@ -235,7 +216,6 @@ class DemoTerminal implements TerminalLauncher {
 
   async run(command: TerminalCommand): Promise<void> {
     const line = command.args.join(' ');
-    if (command.program === 'claude' && line === '/login') this.world.claude.expired = false;
     if (command.program === 'claude' && line === '/mcp') this.world.skills.mcpNeedsAuth = false;
     if (command.program === 'gh' && line.startsWith('auth login')) {
       this.world.github.unauthorized = false;
@@ -245,11 +225,14 @@ class DemoTerminal implements TerminalLauncher {
   }
 }
 
-export function createDemoConnectionAdapters(world: DemoWorld): ConnectionAdapters {
+export function createDemoConnectionAdapters(
+  world: DemoWorld,
+  claudeAccounts: ClaudeAccountGateway = new DemoClaudeAccountGateway(world),
+): ConnectionAdapters {
   return {
     prefs: new DemoPrefsStore(world),
     secrets: new DemoSecretStore(),
-    claudeCredentials: new DemoClaudeCredentials(world),
+    claudeAccounts,
     githubCli: new DemoGitHubCli(world),
     githubDeviceFlow: new DemoGitHubDeviceFlow(),
     githubAccounts: new DemoGitHubAccounts(world),

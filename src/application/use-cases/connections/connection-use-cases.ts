@@ -6,6 +6,7 @@ import {
   type ConnectionStatus,
   type FixAction,
 } from '../../../domain/connections';
+import type { ErrorArgs, ErrorCode } from '../../../domain/coded-error';
 import type { ConnectionMonitor } from '../../connections/connection-monitor';
 import type { ConnectionRunner, StatusUseCase } from '../../connections/connection-runner';
 
@@ -68,7 +69,7 @@ export class FixConnection {
 export class ReportConnectionProblem {
   constructor(private readonly monitor: ConnectionMonitor) {}
 
-  execute(id: ConnectionId, problem: ConnectionProblem, message?: string): void {
-    this.monitor.set(id, statusForProblem(problem, message));
+  execute(id: ConnectionId, problem: ConnectionProblem, message?: string, code?: ErrorCode, args?: ErrorArgs): void {
+    this.monitor.set(id, statusForProblem(problem, message, code, args));
   }
 }

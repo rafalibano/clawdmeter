@@ -1,5 +1,6 @@
 pub mod blocking;
-pub mod claude_credentials;
+pub mod claude_oauth;
+pub mod claude_usage;
 pub mod error;
 pub mod home;
 pub mod notification_permission;
@@ -9,5 +10,7 @@ pub mod process;
 pub mod process_policy;
 pub mod secrets;
 pub mod terminal;
+#[cfg(test)]
+mod test_support;
 pub mod tray_usage;
 pub mod updater;

@@ -1,10 +1,10 @@
 import { CodedError } from '../../../domain/coded-error';
-import { ConnectionProblemError } from '../../../domain/connections';
 import {
   applyStreamEvent,
   buildClaudeArgs,
   finishRun,
   parseStreamLine,
+  RunProblemError,
   startRun,
   toStoredRun,
   trimHistory,
@@ -86,7 +86,7 @@ export class RunSkill {
       this.board.attach(initial.id, handle);
       if (this.board.wasCancelled(initial.id)) await handle.kill().catch(() => undefined);
     } catch (error) {
-      const missing = error instanceof ConnectionProblemError && error.problem === 'claude-code-missing';
+      const missing = error instanceof RunProblemError && error.problem === 'claude-code-missing';
       const message = error instanceof Error ? error.message : String(error);
       await conclude({
         ...current,

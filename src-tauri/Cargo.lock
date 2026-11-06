@@ -499,7 +499,9 @@ dependencies = [
 name = "clawdmeter"
 version = "0.1.1"
 dependencies = [
+ "base64 0.22.1",
  "block2",
+ "getrandom 0.3.4",
  "keyring",
  "libc",
  "objc2",
@@ -509,6 +511,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",

@@ -2,6 +2,12 @@ import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings 
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import {
+  normalizeActiveAccountId,
+  normalizeClientId,
+  readStrictClaudeAccounts,
+  type ClaudeSettings,
+} from './claude-accounts';
 import { isHexColor } from './hex-color';
 import type { PageId } from './page-id';
 
@@ -12,6 +18,7 @@ export interface SettingsPatch {
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
+  claude?: Partial<ClaudeSettings>;
 }
 
 export function mergePatches(first: SettingsPatch, second: SettingsPatch): SettingsPatch {
@@ -28,6 +35,9 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   }
   if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
     merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
+  }
+  if (first.claude !== undefined || second.claude !== undefined) {
+    merged.claude = { ...first.claude, ...second.claude };
   }
   return merged;
 }
@@ -60,6 +70,18 @@ function applyUsageAlerts(current: UsageAlertSettings, patch: Partial<UsageAlert
   };
 }
 
+function applyClaude(current: ClaudeSettings, patch: Partial<ClaudeSettings>): ClaudeSettings {
+  const accounts = patch.accounts === undefined ? current.accounts : (readStrictClaudeAccounts(patch.accounts) ?? current.accounts);
+  const wanted = patch.activeAccountId;
+  const known = wanted === null || accounts.some((account) => account.id === wanted);
+  const requested = wanted !== undefined && known ? wanted : current.activeAccountId;
+  return {
+    clientId: normalizeClientId(patch.clientId) ?? current.clientId,
+    accounts,
+    activeAccountId: normalizeActiveAccountId(accounts, requested),
+  };
+}
+
 export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSettings {
   return {
     ...current,
@@ -69,5 +91,6 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
+    claude: applyClaude(current.claude, patch.claude ?? {}),
   };
 }

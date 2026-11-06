@@ -1,5 +1,5 @@
 import type {
-  ClaudeCredentialSource,
+  ClaudeAccountGateway,
   ConnectionPrefsStore,
   GitHubAccountGateway,
   GitHubCliTokenSource,
@@ -15,7 +15,7 @@ import type {
 export interface ConnectionAdapters {
   prefs: ConnectionPrefsStore;
   secrets: SecretStore;
-  claudeCredentials: ClaudeCredentialSource;
+  claudeAccounts: ClaudeAccountGateway;
   githubCli: GitHubCliTokenSource;
   githubDeviceFlow: GitHubDeviceFlow;
   githubAccounts: GitHubAccountGateway;

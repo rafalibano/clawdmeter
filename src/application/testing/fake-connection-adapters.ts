@@ -4,10 +4,15 @@ import {
   type GitHubAccount,
   type GitHubCliMissing,
 } from '../../domain/connections';
+import { CodedError } from '../../domain/coded-error';
+import { createDefaultSettings, type AppSettings, type ClaudeAccount } from '../../domain/settings';
 import type { ConnectionAdapters } from '../connections/connection-adapters';
 import type {
-  ClaudeCredential,
-  ClaudeCredentialSource,
+  ClaudeAccountGateway,
+  ClaudeAccountStatus,
+  ClaudeLoginRequest,
+  ClaudeLoginResult,
+  ClaudeLoginStart,
   ConnectionPrefsStore,
   DeviceCode,
   GitHubAccountGateway,
@@ -24,6 +29,7 @@ import type {
   TerminalLauncher,
   UrlOpener,
 } from '../ports';
+import { FakeSettingsStore } from './fake-settings-store';
 
 function resolve<T>(outcome: T | Error): T {
   if (outcome instanceof Error) throw outcome;
@@ -61,14 +67,95 @@ export class FakeSecretStore implements SecretStore {
   }
 }
 
-export class FakeClaudeCredentialSource implements ClaudeCredentialSource {
-  outcome: ClaudeCredential | Error = { expiresAt: null, subscriptionType: 'max' };
-  reads = 0;
+export const FAKE_ACCOUNT: ClaudeAccount = { id: 'account-1', name: 'Personal' };
 
-  async read(): Promise<ClaudeCredential> {
-    this.reads += 1;
-    return resolve(this.outcome);
+export const SIGNED_IN: ClaudeAccountStatus = { signedIn: true, expiresAt: 1_800_000_000_000 + 8 * 3_600_000, needsLogin: false };
+
+interface WaitingLogin {
+  request: ClaudeLoginRequest;
+  resolve: (result: ClaudeLoginResult) => void;
+  reject: (error: Error) => void;
+}
+
+export class FakeClaudeAccountGateway implements ClaudeAccountGateway {
+  readonly begun: string[] = [];
+  readonly completions: ClaudeLoginRequest[] = [];
+  readonly cancelled: string[] = [];
+  readonly removed: string[] = [];
+  readonly statuses = new Map<string, ClaudeAccountStatus | Error>();
+  beginOutcome: ClaudeLoginStart | Error = {
+    loginId: 'login-1',
+    authorizeUrl: 'https://claude.ai/oauth/authorize?state=state-1',
+    state: 'state-1',
+    redirectUri: 'http://localhost:54545/callback',
+    manualAuthorizeUrl: 'https://claude.ai/oauth/authorize?state=state-1&manual=1',
+  };
+  browser: 'approve' | 'wait' | Error = 'approve';
+  pasted: ClaudeLoginResult | Error = { expiresAt: SIGNED_IN.expiresAt, email: 'dev@example.com' };
+  removeOutcome: Error | null = null;
+  private readonly waiting = new Map<string, WaitingLogin>();
+
+  async begin(clientId: string): Promise<ClaudeLoginStart> {
+    this.begun.push(clientId);
+    return resolve(this.beginOutcome);
   }
+
+  async complete(request: ClaudeLoginRequest): Promise<ClaudeLoginResult> {
+    this.completions.push(request);
+    if (request.code !== undefined) {
+      this.fail(new CodedError('claude-login-cancelled'), request.loginId);
+      return this.signIn(request.accountId, resolve(this.pasted));
+    }
+    if (this.browser instanceof Error) throw this.browser;
+    const result = { expiresAt: SIGNED_IN.expiresAt, email: 'dev@example.com' };
+    if (this.browser === 'approve') return this.signIn(request.accountId, result);
+    return new Promise<ClaudeLoginResult>((done, reject) => {
+      this.waiting.set(request.loginId, { request, resolve: () => done(this.signIn(request.accountId, result)), reject });
+    });
+  }
+
+  async cancel(loginId: string): Promise<void> {
+    this.cancelled.push(loginId);
+    const waiting = this.waiting.get(loginId);
+    this.waiting.delete(loginId);
+    waiting?.reject(new CodedError('claude-login-cancelled'));
+  }
+
+  async status(accountId: string): Promise<ClaudeAccountStatus> {
+    return resolve(this.statuses.get(accountId) ?? { signedIn: false, expiresAt: null, needsLogin: true });
+  }
+
+  async remove(accountId: string): Promise<void> {
+    if (this.removeOutcome) throw this.removeOutcome;
+    this.removed.push(accountId);
+    this.statuses.delete(accountId);
+  }
+
+  isWaiting(loginId = 'login-1'): boolean {
+    return this.waiting.has(loginId);
+  }
+
+  approve(loginId = 'login-1'): void {
+    const waiting = this.waiting.get(loginId);
+    this.waiting.delete(loginId);
+    waiting?.resolve({ expiresAt: SIGNED_IN.expiresAt, email: null });
+  }
+
+  fail(error: Error, loginId = 'login-1'): void {
+    const waiting = this.waiting.get(loginId);
+    this.waiting.delete(loginId);
+    waiting?.reject(error);
+  }
+
+  private signIn(accountId: string, result: ClaudeLoginResult): ClaudeLoginResult {
+    this.statuses.set(accountId, { signedIn: true, expiresAt: result.expiresAt, needsLogin: false });
+    return result;
+  }
+}
+
+export function settingsWithAccounts(accounts: ClaudeAccount[], activeAccountId: string | null = accounts[0]?.id ?? null): AppSettings {
+  const defaults = createDefaultSettings();
+  return { ...defaults, claude: { ...defaults.claude, accounts, activeAccountId } };
 }
 
 export class FakeGitHubCli implements GitHubCliTokenSource {
@@ -177,7 +264,8 @@ export interface FakeConnectionWorld {
   adapters: ConnectionAdapters;
   prefs: FakeConnectionPrefsStore;
   secrets: FakeSecretStore;
-  claude: FakeClaudeCredentialSource;
+  settings: FakeSettingsStore;
+  claude: FakeClaudeAccountGateway;
   githubCli: FakeGitHubCli;
   deviceFlow: FakeGitHubDeviceFlow;
   githubAccounts: FakeGitHubAccounts;
@@ -191,7 +279,9 @@ export interface FakeConnectionWorld {
 export function createFakeConnectionWorld(): FakeConnectionWorld {
   const prefs = new FakeConnectionPrefsStore();
   const secrets = new FakeSecretStore();
-  const claude = new FakeClaudeCredentialSource();
+  const settings = new FakeSettingsStore(settingsWithAccounts([FAKE_ACCOUNT]));
+  const claude = new FakeClaudeAccountGateway();
+  claude.statuses.set(FAKE_ACCOUNT.id, SIGNED_IN);
   const githubCli = new FakeGitHubCli();
   const deviceFlow = new FakeGitHubDeviceFlow();
   const githubAccounts = new FakeGitHubAccounts();
@@ -204,7 +294,7 @@ export function createFakeConnectionWorld(): FakeConnectionWorld {
     adapters: {
       prefs,
       secrets,
-      claudeCredentials: claude,
+      claudeAccounts: claude,
       githubCli,
       githubDeviceFlow: deviceFlow,
       githubAccounts,
@@ -216,6 +306,7 @@ export function createFakeConnectionWorld(): FakeConnectionWorld {
     },
     prefs,
     secrets,
+    settings,
     claude,
     githubCli,
     deviceFlow,

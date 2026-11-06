@@ -10,6 +10,7 @@ import type {
   SessionDirectory,
   UsageGateway,
   UsageHistoryStore,
+  UsageHistoryStores,
   UsageIndicator,
 } from '../ports';
 
@@ -21,9 +22,11 @@ export const SAMPLE_SNAPSHOT: UsageSnapshot = {
 export class FakeUsageGateway implements UsageGateway {
   outcome: UsageSnapshot | Error = SAMPLE_SNAPSHOT;
   fetches = 0;
+  readonly requests: { accountId: string; clientId: string }[] = [];
 
-  async fetch(): Promise<UsageSnapshot> {
+  async fetch(accountId: string, clientId: string): Promise<UsageSnapshot> {
     this.fetches += 1;
+    this.requests.push({ accountId, clientId });
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
   }
@@ -62,6 +65,40 @@ export class FakeUsageHistoryStore implements UsageHistoryStore {
 
   async markImported(at: number): Promise<void> {
     this.imported = at;
+  }
+}
+
+export class FakeUsageHistoryStores implements UsageHistoryStores {
+  readonly stores = new Map<string, FakeUsageHistoryStore>();
+  readonly removed: string[] = [];
+
+  constructor(public legacy: FakeUsageHistoryStore | null = null) {}
+
+  forAccount(accountId: string): FakeUsageHistoryStore {
+    const known = this.stores.get(accountId);
+    if (known !== undefined) return known;
+    const created = new FakeUsageHistoryStore();
+    this.stores.set(accountId, created);
+    return created;
+  }
+
+  async adoptLegacy(accountId: string): Promise<boolean> {
+    if (this.legacy === null || this.stores.has(accountId)) return false;
+    this.stores.set(accountId, this.legacy);
+    this.legacy = null;
+    return true;
+  }
+
+  async releaseLegacy(accountId: string): Promise<void> {
+    const adopted = this.stores.get(accountId);
+    if (this.legacy !== null || adopted === undefined) return;
+    this.legacy = adopted;
+    this.stores.delete(accountId);
+  }
+
+  async remove(accountId: string): Promise<void> {
+    this.removed.push(accountId);
+    this.stores.delete(accountId);
   }
 }
 

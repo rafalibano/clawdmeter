@@ -3,6 +3,7 @@ import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
 import { defaultUsageAlerts, normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import { readClaudeSettings } from './claude-accounts';
 import { isHexColor } from './hex-color';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
@@ -55,6 +56,11 @@ const addUsageAlerts: Migration = (raw) => ({
   usageAlerts: readUsageAlerts(raw['usageAlerts']),
 });
 
+const addClaudeAccounts: Migration = (raw) => ({
+  ...raw,
+  claude: readClaudeSettings(raw['claude']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -65,6 +71,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addSeriesColors,
   adoptSevenDayProjection,
   addUsageAlerts,
+  addClaudeAccounts,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,6 +132,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
     seriesColors: readSeriesColors(raw['seriesColors']),
     usageAlerts: readUsageAlerts(raw['usageAlerts']),
+    claude: readClaudeSettings(raw['claude']),
   };
 }
 

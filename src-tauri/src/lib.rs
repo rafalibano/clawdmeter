@@ -8,6 +8,7 @@ mod popover_log;
 mod tray;
 pub mod usage_icon;
 
+use commands::claude_oauth::{AccountLocks, ClaudeLogins};
 use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
 use commands::updater::PendingUpdate;
@@ -28,13 +29,19 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ProcessRegistry::default())
         .manage(LoopbackRegistry::default())
+        .manage(ClaudeLogins::default())
+        .manage(AccountLocks::default())
         .manage(PendingUpdate::default())
         .invoke_handler(tauri::generate_handler![
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,
-            commands::claude_credentials::claude_credentials_status,
-            commands::claude_credentials::claude_usage_fetch,
+            commands::claude_oauth::claude_oauth_begin,
+            commands::claude_oauth::claude_oauth_complete,
+            commands::claude_oauth::claude_oauth_cancel,
+            commands::claude_oauth::claude_account_status,
+            commands::claude_oauth::claude_account_remove,
+            commands::claude_usage::claude_usage_fetch,
             commands::process::process_run,
             commands::process::process_spawn,
             commands::process::process_kill,

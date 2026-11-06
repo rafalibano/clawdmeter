@@ -20,12 +20,13 @@ import { SettingsSectionComponent } from './settings-section.component';
 import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
+import { ClaudeAccountsComponent } from './claude-accounts/claude-accounts.component';
 import { ConnectionsComponent } from './connections/connections.component';
 import { UpdateSettingsComponent } from '../updates/update-settings.component';
 
 @Component({
   selector: 'cm-settings',
-  imports: [ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent, UpdateSettingsComponent],
+  imports: [ClaudeAccountsComponent, ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent, UpdateSettingsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

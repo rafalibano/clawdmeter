@@ -30,6 +30,10 @@
       "allow": [{ "path": "$APPCONFIG/**" }]
     },
     {
+      "identifier": "fs:allow-remove",
+      "allow": [{ "path": "$APPCONFIG/usage-history.json" }, { "path": "$APPCONFIG/usage-history.*.json" }]
+    },
+    {
       "identifier": "fs:allow-watch",
       "allow": [{ "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
     },
@@ -69,7 +73,11 @@
     "allow-secret-get",
     "allow-secret-set",
     "allow-secret-delete",
-    "allow-claude-credentials-status",
+    "allow-claude-oauth-begin",
+    "allow-claude-oauth-complete",
+    "allow-claude-oauth-cancel",
+    "allow-claude-account-status",
+    "allow-claude-account-remove",
     "allow-claude-usage-fetch",
     "allow-process-run",
     "allow-process-spawn",

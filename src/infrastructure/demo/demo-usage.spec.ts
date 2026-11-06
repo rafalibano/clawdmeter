@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createConnections } from '../../application/connections/create-connections';
 import { FakeClock } from '../../application/testing/fake-clock';
-import { createFakeConnectionWorld } from '../../application/testing/fake-connection-adapters';
+import { FAKE_ACCOUNT, createFakeConnectionWorld } from '../../application/testing/fake-connection-adapters';
 import { LoadSessions, LoadUsage } from '../../application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from '../../domain/sessions';
 import { DAY_MS, MINUTE_MS } from '../../domain/time';
 import { TOTAL_RETENTION_MS } from '../../domain/usage';
 import { DemoProcessProbe, DemoSessionDirectory } from './demo-sessions';
-import { DemoUsageGateway, DemoUsageHistoryStore, DemoUsageModel } from './demo-usage';
+import { DemoUsageGateway, DemoUsageHistoryStores, DemoUsageModel, DemoUsageModels } from './demo-usage';
 import { DemoUsageIndicator } from './demo-usage-indicator';
 
 const ORIGIN = new Date(2026, 10, 5, 14, 30).getTime();
@@ -60,24 +60,40 @@ describe('demo usage model', () => {
     expect(model.snapshotAt(ORIGIN - 2 * DAY_MS)).toEqual(new DemoUsageModel(ORIGIN).snapshotAt(ORIGIN - 2 * DAY_MS));
   });
 
-  it('the demo gateway mirrors what Rust does: an expired credential becomes claude-expired', async () => {
-    const world = createFakeConnectionWorld();
-    world.claude.outcome = { expiresAt: ORIGIN - 1, subscriptionType: 'max' };
-    const gateway = new DemoUsageGateway(model, () => ORIGIN, world.claude);
-    await expect(gateway.fetch()).rejects.toMatchObject({ problem: 'claude-expired' });
-    world.claude.outcome = { expiresAt: ORIGIN + 1, subscriptionType: 'max' };
-    expect((await gateway.fetch()).fiveHour).not.toBeNull();
+  it('the demo gateway mirrors what Rust does: an account that must sign in again fails with claude-signin-required', async () => {
+    const expired = new Set(['demo-personal']);
+    const gateway = new DemoUsageGateway(new DemoUsageModels(ORIGIN, 'demo-personal'), () => ORIGIN, {
+      requiresSignIn: (accountId) => expired.has(accountId),
+    });
+    await expect(gateway.fetch('demo-personal')).rejects.toMatchObject({ problem: 'claude-signin-required' });
+    expired.clear();
+    expect((await gateway.fetch('demo-personal')).fiveHour).not.toBeNull();
+  });
+
+  it('each demo account has its own deterministic usage and history', async () => {
+    const models = new DemoUsageModels(ORIGIN, 'demo-personal');
+    const gateway = new DemoUsageGateway(models, () => ORIGIN);
+    const personal = await gateway.fetch('demo-personal');
+    const work = await gateway.fetch('demo-work');
+    expect(personal).toEqual(model.snapshotAt(ORIGIN));
+    expect(work.fiveHour?.utilization).not.toBe(personal.fiveHour?.utilization);
+    const stores = new DemoUsageHistoryStores(models);
+    expect((await stores.forAccount('demo-work').load()).fiveHour.length).toBeGreaterThan(5_000);
+    expect(stores.forAccount('demo-work')).toBe(stores.forAccount('demo-work'));
+    expect(await stores.adoptLegacy()).toBe(false);
   });
 
   it('LoadUsage with the demo already returns a ready forecast for the 5h window', async () => {
     const world = createFakeConnectionWorld();
     const clock = new FakeClock();
     await clock.advance(ORIGIN);
-    const connections = createConnections(world.adapters, clock);
+    const connections = createConnections(world.adapters, world.settings);
+    const models = new DemoUsageModels(ORIGIN, FAKE_ACCOUNT.id);
     const load = new LoadUsage(
       world.prefs,
-      new DemoUsageGateway(model, () => clock.now()),
-      new DemoUsageHistoryStore(model.history(ORIGIN)),
+      world.settings,
+      new DemoUsageGateway(models, () => clock.now()),
+      new DemoUsageHistoryStores(models),
       clock,
       connections,
       new DemoUsageIndicator(),

@@ -133,7 +133,7 @@ pub fn request_target(head: &str) -> CommandResult<String> {
     }
 }
 
-fn same_state(expected: &str, received: &str) -> bool {
+pub fn same_state(expected: &str, received: &str) -> bool {
     if expected.len() != received.len() {
         return false;
     }
@@ -290,12 +290,42 @@ fn serve_until_callback(
     }
 }
 
-#[tauri::command(async)]
-pub fn oauth_loopback_listen(registry: State<LoopbackRegistry>) -> CommandResult<ListenInfo> {
+pub fn open_listener(registry: &LoopbackRegistry) -> CommandResult<ListenInfo> {
     let socket = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let port = socket.local_addr()?.port();
     let id = registry.insert(LoopbackListener::new(socket))?;
     Ok(ListenInfo { id, port })
+}
+
+pub async fn await_code(
+    registry: &LoopbackRegistry,
+    id: &str,
+    expected_state: String,
+    timeout_ms: Option<u64>,
+) -> CommandResult<String> {
+    let listener = registry.claim(id).ok_or_else(|| {
+        CommandError::new(
+            ErrorKind::InvalidArgument,
+            "unknown or already awaited listener",
+        )
+    })?;
+    let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
+    let result =
+        run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
+    registry.remove(id);
+    result
+}
+
+pub fn cancel_listener(registry: &LoopbackRegistry, id: &str) {
+    if let Some(listener) = registry.get(id) {
+        listener.cancelled.store(true, Ordering::SeqCst);
+    }
+    registry.remove(id);
+}
+
+#[tauri::command(async)]
+pub fn oauth_loopback_listen(registry: State<LoopbackRegistry>) -> CommandResult<ListenInfo> {
+    open_listener(&registry)
 }
 
 #[tauri::command]
@@ -305,25 +335,14 @@ pub async fn oauth_loopback_wait(
     expected_state: String,
     timeout_ms: Option<u64>,
 ) -> CommandResult<CallbackResult> {
-    let listener = registry.claim(&id).ok_or_else(|| {
-        CommandError::new(
-            ErrorKind::InvalidArgument,
-            "unknown or already awaited listener",
-        )
-    })?;
-    let limit = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS));
-    let result =
-        run_blocking(move || serve_until_callback(&listener, &expected_state, limit)).await;
-    registry.remove(&id);
-    result.map(|code| CallbackResult { code })
+    await_code(&registry, &id, expected_state, timeout_ms)
+        .await
+        .map(|code| CallbackResult { code })
 }
 
 #[tauri::command(async)]
 pub fn oauth_loopback_cancel(registry: State<LoopbackRegistry>, id: String) {
-    if let Some(listener) = registry.get(&id) {
-        listener.cancelled.store(true, Ordering::SeqCst);
-    }
-    registry.remove(&id);
+    cancel_listener(&registry, &id);
 }
 
 #[cfg(test)]

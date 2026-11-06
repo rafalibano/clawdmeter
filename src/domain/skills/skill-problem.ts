@@ -5,3 +5,13 @@ export const RUN_FIX_FOR: Record<RunProblem, RunFix> = {
   'claude-code-missing': 'install-claude-code',
   'mcp-unauthenticated': 'reconnect-mcp',
 };
+
+export class RunProblemError extends Error {
+  constructor(
+    readonly problem: RunProblem,
+    message?: string,
+  ) {
+    super(message ?? problem);
+    this.name = 'RunProblemError';
+  }
+}

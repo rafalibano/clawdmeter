@@ -34,17 +34,17 @@ Demo mode swaps `composition-root.ts` for `composition-root.demo.ts` through Ang
 `yarn dev:web` opens the app with fake adapters. The `demo` query param picks the initial state of each connection (`id:value`, comma-separated); clicking the fix buttons changes the state as in the real app. The demo opens in English; `?lang=pt-BR` or `?lang=es-MX` switches the language before boot.
 
 ```
-http://127.0.0.1:4200/?demo=claude:claude-expired,github:github-org-access
+http://127.0.0.1:4200/?demo=claude:claude-signin-required,github:github-org-access
 http://127.0.0.1:4200/?demo=errors
 ```
 
 The demo agenda uses only generic titles (Team daily, 1:1, Planning) anchored to the current time; `microsoft:microsoft-expired` and `microsoft:unexpected` exercise the page's error states.
 
-Values: `ok` (default for Claude and notifications), `disconnected`, any `ConnectionProblem` from the table, and `github:ok` / `microsoft:ok`. `errors` turns on an error in each connection. In the demo, the `ghp_…` token is accepted as a valid PAT.
+Values: `ok` (default for Claude and notifications), `disconnected`, any `ConnectionProblem` from the table, and `github:ok` / `microsoft:ok`. The demo starts with two Claude accounts (Personal and Work), so the account switch shows up on Usage; `claude:claude-signin-required` makes the first one ask for a new sign-in and `claude:claude-no-account` starts without accounts (add one in Settings > Claude accounts: the demo browser sign-in completes by itself after 2.5 s). `errors` turns on an error in each connection. In the demo, the `ghp_…` token is accepted as a valid PAT.
 
 Disconnected GitHub states: `?demo=github:gh-not-installed` (GitHub CLI not found: **Install GitHub CLI**, **Sign in through the browser** and the **Paste token** link) and `?demo=github:gh-not-logged-in` (gh installed without login: **Connect GitHub CLI**, which opens Terminal with `gh auth login -h github.com -w`, then **Check again**). Without the parameter the demo starts from `gh-not-logged-in`. Under **Paste token**, the **Create token on GitHub** link opens the new token page with the `repo` and `read:org` scopes.
 
-PRs and Reviews in the demo need GitHub connected: use `?demo=github:ok` (the repos are generic, `acme/*`). The GitHub problems (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) also show up on both pages, and the fix button resolves them. The Skills page runs a simulated run with a stream; `?demo=skills:mcp-needs-auth` and `?demo=skills:claude-code-missing` show the run problems with **Reconnect MCP** and **Install Claude Code**. Usage and Sessions show fake data (a 30-day history from a deterministic model and five sessions); `?demo=claude:claude-expired` shows the usage page error with the fix button, and `?demo=notifications:disconnected` shows the `prompt` state of notifications (it leads to the system settings).
+PRs and Reviews in the demo need GitHub connected: use `?demo=github:ok` (the repos are generic, `acme/*`). The GitHub problems (`github:github-unauthorized`, `github:github-missing-scope`, `github:github-org-access`) also show up on both pages, and the fix button resolves them. The Skills page runs a simulated run with a stream; `?demo=skills:mcp-needs-auth` and `?demo=skills:claude-code-missing` show the run problems with **Reconnect MCP** and **Install Claude Code**. Usage and Sessions show fake data (a 30-day history from a deterministic model and five sessions); `?demo=claude:claude-signin-required` shows the usage page error with the fix button, and `?demo=notifications:disconnected` shows the `prompt` state of notifications (it leads to the system settings).
 
 ## Structure and layers
 
@@ -72,8 +72,8 @@ src/
 │  ├─ scheduler/      PollingScheduler: only schedules enabled pages
 │  └─ testing/        fakes of the ports, used only in tests
 ├─ infrastructure/
-│  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, LocalStorageJsonFile
-│  ├─ platform/       Tauri adapters (invoke, plugins): vault, Claude credential, processes, OAuth loopback, notifications
+│  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, JsonUsageHistoryStores (one history file per Claude account), LocalStorageJsonFile
+│  ├─ platform/       Tauri adapters (invoke, plugins): vault, Claude accounts (claude_oauth_* / claude_account_*), processes, OAuth loopback, notifications
 │  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: the GET /api/oauth/usage runs in Rust)
 │  ├─ claude-code/    TauriSessionDirectory (reads ~/.claude/sessions through plugin-fs)
 │  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (reads only ~/.config/claude-usage-bar/history.json)
@@ -90,7 +90,7 @@ src/
 ├─ composition-root.ts        manual DI with the real (Tauri) adapters
 └─ composition-root.demo.ts   DI of the demo mode in the browser (localStorage)
 src-tauri/src/
-├─ commands/          thin platform layer: secrets, claude_credentials, process, oauth_loopback, terminal, open_external, updater
+├─ commands/          thin platform layer: secrets, claude_oauth, claude_usage, process, oauth_loopback, terminal, open_external, updater
 └─ tray.rs, platform.rs   tray and popover
 └─ usage_icon.rs          pure (RGBA) renderer of the tray usage icon
 ```

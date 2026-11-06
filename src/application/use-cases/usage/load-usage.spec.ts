@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ConnectionProblemError, actionsFor } from '../../../domain/connections';
 import { DAY_MS, MINUTE_MS } from '../../../domain/time';
+import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID } from '../../../domain/settings';
 import { createEmptyHistory, type UsageSnapshot } from '../../../domain/usage';
 import { createConnections, type Connections } from '../../connections/create-connections';
 import { FakeClock } from '../../testing/fake-clock';
 import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
+import { FAKE_ACCOUNT, settingsWithAccounts } from '../../testing/fake-connection-adapters';
 import {
   FakeExternalUsageHistorySource,
   FakeUsageGateway,
   FakeUsageHistoryStore,
+  FakeUsageHistoryStores,
   FakeUsageIndicator,
 } from '../../testing/fake-usage-adapters';
 import { ImportExternalUsageHistory } from './import-external-usage-history';
@@ -21,6 +24,7 @@ let world: FakeConnectionWorld;
 let clock: FakeClock;
 let connections: Connections;
 let gateway: FakeUsageGateway;
+let histories: FakeUsageHistoryStores;
 let history: FakeUsageHistoryStore;
 let indicator: FakeUsageIndicator;
 let loadUsage: LoadUsage;
@@ -29,11 +33,12 @@ beforeEach(async () => {
   world = createFakeConnectionWorld();
   clock = new FakeClock();
   await clock.advance(START);
-  connections = createConnections(world.adapters, clock);
+  connections = createConnections(world.adapters, world.settings);
   gateway = new FakeUsageGateway();
-  history = new FakeUsageHistoryStore();
+  histories = new FakeUsageHistoryStores();
+  history = histories.forAccount(FAKE_ACCOUNT.id);
   indicator = new FakeUsageIndicator();
-  loadUsage = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator);
+  loadUsage = new LoadUsage(world.prefs, world.settings, gateway, histories, clock, connections, indicator);
 });
 
 describe('LoadUsage', () => {
@@ -74,29 +79,43 @@ describe('LoadUsage', () => {
     expect(data.history.sevenDay).toEqual([]);
   });
 
-  it('401 becomes a Claude connection problem with the "Sign in to Claude again" button', async () => {
-    gateway.outcome = new ConnectionProblemError('claude-expired');
-    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
+  it('reads the active account with the client id from the settings and tags the data with it', async () => {
+    const data = await loadUsage.execute();
+    expect(gateway.requests).toEqual([{ accountId: FAKE_ACCOUNT.id, clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID }]);
+    expect(data.accountId).toBe(FAKE_ACCOUNT.id);
+  });
+
+  it('each account records into its own history', async () => {
+    const work = { id: 'account-2', name: 'Work' };
+    await loadUsage.execute();
+    world.settings.emitExternalChange(settingsWithAccounts([FAKE_ACCOUNT, work], work.id));
+    await clock.advance(MINUTE_MS);
+    const data = await loadUsage.execute();
+    expect(data.accountId).toBe(work.id);
+    expect(histories.forAccount(work.id).current.fiveHour).toHaveLength(1);
+    expect(history.current.fiveHour).toHaveLength(1);
+    expect(gateway.requests.map((request) => request.accountId)).toEqual([FAKE_ACCOUNT.id, work.id]);
+  });
+
+  it('without an active account: "add an account" on the Claude connection, without calling Rust', async () => {
+    world.settings.emitExternalChange(settingsWithAccounts([]));
+    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-no-account' });
+    expect(gateway.fetches).toBe(0);
     const status = connections.monitor.get('claude');
-    expect(status).toMatchObject({ state: 'error', problem: 'claude-expired' });
-    const fix = actionsFor('claude', status).find((action) => action.kind === 'fix');
-    expect(fix).toMatchObject({ label: 'relogin-claude' });
+    expect(status).toMatchObject({ state: 'error', problem: 'claude-no-account' });
+    expect(actionsFor('claude', status).find((action) => action.kind === 'fix')).toMatchObject({ label: 'add-claude-account' });
     expect(history.saved).toHaveLength(0);
   });
 
-  it('an expired token (detected in Rust) becomes a connection problem without recording history', async () => {
-    gateway.outcome = new ConnectionProblemError('claude-expired');
-    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
-    expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'claude-expired' });
+  it('claude_signin_required becomes "sign in again" for the active account, without recording history', async () => {
+    gateway.outcome = new ConnectionProblemError('claude-signin-required', 'refresh rejected');
+    const error = await loadUsage.execute().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ problem: 'claude-signin-required', code: 'claude-signin-required', args: { account: 'Personal' } });
+    expect((error as Error).message).toBe('claude-signin-required');
+    const status = connections.monitor.get('claude');
+    expect(status).toEqual({ state: 'error', problem: 'claude-signin-required', code: 'claude-signin-required', args: { account: 'Personal' } });
+    expect(actionsFor('claude', status).find((action) => action.kind === 'fix')).toMatchObject({ label: 'reauthenticate-claude' });
     expect(history.saved).toHaveLength(0);
-  });
-
-  it('a denied keychain and a missing Claude Code reach the connection', async () => {
-    gateway.outcome = new ConnectionProblemError('keychain-denied');
-    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'keychain-denied' });
-    expect(connections.monitor.get('claude')).toMatchObject({ state: 'error', problem: 'keychain-denied' });
-    gateway.outcome = new ConnectionProblemError('claude-code-missing');
-    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-code-missing' });
   });
 
   it('Claude disconnected in Settings: does not call Rust', async () => {
@@ -112,8 +131,8 @@ describe('LoadUsage', () => {
     expect(connections.monitor.get('claude').state).toBe('unknown');
   });
 
-  it('after a 401, the first success rechecks the connection and clears the error', async () => {
-    gateway.outcome = new ConnectionProblemError('claude-expired');
+  it('after a sign-in error, the first success rechecks the connection and clears the error', async () => {
+    gateway.outcome = new ConnectionProblemError('claude-signin-required');
     await expect(loadUsage.execute()).rejects.toThrow();
     gateway.outcome = { fiveHour: { utilization: 1, resetsAt: null }, sevenDay: null };
     await loadUsage.execute();
@@ -134,11 +153,11 @@ describe('LoadUsage and the tray indicator', () => {
     expect(indicator.updates.map((update) => update.now)).toEqual([START, START + MINUTE_MS]);
   });
 
-  it('a network error, an expired token and a disconnected Claude send null to the indicator', async () => {
+  it('a network error, a sign-in error and a disconnected Claude send null to the indicator', async () => {
     gateway.outcome = new Error('Anthropic respondeu 500');
     await expect(loadUsage.execute()).rejects.toThrow('500');
-    gateway.outcome = new ConnectionProblemError('claude-expired');
-    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-expired' });
+    gateway.outcome = new ConnectionProblemError('claude-signin-required');
+    await expect(loadUsage.execute()).rejects.toMatchObject({ problem: 'claude-signin-required' });
     await connections.disconnect.execute('claude');
     await expect(loadUsage.execute()).rejects.toThrow('usage-disconnected');
     expect(indicator.updates).toEqual([
@@ -181,8 +200,9 @@ describe('LoadUsage with external history (one-time migration)', () => {
     source = new FakeExternalUsageHistorySource();
     withImport = new LoadUsage(
       world.prefs,
+      world.settings,
       gateway,
-      history,
+      histories,
       clock,
       connections,
       indicator,
@@ -261,22 +281,22 @@ describe('LoadUsage with external history (one-time migration)', () => {
     expect(data.history.fiveHour).toHaveLength(1);
   });
 
-  it('hands the snapshot to the quartile alerts without waiting for them', async () => {
-    const received: UsageSnapshot[] = [];
+  it('hands the account and the snapshot to the quartile alerts without waiting for them', async () => {
+    const received: Array<[string, UsageSnapshot]> = [];
     const alerts = {
-      execute: (snapshot: UsageSnapshot) => {
-        received.push(snapshot);
+      execute: (accountId: string, snapshot: UsageSnapshot) => {
+        received.push([accountId, snapshot]);
         return new Promise<void>(() => undefined);
       },
     } as unknown as NotifyUsageQuartiles;
-    const withAlerts = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator, undefined, alerts);
+    const withAlerts = new LoadUsage(world.prefs, world.settings, gateway, histories, clock, connections, indicator, undefined, alerts);
     const data = await withAlerts.execute();
-    expect(received).toEqual([data.snapshot]);
+    expect(received).toEqual([[FAKE_ACCOUNT.id, data.snapshot]]);
   });
 
   it('keeps working when the alerts reject', async () => {
     const alerts = { execute: () => Promise.reject(new Error('boom')) } as unknown as NotifyUsageQuartiles;
-    const withAlerts = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator, undefined, alerts);
+    const withAlerts = new LoadUsage(world.prefs, world.settings, gateway, histories, clock, connections, indicator, undefined, alerts);
     await expect(withAlerts.execute()).resolves.toMatchObject({ snapshot: gateway.outcome });
   });
 });

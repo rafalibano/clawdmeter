@@ -1,17 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAgenda, dayBounds } from '../../domain/calendar';
+import { createClaudeAccounts } from '../../application/claude-accounts';
 import { createConnections } from '../../application/connections/create-connections';
 import { FakeClock } from '../../application/testing/fake-clock';
+import { FakeSettingsStore } from '../../application/testing/fake-settings-store';
+import { FakeUsageHistoryStores } from '../../application/testing/fake-usage-adapters';
+import { UpdateSettings } from '../../application/use-cases';
 import { CONNECTIONS, type ConnectionId } from '../../domain/connections';
 import { DemoCalendar, createDemoConnectionAdapters } from './demo-adapters';
-import { createDemoWorld, parseDemoScenario } from './demo-world';
+import { DEMO_ACCOUNTS, DemoAccountsSettingsStore, DemoClaudeAccountGateway, demoAccountsFor } from './demo-claude-accounts';
+import { createDemoWorld, parseDemoScenario, type DemoWorld } from './demo-world';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
+function demoSettings(world: DemoWorld): DemoAccountsSettingsStore {
+  return new DemoAccountsSettingsStore(new FakeSettingsStore(), demoAccountsFor(world));
+}
+
 async function checkAll(search: string) {
   const world = createDemoWorld(search);
-  const connections = createConnections(createDemoConnectionAdapters(world), new FakeClock());
+  const connections = createConnections(createDemoConnectionAdapters(world), demoSettings(world));
   const pending = connections.checkMany.execute(CONNECTIONS.map((connection) => connection.id));
   await vi.runAllTimersAsync();
   await pending;
@@ -25,7 +34,7 @@ async function settle<T>(work: Promise<T>): Promise<T> {
 
 describe('demo scenario', () => {
   it('reads the query param, ignores unknown ids and expands "errors"', () => {
-    expect([...parseDemoScenario('?demo=claude:claude-expired,foo:bar,github')]).toEqual([['claude', 'claude-expired']]);
+    expect([...parseDemoScenario('?demo=claude:claude-signin-required,foo:bar,github')]).toEqual([['claude', 'claude-signin-required']]);
     expect(parseDemoScenario('?demo=errors').size).toBe(4);
     expect(parseDemoScenario('').size).toBe(0);
   });
@@ -39,9 +48,8 @@ describe('demo scenario', () => {
   });
 
   it.each([
-    ['claude:keychain-denied', 'claude', 'keychain-denied'],
-    ['claude:claude-expired', 'claude', 'claude-expired'],
-    ['claude:claude-code-missing', 'claude', 'claude-code-missing'],
+    ['claude:claude-signin-required', 'claude', 'claude-signin-required'],
+    ['claude:claude-no-account', 'claude', 'claude-no-account'],
     ['github:github-unauthorized', 'github', 'github-unauthorized'],
     ['github:github-missing-scope', 'github', 'github-missing-scope'],
     ['github:github-org-access', 'github', 'github-org-access'],
@@ -55,22 +63,46 @@ describe('demo scenario', () => {
     expect(monitor.get(id as ConnectionId)).toMatchObject({ state: 'error', problem });
   });
 
-  it('keychain: granting permission again and rereading connects', async () => {
-    const connections = await checkAll('?demo=claude:keychain-denied');
-    const after = await settle(connections.fix.execute('claude', 'retry-permission'));
-    expect(after.state).toBe('connected');
+  it('two demo accounts by default, the first one active', async () => {
+    const settings = demoSettings(createDemoWorld(''));
+    expect((await settings.load()).claude).toMatchObject({ accounts: DEMO_ACCOUNTS, activeAccountId: 'demo-personal' });
   });
 
-  it('expired Claude: terminal login + checking again connects', async () => {
-    const connections = await checkAll('?demo=claude:claude-expired');
-    await settle(connections.fix.execute('claude', 'relogin-claude'));
-    expect((await settle(connections.check.execute('claude'))).state).toBe('connected');
+  it('?demo=claude:claude-signin-required: signing in again through the demo browser connects', async () => {
+    const world = createDemoWorld('?demo=claude:claude-signin-required');
+    const gateway = new DemoClaudeAccountGateway(world);
+    const settings = demoSettings(world);
+    const connections = createConnections(createDemoConnectionAdapters(world, gateway), settings);
+    expect(await settle(connections.check.execute('claude'))).toMatchObject({ problem: 'claude-signin-required' });
+    const accounts = createClaudeAccounts({
+      settings,
+      updateSettings: new UpdateSettings(settings),
+      gateway,
+      urls: { open: async () => undefined },
+      histories: new FakeUsageHistoryStores(),
+      clock: new FakeClock(),
+      newId: () => 'demo-new',
+    });
+    expect(await settle(accounts.reauthenticate.execute('demo-personal'))).toEqual(DEMO_ACCOUNTS[0]);
+    expect(await settle(connections.check.execute('claude'))).toEqual({ state: 'connected', account: 'Personal' });
   });
 
-  it('missing Claude Code: install + checking again connects', async () => {
-    const connections = await checkAll('?demo=claude:claude-code-missing');
-    await settle(connections.fix.execute('claude', 'install-claude-code'));
-    expect((await settle(connections.check.execute('claude'))).state).toBe('connected');
+  it('?demo=claude:claude-no-account: adding an account through the demo browser connects', async () => {
+    const world = createDemoWorld('?demo=claude:claude-no-account');
+    const gateway = new DemoClaudeAccountGateway(world);
+    const settings = demoSettings(world);
+    const connections = createConnections(createDemoConnectionAdapters(world, gateway), settings);
+    const accounts = createClaudeAccounts({
+      settings,
+      updateSettings: new UpdateSettings(settings),
+      gateway,
+      urls: { open: async () => undefined },
+      histories: new FakeUsageHistoryStores(),
+      clock: new FakeClock(),
+      newId: () => 'demo-new',
+    });
+    expect(await settle(accounts.add.execute('Work'))).toEqual({ id: 'demo-new', name: 'Work' });
+    expect(await settle(connections.check.execute('claude'))).toEqual({ state: 'connected', account: 'Work' });
   });
 
   it('GitHub: scope, org and login are resolved by their respective buttons', async () => {

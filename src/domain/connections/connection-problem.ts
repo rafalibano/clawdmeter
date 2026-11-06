@@ -1,9 +1,8 @@
 import type { ErrorArgs, ErrorCode } from '../coded-error';
 
 export type ConnectionProblem =
-  | 'keychain-denied'
-  | 'claude-expired'
-  | 'claude-code-missing'
+  | 'claude-no-account'
+  | 'claude-signin-required'
   | 'github-unauthorized'
   | 'github-missing-scope'
   | 'github-org-access'
@@ -15,9 +14,8 @@ export type ConnectionProblem =
   | 'unexpected';
 
 export const CONNECTION_PROBLEMS: readonly ConnectionProblem[] = [
-  'keychain-denied',
-  'claude-expired',
-  'claude-code-missing',
+  'claude-no-account',
+  'claude-signin-required',
   'github-unauthorized',
   'github-missing-scope',
   'github-org-access',
@@ -43,4 +41,8 @@ export class ConnectionProblemError extends Error {
 
 export function customMessage(error: ConnectionProblemError): string | undefined {
   return error.message === error.problem ? undefined : error.message;
+}
+
+export function claudeSignInRequired(account: string): ConnectionProblemError {
+  return new ConnectionProblemError('claude-signin-required', undefined, 'claude-signin-required', { account });
 }

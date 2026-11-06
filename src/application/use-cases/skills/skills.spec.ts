@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { CLAUDE_CODE_INSTALL_URL, ConnectionProblemError } from '../../../domain/connections';
+import { CLAUDE_CODE_INSTALL_URL } from '../../../domain/connections';
 import {
   DEFAULT_ALLOWED_TOOLS,
   FIXTURE_SESSION_ID,
@@ -7,6 +7,7 @@ import {
   NOISY_STREAM,
   SUCCESS_STREAM,
   parseSkillsConfig,
+  RunProblemError,
   type SkillRun,
 } from '../../../domain/skills';
 import { createConnections } from '../../connections/create-connections';
@@ -40,7 +41,7 @@ beforeEach(async () => {
   await clock.advance(1_000_000);
   notifier = new FakeNotifier();
   world = createFakeConnectionWorld();
-  connections = createConnections(world.adapters, clock);
+  connections = createConnections(world.adapters, world.settings);
   await connections.check.execute('notifications');
   skills = createSkills(
     { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() },
@@ -158,7 +159,7 @@ describe('RunSkill', () => {
   });
 
   it('a missing Claude Code becomes a failure with the claude-code-missing problem', async () => {
-    runner.startError = new ConnectionProblemError('claude-code-missing', 'claude not found');
+    runner.startError = new RunProblemError('claude-code-missing', 'claude not found');
     const { run, finished } = await skills.run.execute('acabativa');
     expect(await finished).toMatchObject({ status: 'failed', problem: 'claude-code-missing', error: 'claude not found' });
     expect(skills.board.get(run.id)?.status).toBe('failed');
@@ -224,7 +225,7 @@ describe('Notification at the end of the run', () => {
   });
 
   it('with the state still unknown checks the connection before notifying', async () => {
-    const fresh = createConnections(world.adapters, clock);
+    const fresh = createConnections(world.adapters, world.settings);
     const lazy = createSkills(
       { config: new FakeSkillsConfigStore(), runs: store, runner, terminal, urls, notifier, translator: new FakeTranslator() },
       clock,

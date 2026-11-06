@@ -12,7 +12,7 @@ import { ThemeService } from '../../theme/theme.service';
 import { buildChartOption } from './usage-chart-option';
 import { USAGE_PAGE } from './usage-page-ref';
 import { UsageViewState } from './usage-view-state';
-import { toUsageErrorView, toUsageView } from './usage-view';
+import { activeUsageData, toUsageErrorView, toUsageView } from './usage-view';
 
 const CLOCK_TICK_MS = 15_000;
 
@@ -46,8 +46,7 @@ export class UsageComponent {
   });
 
   protected readonly view = computed(() => {
-    const update = this.update();
-    const data = update?.status === 'ok' ? update.data : this.lastData();
+    const data = activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId);
     if (data === undefined) return null;
     const l = this.i18n.localizer();
     const usage = toUsageView(data, this.rangeId(), l, this.settings.settings().projectionMethod);
@@ -87,6 +86,6 @@ export class UsageComponent {
 
   protected async run(action: ConnectionAction): Promise<void> {
     await this.connections.act('claude', action);
-    await this.scheduler.refresh(USAGE_PAGE.id);
+    if (!this.connections.opensSettings('claude', action)) await this.scheduler.refresh(USAGE_PAGE.id);
   }
 }

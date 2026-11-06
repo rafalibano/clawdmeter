@@ -6,7 +6,7 @@ import { CodedError } from '../../domain/coded-error';
 import { ConnectionProblemError } from '../../domain/connections';
 import { createFakeCommands, rejectWith } from '../testing/fakes';
 import { PlatformCommandError, toDomainError } from './tauri-commands';
-import { TauriClaudeCredentialSource } from './tauri-claude-credential-source';
+import { TauriClaudeAccountGateway } from './tauri-claude-account-gateway';
 import { TauriNotificationPermission, toPermissionState } from './tauri-notification-permission';
 import { TauriNotifier } from './tauri-notifier';
 import { TauriOAuthLoopback } from './tauri-oauth-loopback';
@@ -17,16 +17,24 @@ import { FakeTranslator } from '../../application/testing/fake-translator';
 import { TauriUsageIndicator } from './tauri-usage-indicator';
 
 describe('toDomainError', () => {
-  it('maps keychain_denied and claude_code_missing to connection problems', () => {
-    expect(toDomainError({ kind: 'keychain_denied', message: 'negado' })).toMatchObject({
-      problem: 'keychain-denied',
-      message: 'negado',
+  it('claude_signin_required becomes a Claude connection problem and keychain a generic storage error', () => {
+    const signIn = toDomainError({ kind: 'claude_signin_required', message: 'refresh rejected' });
+    expect(signIn).toBeInstanceOf(ConnectionProblemError);
+    expect(signIn).toMatchObject({ problem: 'claude-signin-required', message: 'refresh rejected' });
+    expect(toDomainError({ kind: 'keychain', message: 'locked' })).toMatchObject({
+      problem: 'unexpected',
+      code: 'keychain-unavailable',
+      message: 'locked',
     });
-    expect(toDomainError({ kind: 'claude_code_missing', message: 'x' })).toBeInstanceOf(ConnectionProblemError);
   });
 
-  it('claude_expired becomes a connection problem and too_many_processes becomes a coded error', () => {
-    expect(toDomainError({ kind: 'claude_expired', message: 'x' })).toMatchObject({ problem: 'claude-expired' });
+  it('the kinds of the old Claude Code credential reading are no longer special', () => {
+    for (const kind of ['keychain_denied', 'claude_code_missing', 'claude_expired']) {
+      expect(toDomainError({ kind, message: 'x' })).toBeInstanceOf(PlatformCommandError);
+    }
+  });
+
+  it('too_many_processes becomes a coded error', () => {
     const busy = toDomainError({ kind: 'too_many_processes', message: 'limit of 4 simultaneous processes reached' });
     expect(busy).toBeInstanceOf(CodedError);
     expect(busy).toMatchObject({ code: 'too-many-processes' });
@@ -58,25 +66,85 @@ describe('TauriSecretStore', () => {
     ]);
   });
 
-  it('propagates a denied keychain as a connection problem', async () => {
-    const { commands } = createFakeCommands(() => rejectWith('keychain_denied', 'negado'));
-    await expect(new TauriSecretStore(commands).get('k')).rejects.toMatchObject({ problem: 'keychain-denied' });
+  it('propagates a keychain failure as a generic storage error', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('keychain', 'negado'));
+    await expect(new TauriSecretStore(commands).get('k')).rejects.toMatchObject({ problem: 'unexpected', code: 'keychain-unavailable' });
   });
 });
 
-describe('TauriClaudeCredentialSource', () => {
-  it('reads only the credential status in Rust: the token never crosses the IPC', async () => {
-    const recorded = { expiresAt: 1767225600000, subscriptionType: 'max' };
-    const { commands, calls } = createFakeCommands(() => recorded);
-    expect(await new TauriClaudeCredentialSource(commands).read()).toEqual(recorded);
-    expect(calls).toEqual([{ command: 'claude_credentials_status', args: undefined }]);
-    expect(JSON.stringify(recorded)).not.toMatch(/token|refresh/i);
+describe('TauriClaudeAccountGateway', () => {
+  const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+  const START = {
+    loginId: 'login-1',
+    authorizeUrl: 'https://claude.ai/oauth/authorize?state=s',
+    state: 's',
+    redirectUri: 'http://localhost:54545/callback',
+    manualAuthorizeUrl: 'https://claude.ai/oauth/authorize?state=s&redirect_uri=manual',
+  };
+
+  it('calls the account commands with exactly the arguments of the contract', async () => {
+    const { commands, calls } = createFakeCommands((command) => {
+      if (command === 'claude_oauth_begin') return START;
+      if (command === 'claude_oauth_complete') return { expiresAt: 1_800_000_000_000, email: 'dev@example.com' };
+      if (command === 'claude_account_status') return { signedIn: true, expiresAt: 1_800_000_000_000, needsLogin: false };
+      return null;
+    });
+    const gateway = new TauriClaudeAccountGateway(commands);
+    expect(await gateway.begin(CLIENT_ID)).toEqual(START);
+    expect(await gateway.complete({ loginId: 'login-1', accountId: 'acc-1', timeoutMs: 300_000 })).toEqual({
+      expiresAt: 1_800_000_000_000,
+      email: 'dev@example.com',
+    });
+    await gateway.complete({ loginId: 'login-1', accountId: 'acc-1', code: 'abc#s' });
+    await gateway.cancel('login-1');
+    expect(await gateway.status('acc-1')).toEqual({ signedIn: true, expiresAt: 1_800_000_000_000, needsLogin: false });
+    await gateway.remove('acc-1');
+    expect(calls).toEqual([
+      { command: 'claude_oauth_begin', args: { clientId: CLIENT_ID } },
+      { command: 'claude_oauth_complete', args: { loginId: 'login-1', accountId: 'acc-1', timeoutMs: 300_000 } },
+      { command: 'claude_oauth_complete', args: { loginId: 'login-1', accountId: 'acc-1', code: 'abc#s' } },
+      { command: 'claude_oauth_cancel', args: { loginId: 'login-1' } },
+      { command: 'claude_account_status', args: { accountId: 'acc-1' } },
+      { command: 'claude_account_remove', args: { accountId: 'acc-1' } },
+    ]);
   });
 
-  it('missing Claude Code becomes a typed problem', async () => {
-    const { commands } = createFakeCommands(() => rejectWith('claude_code_missing', 'no credential'));
-    await expect(new TauriClaudeCredentialSource(commands).read()).rejects.toMatchObject({
-      problem: 'claude-code-missing',
+  it('no token crosses the IPC: results carry only expiry, e-mail and status', async () => {
+    const { commands } = createFakeCommands(() => ({ signedIn: true, expiresAt: null, needsLogin: false }));
+    expect(JSON.stringify(await new TauriClaudeAccountGateway(commands).status('acc-1'))).not.toMatch(/token|refresh/i);
+  });
+
+  it.each([
+    ['timeout', 'claude-login-timeout'],
+    ['cancelled', 'claude-login-cancelled'],
+    ['provider_error', 'claude-login-failed'],
+    ['state_mismatch', 'claude-login-failed'],
+    ['http', 'claude-login-failed'],
+  ])('waiting for the browser: %s becomes %s', async (kind, code) => {
+    const { commands } = createFakeCommands(() => rejectWith(kind, 'x'));
+    await expect(new TauriClaudeAccountGateway(commands).complete({ loginId: 'l', accountId: 'a', timeoutMs: 1 })).rejects.toMatchObject({ code });
+  });
+
+  it.each([
+    ['invalid_argument', 'claude-login-code-invalid'],
+    ['state_mismatch', 'claude-login-code-invalid'],
+    ['provider_error', 'claude-login-failed'],
+  ])('pasted code: %s becomes %s', async (kind, code) => {
+    const { commands } = createFakeCommands(() => rejectWith(kind, 'x'));
+    await expect(new TauriClaudeAccountGateway(commands).complete({ loginId: 'l', accountId: 'a', code: 'c#s' })).rejects.toMatchObject({ code });
+  });
+
+  it('begin: an invalid client id and the pending login limit get their own messages', async () => {
+    const invalid = createFakeCommands(() => rejectWith('invalid_argument', 'clientId'));
+    await expect(new TauriClaudeAccountGateway(invalid.commands).begin('x')).rejects.toMatchObject({ code: 'claude-client-id-invalid' });
+    const busy = createFakeCommands(() => rejectWith('too_many_processes', 'limit'));
+    await expect(new TauriClaudeAccountGateway(busy.commands).begin(CLIENT_ID)).rejects.toMatchObject({ code: 'claude-login-busy' });
+  });
+
+  it('a keychain failure while storing the tokens keeps the storage message', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('keychain', 'locked'));
+    await expect(new TauriClaudeAccountGateway(commands).complete({ loginId: 'l', accountId: 'a' })).rejects.toMatchObject({
+      code: 'keychain-unavailable',
     });
   });
 });
@@ -96,11 +164,11 @@ describe('system actions', () => {
     const { commands, calls } = createFakeCommands(() => undefined);
     await new TauriUrlOpener(commands).open('https://example.com');
     await new TauriSystemSettings(commands).openNotifications();
-    await new TauriTerminalLauncher(commands).run({ program: 'claude', args: ['/login'] });
+    await new TauriTerminalLauncher(commands).run({ program: 'claude', args: ['/mcp'] });
     expect(calls).toEqual([
       { command: 'open_url', args: { url: 'https://example.com' } },
       { command: 'open_system_settings', args: { pane: 'notifications' } },
-      { command: 'terminal_run', args: { program: 'claude', args: ['/login'], cwd: null } },
+      { command: 'terminal_run', args: { program: 'claude', args: ['/mcp'], cwd: null } },
     ]);
   });
 });

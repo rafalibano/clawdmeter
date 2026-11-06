@@ -12,7 +12,7 @@ import type {
   UrlOpener,
 } from '../../application/ports';
 import type { SkillAdapters } from '../../application/skills';
-import { ConnectionProblemError } from '../../domain/connections';
+import { RunProblemError } from '../../domain/skills';
 import {
   DEFAULT_SKILLS,
   MCP_NEEDS_AUTH_STREAM,
@@ -59,7 +59,7 @@ class DemoStreamingProcessRunner implements StreamingProcessRunner {
 
   async start(_spec: StreamingProcessSpec, handlers: StreamingProcessHandlers): Promise<StreamingProcessHandle> {
     if (this.world.skills.claudeMissing) {
-      throw new ConnectionProblemError('claude-code-missing', 'claude not found (demo scenario)');
+      throw new RunProblemError('claude-code-missing', 'claude not found (demo scenario)');
     }
     const needsAuth = this.world.skills.mcpNeedsAuth;
     const lines = needsAuth ? MCP_NEEDS_AUTH_STREAM : SUCCESS_STREAM;

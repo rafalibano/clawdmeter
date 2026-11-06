@@ -6,6 +6,7 @@ import type {
   StreamingProcessSpec,
 } from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
+import { RunProblemError } from '../../domain/skills';
 import { PlatformCommandError, type TauriCommands } from './tauri-commands';
 
 export type Listen = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
@@ -74,7 +75,9 @@ export class TauriStreamingProcessRunner implements StreamingProcessRunner {
 
 function mapSpawnError(error: unknown, program: string): unknown {
   if (error instanceof PlatformCommandError && error.kind === 'program_not_found') {
-    return new ConnectionProblemError(program === 'claude' ? 'claude-code-missing' : 'unexpected', error.message);
+    return program === 'claude'
+      ? new RunProblemError('claude-code-missing', error.message)
+      : new ConnectionProblemError('unexpected', error.message);
   }
   return error;
 }

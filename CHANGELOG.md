@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Claude accounts: ClawdMeter now signs in to Claude by itself (OAuth in the browser, with a **Paste code** alternative) instead of reading the Claude Code login. Add up to 5 named accounts in the new **Settings > Claude accounts** section, where you can also rename, remove, sign in again and change the OAuth client ID (UUID, with **Restore default**). The tokens are kept and renewed only by the native layer. With two or more accounts the Usage tab shows a selector with the account names; each account has its own usage history, quartile alerts and tray icon state. Settings schema goes to 10.
+- Upgrading: the Claude Code credential reading (Keychain and `~/.claude/.credentials.json`) was removed, so add your account once after updating; the existing usage history moves to the first account added. The Claude connection now says "add an account" or "sign in again" for the account, instead of the old Keychain and Claude Code states. Skills no longer require the Claude connection (they keep using Claude Code's own login).
+
 - Usage alerts: notifications when the 5h or 7d consumption crosses 25%, 50%, 75% or 100%, configurable per window in the new **Usage alerts** section of Settings (50% on both by default; an empty list turns a window off). Each percentage is notified once per cycle, only the highest one when several are crossed at once, and nothing is notified for what was already crossed when the app opens. It needs the Notifications connection. Settings schema goes to 9.
 
 ## 0.1.1

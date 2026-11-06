@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CONNECTION_PROBLEMS, errorStatus, noteStatus, type ConnectionId, type ConnectionStatus } from '../../../domain/connections';
+import {
+  CONNECTION_PROBLEMS,
+  claudeSignInStatus,
+  errorStatus,
+  noteStatus,
+  type ConnectionId,
+  type ConnectionStatus,
+} from '../../../domain/connections';
 import { Localizer } from '../../i18n';
 import { toRowView as toRowViewWith } from './connection-view';
 
@@ -67,24 +74,24 @@ describe('toRowView', () => {
     expect(view.actions.find((action) => action.kind === 'fix')?.label).toBe('open-system-settings');
   });
 
-  it('expired Claude token tells the user to open Claude Code or sign in again', () => {
-    expect(toRowView('claude', errorStatus('claude-expired')).message).toBe(
-      'Token vencido — abra o Claude Code para renová-lo ou refaça o login.',
+  it('Claude without accounts tells to add one and the account that must sign in again is named', () => {
+    expect(toRowView('claude', errorStatus('claude-no-account')).message).toBe(
+      'Nenhuma conta do Claude ainda. Adicione uma em Ajustes > Contas do Claude.',
     );
+    const view = toRowView('claude', claudeSignInStatus('Trabalho'));
+    expect(view.message).toBe('Entre de novo na conta Trabalho.');
+    expect(view.actions.map((action) => action.label)).toEqual(['reauthenticate-claude', 'recheck', 'disconnect']);
+    expect(toRowView('claude', { state: 'connected', account: 'Trabalho' }).summary).toBe('Conectado · Trabalho');
   });
 
   it('the status-specific message takes priority over the default one', () => {
-    expect(toRowView('claude', errorStatus('claude-expired', 'Conclua o login')).message).toBe('Conclua o login');
+    expect(toRowView('claude', errorStatus('claude-signin-required', 'Conclua o login')).message).toBe('Conclua o login');
   });
 
   it('the same row changes text with the language', () => {
-    const status = errorStatus('claude-expired');
-    expect(toRowViewWith('claude', status, new Localizer('en')).message).toBe(
-      'Token expired — open Claude Code to renew it or sign in again.',
-    );
-    expect(toRowViewWith('claude', status, new Localizer('es-MX')).message).toBe(
-      'Token vencido — abre Claude Code para renovarlo o vuelve a iniciar sesión.',
-    );
+    const status = claudeSignInStatus('Work');
+    expect(toRowViewWith('claude', status, new Localizer('en')).message).toBe('Sign in to the Work account again.');
+    expect(toRowViewWith('claude', status, new Localizer('es-MX')).message).toBe('Inicia sesión de nuevo en la cuenta Work.');
     expect(toRowViewWith('github', { state: 'connected', account: 'dev' }, new Localizer('en')).summary).toBe('Connected · dev');
   });
 

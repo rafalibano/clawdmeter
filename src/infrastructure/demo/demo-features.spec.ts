@@ -5,6 +5,7 @@ import { createPullRequests } from '../../application/pull-requests';
 import { FakeTranslator } from '../../application/testing/fake-translator';
 import { createSkills } from '../../application/skills';
 import { FakeClock } from '../../application/testing/fake-clock';
+import { FakeSettingsStore } from '../../application/testing/fake-settings-store';
 import { FIX_FOR } from '../../domain/connections';
 import { RUN_FIX_FOR } from '../../domain/skills';
 import { createDemoConnectionAdapters } from './demo-adapters';
@@ -19,7 +20,7 @@ function setup(search: string) {
   const world = createDemoWorld(search);
   const clock = new FakeClock();
   const adapters = createDemoConnectionAdapters(world);
-  const connections = createConnections(adapters, clock);
+  const connections = createConnections(adapters, new FakeSettingsStore());
   const pullRequests = createPullRequests(
     {
       prefs: adapters.prefs,

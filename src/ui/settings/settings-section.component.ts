@@ -1,4 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
+import { ShellNavigation } from '../shell/shell-navigation.service';
 
 @Component({
   selector: 'cm-settings-section',
@@ -23,11 +37,35 @@ export class SettingsSectionComponent {
   readonly name = input.required<string>();
   readonly heading = input.required<string>();
   readonly defaultOpen = input(false);
+  readonly openChange = output<boolean>();
 
+  private readonly navigation = inject(ShellNavigation);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
   private readonly chosen = signal<boolean | null>(null);
   protected readonly isOpen = computed(() => this.chosen() ?? this.defaultOpen());
 
+  constructor() {
+    effect(() => {
+      const name = this.name();
+      if (this.navigation.requestedSection() !== name) return;
+      untracked(() => {
+        this.chosen.set(true);
+        this.navigation.consume(name);
+        afterNextRender(
+          () => {
+            this.host.scrollIntoView?.({ block: 'start' });
+            this.host.querySelector<HTMLElement>('.disclosure')?.focus();
+          },
+          { injector: this.injector },
+        );
+      });
+    });
+  }
+
   protected toggle(): void {
-    this.chosen.set(!this.isOpen());
+    const open = !this.isOpen();
+    this.chosen.set(open);
+    this.openChange.emit(open);
   }
 }

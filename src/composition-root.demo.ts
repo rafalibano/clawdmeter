@@ -6,7 +6,9 @@ import { createSkills } from './application/skills';
 import { ImportExternalUsageHistory, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
+  DemoAccountsSettingsStore,
   DemoCalendar,
+  DemoClaudeAccountGateway,
   applyDemoLanguage,
   DemoExternalUsageHistorySource,
   DemoNotifier,
@@ -14,13 +16,14 @@ import {
   DemoPullRequestGateway,
   DemoSessionDirectory,
   DemoUsageGateway,
-  DemoUsageHistoryStore,
+  DemoUsageHistoryStores,
   DemoUsageIndicator,
-  DemoUsageModel,
+  DemoUsageModels,
   DemoUpdateChecker,
   createDemoConnectionAdapters,
   createDemoSkillAdapters,
   createDemoWorld,
+  demoAccountsFor,
 } from './infrastructure/demo';
 import { JsonSettingsStore, LocalStorageJsonFile } from './infrastructure/persistence';
 import { SystemClock } from './infrastructure/platform/system-clock';
@@ -39,10 +42,16 @@ export function createComposition(): Application {
   const translator = new LiveTranslator(language);
   applyDemoLanguage(window.location.search, window.localStorage);
   const world = createDemoWorld(window.location.search);
-  const connectionAdapters = createDemoConnectionAdapters(world);
+  const claudeAccounts = new DemoClaudeAccountGateway(world, () => clock.now());
+  const connectionAdapters = createDemoConnectionAdapters(world, claudeAccounts);
   const origin = clock.now();
-  const usageModel = new DemoUsageModel(origin, world.usage.high);
-  const settingsStore = new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings'));
+  const accounts = demoAccountsFor(world);
+  const usageModels = new DemoUsageModels(origin, accounts[0]?.id ?? '', world.usage.high);
+  const usageHistories = new DemoUsageHistoryStores(usageModels);
+  const settingsStore = new DemoAccountsSettingsStore(
+    new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings')),
+    accounts,
+  );
   const pullRequests = createPullRequests(
     {
       prefs: connectionAdapters.prefs,
@@ -56,6 +65,7 @@ export function createComposition(): Application {
     language,
     settingsStore,
     connectionAdapters,
+    usageHistories,
     updateChecker: new DemoUpdateChecker(world.update),
     skills: ({ connections }) =>
       createSkills(
@@ -72,8 +82,9 @@ export function createComposition(): Application {
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
-          new DemoUsageGateway(usageModel, () => clock.now(), connectionAdapters.claudeCredentials, world.usage.rateLimited),
-          new DemoUsageHistoryStore(usageModel.history(origin)),
+          settingsStore,
+          new DemoUsageGateway(usageModels, () => clock.now(), claudeAccounts, world.usage.rateLimited),
+          usageHistories,
           clock,
           connections,
           new DemoUsageIndicator(),

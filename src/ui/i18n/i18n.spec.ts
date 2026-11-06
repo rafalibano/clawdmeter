@@ -25,6 +25,20 @@ const ERROR_CODES: readonly ErrorCode[] = [
   'github-rate-limited',
   'microsoft-calendar-denied',
   'client-id-missing',
+  'claude-signin-required',
+  'claude-account-name-empty',
+  'claude-account-name-too-long',
+  'claude-account-name-taken',
+  'claude-account-limit',
+  'claude-account-missing',
+  'claude-client-id-invalid',
+  'claude-login-code-empty',
+  'claude-login-code-invalid',
+  'claude-login-busy',
+  'keychain-unavailable',
+  'claude-login-timeout',
+  'claude-login-cancelled',
+  'claude-login-failed',
 ];
 
 const KEYS = Object.keys(enDictionary) as MessageKey[];

@@ -4,11 +4,11 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
+    // A denied prompt only settles the legacy secrets migration (N6); the webview sees `keychain`.
+    #[serde(rename = "keychain")]
     KeychainDenied,
     Keychain,
-    ClaudeCodeMissing,
-    ClaudeExpired,
-    CredentialMalformed,
+    ClaudeSigninRequired,
     ProgramNotAllowed,
     ProgramNotFound,
     InvalidArgument,
@@ -121,11 +121,18 @@ mod tests {
 
     #[test]
     fn serializes_kind_in_snake_case() {
-        let error = CommandError::new(ErrorKind::KeychainDenied, "denied");
+        let error = CommandError::new(ErrorKind::ClaudeSigninRequired, "sign in");
         assert_eq!(
             serde_json::to_string(&error).unwrap(),
-            r#"{"kind":"keychain_denied","message":"denied"}"#
+            r#"{"kind":"claude_signin_required","message":"sign in"}"#
         );
+    }
+
+    #[test]
+    fn a_denied_keychain_reaches_the_webview_as_a_plain_keychain_error() {
+        let name = |kind| serde_json::to_string(&kind).unwrap();
+        assert_eq!(name(ErrorKind::KeychainDenied), r#""keychain""#);
+        assert_eq!(name(ErrorKind::Keychain), r#""keychain""#);
     }
 
     #[test]
@@ -144,7 +151,10 @@ mod tests {
     fn new_kinds_keep_snake_case_names_the_frontend_reads() {
         let name = |kind| serde_json::to_string(&kind).unwrap();
         assert_eq!(name(ErrorKind::TooManyProcesses), r#""too_many_processes""#);
-        assert_eq!(name(ErrorKind::ClaudeExpired), r#""claude_expired""#);
+        assert_eq!(
+            name(ErrorKind::ClaudeSigninRequired),
+            r#""claude_signin_required""#
+        );
         assert_eq!(name(ErrorKind::Tray), r#""tray""#);
         assert_eq!(name(ErrorKind::Http), r#""http""#);
         assert_eq!(name(ErrorKind::Policy), r#""policy""#);

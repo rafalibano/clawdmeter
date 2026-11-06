@@ -41,6 +41,10 @@ const LEGACY: KeyringBackend = KeyringBackend {
     service: LEGACY_IDENTIFIER,
 };
 
+pub fn app_store() -> &'static (dyn SecretBackend + Sync) {
+    &CURRENT
+}
+
 impl KeyringBackend {
     fn entry(&self, key: &str) -> CommandResult<Entry> {
         Entry::new(self.service, key).map_err(CommandError::from)

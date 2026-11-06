@@ -2,10 +2,15 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterRenderEffect, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
 import { I18n } from '../i18n';
+import { USAGE_PAGE } from '../pages/usage/usage-page-ref';
 import { REFRESH_COOLDOWN_MS, refreshState } from './refresh-state';
 import { APPLICATION } from './application.token';
+import { AccountSwitchComponent } from './account-switch.component';
+import { accountSwitchView } from './account-switch-view';
+import { ClaudeAccountsFacade } from './claude-accounts.facade';
 import { PageStateService } from './page-state.service';
 import { SettingsFacade } from './settings.facade';
+import { ShellNavigation } from './shell-navigation.service';
 import { SettingsComponent } from '../settings/settings.component';
 import { UpdateBannerComponent } from '../updates/update-banner.component';
 
@@ -13,13 +18,15 @@ const CLOCK_TICK_MS = 1_000;
 
 @Component({
   selector: 'cm-shell',
-  imports: [NgComponentOutlet, SettingsComponent, UpdateBannerComponent],
+  imports: [AccountSwitchComponent, NgComponentOutlet, SettingsComponent, UpdateBannerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
 })
 export class ShellComponent {
   private readonly facade = inject(SettingsFacade);
+  private readonly navigation = inject(ShellNavigation);
+  private readonly claudeAccounts = inject(ClaudeAccountsFacade);
   protected readonly i18n = inject(I18n);
   private readonly scheduler = inject(APPLICATION).scheduler;
   private readonly pageState = inject(PageStateService);
@@ -30,7 +37,7 @@ export class ShellComponent {
   private readonly refreshing = signal(false);
   private readonly cooldowns = signal<ReadonlyMap<string, number>>(new Map());
 
-  protected readonly showingSettings = signal(false);
+  protected readonly showingSettings = this.navigation.settingsOpen;
   protected readonly pages = this.facade.enabledPages;
   protected readonly errorMessage = computed(() => {
     const error = this.facade.error();
@@ -38,6 +45,9 @@ export class ShellComponent {
   });
   protected readonly current = computed<PageModule | null>(
     () => this.pages().find((page) => page.id === this.requestedPageId()) ?? this.pages()[0] ?? null,
+  );
+  protected readonly accountSwitch = computed(() =>
+    this.showingSettings() ? null : accountSwitchView(this.facade.settings().claude, this.current()?.id ?? null, USAGE_PAGE.id),
   );
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
@@ -72,7 +82,11 @@ export class ShellComponent {
 
   protected select(id: string): void {
     this.requestedPageId.set(id);
-    this.showingSettings.set(false);
+    this.navigation.closeSettings();
+  }
+
+  protected selectAccount(accountId: string): void {
+    void this.claudeAccounts.select(accountId);
   }
 
   protected async reload(): Promise<void> {
@@ -88,6 +102,6 @@ export class ShellComponent {
   }
 
   protected toggleSettings(): void {
-    this.showingSettings.update((open) => !open);
+    this.navigation.toggleSettings();
   }
 }

@@ -1,0 +1,146 @@
+use std::collections::HashMap;
+use std::io::{ErrorKind as IoErrorKind, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use super::error::CommandResult;
+use super::secrets::SecretBackend;
+
+pub struct TestServer {
+    pub url: String,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<Vec<String>>>,
+}
+
+impl TestServer {
+    pub fn start(path: &str, responses: Vec<String>) -> Self {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}{path}",
+            listener.local_addr().unwrap().port()
+        );
+        let stop = Arc::new(AtomicBool::new(false));
+        let running = Arc::clone(&stop);
+        let handle = thread::spawn(move || {
+            let mut seen = Vec::new();
+            while !running.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let request = read_request(&mut stream);
+                        let response = responses
+                            .get(seen.len())
+                            .or(responses.last())
+                            .cloned()
+                            .unwrap_or_default();
+                        seen.push(request);
+                        let _ = stream.write_all(response.as_bytes());
+                    }
+                    Err(error) if error.kind() == IoErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5))
+                    }
+                    Err(_) => break,
+                }
+            }
+            seen
+        });
+        Self {
+            url,
+            stop,
+            handle: Some(handle),
+        }
+    }
+
+    pub fn json(path: &str, status_line: &str, body: &str) -> Self {
+        Self::start(path, vec![json_response(status_line, body)])
+    }
+
+    pub fn requests(mut self) -> Vec<String> {
+        self.stop.store(true, Ordering::SeqCst);
+        self.handle
+            .take()
+            .map(|handle| handle.join().unwrap())
+            .unwrap_or_default()
+    }
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+}
+
+pub fn json_response(status_line: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+fn read_request(stream: &mut TcpStream) -> String {
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let head_end = loop {
+        if let Some(end) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+            break end + 4;
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => return String::from_utf8_lossy(&buffer).into_owned(),
+            Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+        }
+    };
+    let head = String::from_utf8_lossy(&buffer[..head_end]).to_lowercase();
+    let length = head
+        .lines()
+        .find_map(|line| line.strip_prefix("content-length:"))
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    while buffer.len() < head_end + length {
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+        }
+    }
+    String::from_utf8_lossy(&buffer).into_owned()
+}
+
+#[derive(Default)]
+pub struct MemoryStore {
+    entries: Mutex<HashMap<String, String>>,
+}
+
+impl MemoryStore {
+    pub fn leaked() -> &'static Self {
+        Box::leak(Box::default())
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.entries.lock().unwrap().keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+}
+
+impl SecretBackend for MemoryStore {
+    fn read(&self, key: &str) -> CommandResult<Option<String>> {
+        Ok(self.entries.lock().unwrap().get(key).cloned())
+    }
+
+    fn write(&self, key: &str, value: &str) -> CommandResult<()> {
+        self.entries
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), value.to_string());
+        Ok(())
+    }
+
+    fn remove(&self, key: &str) -> CommandResult<()> {
+        self.entries.lock().unwrap().remove(key);
+        Ok(())
+    }
+}

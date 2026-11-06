@@ -15,7 +15,8 @@ function describeReset(resetsAt: number, now: number, locale: string): string {
 }
 
 export class NotifyUsageQuartiles {
-  private readonly states = new Map<UsageWindowKind, WindowAlertState>();
+  private readonly states = new Map<string, Map<UsageWindowKind, WindowAlertState>>();
+  private lastAccountId: string | null = null;
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -26,26 +27,41 @@ export class NotifyUsageQuartiles {
     private readonly clock: Clock,
   ) {}
 
-  execute(snapshot: UsageSnapshot): Promise<void> {
-    this.queue = this.queue.then(() => this.run(snapshot)).catch(() => undefined);
+  execute(accountId: string, snapshot: UsageSnapshot): Promise<void> {
+    this.queue = this.queue.then(() => this.run(accountId, snapshot)).catch(() => undefined);
     return this.queue;
   }
 
-  private async run(snapshot: UsageSnapshot): Promise<void> {
+  private async run(accountId: string, snapshot: UsageSnapshot): Promise<void> {
     try {
-      const { usageAlerts } = await this.settings.load();
+      const { usageAlerts, claude } = await this.settings.load();
+      if (claude.activeAccountId !== accountId) {
+        this.lastAccountId = claude.activeAccountId;
+        return;
+      }
+      const silent = this.lastAccountId !== accountId;
+      this.lastAccountId = accountId;
+      const states = this.statesOf(accountId);
       const notices = USAGE_WINDOWS.flatMap(({ kind, label }) => {
         const reading = snapshot[kind];
         if (reading === null) return [];
-        const outcome = evaluateUsageAlert(this.states.get(kind) ?? null, reading, usageAlerts[kind]);
-        this.states.set(kind, outcome.state);
+        const outcome = evaluateUsageAlert(states.get(kind) ?? null, reading, usageAlerts[kind]);
+        states.set(kind, outcome.state);
         return outcome.alert === null ? [] : [this.toNotice(label, outcome.alert, reading.utilization, reading.resetsAt)];
       });
-      if (notices.length === 0 || !(await this.notificationsConnected())) return;
+      if (silent || notices.length === 0 || !(await this.notificationsConnected())) return;
       for (const notice of notices) await this.notifier.notify(notice).catch(() => undefined);
     } catch {
       return;
     }
+  }
+
+  private statesOf(accountId: string): Map<UsageWindowKind, WindowAlertState> {
+    const known = this.states.get(accountId);
+    if (known !== undefined) return known;
+    const created = new Map<UsageWindowKind, WindowAlertState>();
+    this.states.set(accountId, created);
+    return created;
   }
 
   private async notificationsConnected(): Promise<boolean> {

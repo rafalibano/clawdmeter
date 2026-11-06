@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID } from './claude-accounts';
 import { createDefaultSettings } from './defaults';
 import { applyPatch, mergePatches } from './settings-patch';
 import { isPageEnabled } from './page-enabled';
@@ -122,3 +123,57 @@ describe('usage alerts in the patch', () => {
     expect(mergePatches({}, {})).not.toHaveProperty('usageAlerts');
   });
 });
+
+describe('Claude accounts in the patch', () => {
+  const PERSONAL = { id: 'a1', name: 'Personal' };
+  const WORK = { id: 'a2', name: 'Work' };
+  const withAccounts = () => applyPatch(createDefaultSettings(), { claude: { accounts: [PERSONAL, WORK], activeAccountId: 'a2' } });
+
+  it('replaces the account list and the active account', () => {
+    expect(withAccounts().claude).toEqual({ clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID, accounts: [PERSONAL, WORK], activeAccountId: 'a2' });
+  });
+
+  it('ignores an invalid list as a whole: duplicated name (case-insensitive), bad id, long name or more than five', () => {
+    const base = withAccounts();
+    for (const accounts of [
+      [PERSONAL, { id: 'a3', name: 'personal' }],
+      [{ id: 'no spaces', name: 'X' }],
+      [{ id: 'a3', name: 'x'.repeat(41) }],
+      [{ id: 'a3', name: '   ' }],
+      Array.from({ length: 6 }, (_, index) => ({ id: `a${index}`, name: `N${index}` })),
+    ]) {
+      expect(applyPatch(base, { claude: { accounts } }).claude.accounts).toEqual([PERSONAL, WORK]);
+    }
+  });
+
+  it('trims the names it accepts', () => {
+    expect(applyPatch(createDefaultSettings(), { claude: { accounts: [{ id: 'a1', name: '  Personal ' }] } }).claude.accounts).toEqual([PERSONAL]);
+  });
+
+  it('an active id that does not exist is ignored; removing the active account moves to the first remaining', () => {
+    const base = withAccounts();
+    expect(applyPatch(base, { claude: { activeAccountId: 'gone' } }).claude.activeAccountId).toBe('a2');
+    expect(applyPatch(base, { claude: { activeAccountId: 'a1' } }).claude.activeAccountId).toBe('a1');
+    expect(applyPatch(base, { claude: { accounts: [PERSONAL] } }).claude.activeAccountId).toBe('a1');
+    expect(applyPatch(base, { claude: { accounts: [] } }).claude.activeAccountId).toBeNull();
+  });
+
+  it('accepts only a UUID as client id', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { claude: { clientId: 'x' } }).claude.clientId).toBe(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
+    expect(applyPatch(base, { claude: { clientId: '11111111-2222-4333-8444-555555555555' } }).claude.clientId).toBe(
+      '11111111-2222-4333-8444-555555555555',
+    );
+  });
+
+  it('other patches keep the Claude section and mergePatches combines its fields', () => {
+    const base = withAccounts();
+    expect(applyPatch(base, { language: 'pt-BR' }).claude).toEqual(base.claude);
+    expect(mergePatches({ claude: { activeAccountId: 'a1' } }, { claude: { clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID } }).claude).toEqual({
+      activeAccountId: 'a1',
+      clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+    });
+    expect(mergePatches({}, {})).not.toHaveProperty('claude');
+  });
+});
+

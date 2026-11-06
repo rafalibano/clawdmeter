@@ -1,6 +1,7 @@
 import { DEFAULT_LANGUAGE, type AppSettings } from './app-settings';
 import { DEFAULT_PROJECTION_METHOD } from '../usage/projection-method';
 import { defaultUsageAlerts } from '../usage/usage-alerts';
+import { defaultClaudeSettings } from './claude-accounts';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
 
@@ -19,5 +20,6 @@ export function createDefaultSettings(): AppSettings {
     projectionMethod: DEFAULT_PROJECTION_METHOD,
     seriesColors: { fiveHour: null, sevenDay: null },
     usageAlerts: defaultUsageAlerts(),
+    claude: defaultClaudeSettings(),
   };
 }
