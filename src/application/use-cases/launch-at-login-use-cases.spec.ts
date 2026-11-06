@@ -71,4 +71,15 @@ describe('launch at login use cases', () => {
     system.ignoreWrites = true;
     expect(await new SetLaunchAtLogin(system).execute(false)).toEqual({ supported: true, enabled: true, failed: 'write' });
   });
+
+  it('SetLaunchAtLogin keeps failed read when the write worked and only the read-back fails', async () => {
+    const system = new FakeLaunchAtLogin(false);
+    const enable = system.enable.bind(system);
+    system.enable = async () => {
+      await enable();
+      system.failRead = true;
+    };
+    expect(await new SetLaunchAtLogin(system).execute(true)).toEqual({ supported: true, enabled: false, failed: 'read' });
+    expect(system.writes).toEqual([true]);
+  });
 });

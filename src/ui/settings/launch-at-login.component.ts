@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { I18n } from '../i18n';
 import { LaunchAtLoginFacade } from './launch-at-login.facade';
 import { SettingsSectionComponent } from './settings-section.component';
+import { launchAtLoginDescribedBy, launchAtLoginSummary } from './settings-summaries';
 
 @Component({
   selector: 'cm-launch-at-login',
@@ -39,14 +40,15 @@ export class LaunchAtLoginComponent {
   protected readonly launchAtLogin = inject(LaunchAtLoginFacade);
   protected readonly i18n = inject(I18n);
 
-  protected readonly summary = computed(() => {
-    if (this.launchAtLogin.failed()) return this.i18n.t('settings.launchAtLogin.unknown');
-    return this.i18n.t(this.launchAtLogin.enabled() ? 'settings.launchAtLogin.on' : 'settings.launchAtLogin.off');
-  });
-
-  protected readonly describedBy = computed(() =>
-    this.launchAtLogin.failed() ? 'launch-at-login-hint launch-at-login-error' : 'launch-at-login-hint',
+  protected readonly summary = computed(() =>
+    launchAtLoginSummary(this.i18n.localizer(), {
+      loaded: this.launchAtLogin.ready(),
+      enabled: this.launchAtLogin.enabled(),
+      failed: this.launchAtLogin.failed(),
+    }),
   );
+
+  protected readonly describedBy = computed(() => launchAtLoginDescribedBy(this.launchAtLogin.failed()));
 
   protected toggle(event: Event): void {
     void this.launchAtLogin.set((event.target as HTMLInputElement).checked);

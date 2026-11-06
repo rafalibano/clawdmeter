@@ -15,6 +15,7 @@ export class SetLaunchAtLogin {
       return { ...(await this.read.execute()), failed: 'write' };
     }
     const state = await this.read.execute();
+    if (state.failed === 'read') return state;
     return state.failed || state.enabled !== enabled ? { ...state, failed: 'write' } : state;
   }
 }

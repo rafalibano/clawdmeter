@@ -87,8 +87,9 @@ describe('capability default', () => {
     ]);
 
     const dir = join(__dirname, '../src-tauri/capabilities');
-    const autostart = readdirSync(dir)
-      .filter((file) => file.endsWith('.json'))
+    const files = readdirSync(dir);
+    expect(files.filter((file) => !file.endsWith('.json'))).toEqual([]);
+    const autostart = files
       .flatMap((file) =>
         (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { permissions?: Array<string | Permission> }).permissions ?? [],
       )
