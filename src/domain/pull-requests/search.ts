@@ -5,6 +5,7 @@ export const RECENT_REVIEW_DAYS = 30;
 const SORT = 'sort:updated-desc';
 
 export const MINE_QUERY = `author:@me is:open is:pr archived:false ${SORT}`;
+export const ASSIGNED_QUERY = `assignee:@me -author:@me is:open is:pr archived:false ${SORT}`;
 export const TO_REVIEW_QUERY = `review-requested:@me is:open is:pr archived:false ${SORT}`;
 export const REVIEWED_OPEN_QUERY = `reviewed-by:@me -author:@me is:open is:pr archived:false ${SORT}`;
 

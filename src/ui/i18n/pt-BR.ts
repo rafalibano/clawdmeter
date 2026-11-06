@@ -209,6 +209,7 @@ export const ptBR: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada há {span}',
 
   'prs.section.mine': 'Meus PRs abertos',
+  'prs.section.assigned': 'Atribuídos a mim (de outros)',
   'prs.section.to-review': 'Para revisar',
   'prs.section.reviewed': 'Revisados por mim (abertos e últimos 30 dias)',
   'prs.group.deploy': 'Deploy',

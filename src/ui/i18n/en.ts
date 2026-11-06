@@ -219,6 +219,7 @@ export const en = {
   'session.attention.long': 'Busy for {span}',
 
   'prs.section.mine': 'My open PRs',
+  'prs.section.assigned': 'Assigned to me (by others)',
   'prs.section.to-review': 'To review',
   'prs.section.reviewed': 'Reviewed by me (open and last 30 days)',
   'prs.group.deploy': 'Deploy',

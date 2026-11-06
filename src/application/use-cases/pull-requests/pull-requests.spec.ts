@@ -55,14 +55,39 @@ describe('PRs', () => {
     });
     const data = await features.loadMine.execute();
     expect(gateway.calls).toEqual([
-      { token: 'gh-token', queries: { mine: 'author:@me is:open is:pr archived:false sort:updated-desc' }, limit: PULL_REQUEST_LIMIT },
+      {
+        token: 'gh-token',
+        queries: {
+          mine: 'author:@me is:open is:pr archived:false sort:updated-desc',
+          assigned: 'assignee:@me -author:@me is:open is:pr archived:false sort:updated-desc',
+        },
+        limit: PULL_REQUEST_LIMIT,
+      },
     ]);
     const [section] = data.sections;
-    expect(section).toMatchObject({ id: 'mine', shown: 3, total: 3 });
+    expect(section).toMatchObject({ id: 'mine', shown: 3, total: 3, showAuthor: false });
     expect(section?.groups.map((group) => [group.title, group.collapsedByDefault])).toEqual([
       ['acme/api', false],
       ['Deploy', true],
     ]);
+  });
+
+  it('returns the mine and assigned sections in order, with the author shown only on assigned', async () => {
+    gateway.lists.set('mine', { items: [pr('m1', 'acme/api')], total: 1 });
+    gateway.lists.set('assigned', { items: [pr('a1', 'acme/web'), pr('a2', 'acme/k8s')], total: 7 });
+    const data = await features.loadMine.execute();
+    expect(data.sections.map((section) => [section.id, section.shown, section.total, section.showAuthor])).toEqual([
+      ['mine', 1, 1, false],
+      ['assigned', 2, 7, true],
+    ]);
+    expect(data.sections[1]?.searchUrl).toContain(encodeURIComponent('assignee:@me -author:@me'));
+    expect(data.sections[1]?.groups.map((group) => group.title)).toEqual(['acme/web', 'Deploy']);
+  });
+
+  it('keeps an empty assigned section when nothing is assigned', async () => {
+    gateway.lists.set('mine', { items: [pr('m1', 'acme/api')], total: 1 });
+    const data = await features.loadMine.execute();
+    expect(data.sections[1]).toMatchObject({ id: 'assigned', groups: [], shown: 0, total: 0, showAuthor: true });
   });
 
   it('uses the PAT from the keychain when the method is not gh-cli', async () => {
@@ -111,8 +136,8 @@ describe('Reviews', () => {
       reviewedRecent: 'reviewed-by:@me -author:@me is:pr archived:false is:closed closed:>=2026-10-06 sort:updated-desc',
     });
     const [toReview, reviewed] = data.sections;
-    expect(toReview).toMatchObject({ id: 'to-review', shown: 1, total: 1 });
-    expect(reviewed).toMatchObject({ id: 'reviewed', shown: 3, total: 4 });
+    expect(toReview).toMatchObject({ id: 'to-review', shown: 1, total: 1, showAuthor: true });
+    expect(reviewed).toMatchObject({ id: 'reviewed', shown: 3, total: 4, showAuthor: true });
     expect(reviewed?.searchUrl).toContain(encodeURIComponent('(is:open OR closed:>=2026-10-06)'));
     expect(reviewed?.groups.map((group) => group.title)).toEqual(['acme/api', 'Deploy']);
     expect(reviewed?.groups[1]?.collapsedByDefault).toBe(true);
