@@ -98,7 +98,7 @@ export function createComposition(): Application {
     settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
     connectionAdapters,
     updateChecker: new TauriUpdateChecker(commands),
-    launchAtLogin: new TauriLaunchAtLogin(),
+    launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>
       createSkills(
         {

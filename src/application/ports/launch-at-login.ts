@@ -1,5 +1,10 @@
+export interface LaunchAtLoginStatus {
+  supported: boolean;
+  enabled: boolean;
+}
+
 export interface LaunchAtLogin {
-  isEnabled(): Promise<boolean>;
+  status(): Promise<LaunchAtLoginStatus>;
   enable(): Promise<void>;
   disable(): Promise<void>;
 }

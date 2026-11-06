@@ -69,8 +69,15 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Uninstall
 
-1. Quit the app (right-click the menu bar icon > Quit) and delete **ClawdMeter** from the Applications folder.
-2. Delete the app folders:
+1. If you turned on **Settings > System > Launch at login**, turn it off before deleting the app. If the app is already gone, delete the login entry by hand:
+
+   ```bash
+   rm -f "$HOME/Library/LaunchAgents/ClawdMeter.plist"
+   ```
+
+   On Windows, delete the `ClawdMeter` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (Registry Editor, or `reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v ClawdMeter /f`).
+2. Quit the app (right-click the menu bar icon > Quit) and delete **ClawdMeter** from the Applications folder.
+3. Delete the app folders:
 
    ```bash
    rm -rf "$HOME/Library/Application Support/com.mottu.clawdmeter" \
@@ -78,7 +85,7 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
           "$HOME/Library/Caches/com.mottu.clawdmeter"
    ```
 
-3. Open the **Keychain Access** app, search for `com.mottu.clawdmeter` and delete the items found. The Claude Code credential does not belong to ClawdMeter and must stay.
+4. Open the **Keychain Access** app, search for `com.mottu.clawdmeter` and delete the items found. The Claude Code credential does not belong to ClawdMeter and must stay.
 
 ## Common problems
 

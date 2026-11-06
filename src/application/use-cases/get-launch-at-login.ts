@@ -1,6 +1,7 @@
 import type { LaunchAtLogin } from '../ports';
 
 export interface LaunchAtLoginState {
+  supported: boolean;
   enabled: boolean;
   failed: 'read' | 'write' | false;
 }
@@ -10,9 +11,10 @@ export class GetLaunchAtLogin {
 
   async execute(): Promise<LaunchAtLoginState> {
     try {
-      return { enabled: await this.launchAtLogin.isEnabled(), failed: false };
+      const { supported, enabled } = await this.launchAtLogin.status();
+      return { supported, enabled: supported && enabled, failed: false };
     } catch {
-      return { enabled: false, failed: 'read' };
+      return { supported: true, enabled: false, failed: 'read' };
     }
   }
 }

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Settings has a new **System** section with a **Launch at login** switch (macOS and Windows). It is off by default, reads the state from the system each time Settings opens and, if the system refuses the change, goes back to the real state and says so (a failed read has its own message, and the collapsed summary shows "Status unavailable"). Uses `tauri-plugin-autostart` (a LaunchAgent on macOS, a `Run` registry value on Windows).
+- Settings has a new **System** section with a **Launch at login** switch (macOS and Windows; the section is hidden on other systems). It is off by default, reads the state from the system each time Settings opens and, if the system refuses the change, goes back to the real state and says so (a failed read has its own message, and the collapsed summary shows "Status unavailable"). On macOS it writes a LaunchAgent tied to the app's bundle identifier, refuses to turn on while the app runs from the disk image or from a temporary copy made by macOS (move it to Applications first) and, on each launch, points the agent at the current copy of the app. On Windows it writes only to the current user's `Run` key, so turning it off never needs administrator rights.
 
 ## 0.1.1
 

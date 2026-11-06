@@ -1,4 +1,4 @@
-import type { LaunchAtLogin } from '../ports';
+import type { LaunchAtLogin, LaunchAtLoginStatus } from '../ports';
 
 export class FakeLaunchAtLogin implements LaunchAtLogin {
   failRead = false;
@@ -6,11 +6,14 @@ export class FakeLaunchAtLogin implements LaunchAtLogin {
   ignoreWrites = false;
   readonly writes: boolean[] = [];
 
-  constructor(public enabled = false) {}
+  constructor(
+    public enabled = false,
+    public supported = true,
+  ) {}
 
-  async isEnabled(): Promise<boolean> {
+  async status(): Promise<LaunchAtLoginStatus> {
     if (this.failRead) throw new Error('launch agent unreadable');
-    return this.enabled;
+    return { supported: this.supported, enabled: this.enabled };
   }
 
   async enable(): Promise<void> {

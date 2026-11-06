@@ -5,10 +5,11 @@ import { APPLICATION } from '../shell/application.token';
 @Injectable()
 export class LaunchAtLoginFacade {
   private readonly app = inject(APPLICATION);
-  private readonly state = signal<LaunchAtLoginState>({ enabled: false, failed: false });
+  private readonly state = signal<LaunchAtLoginState>({ supported: false, enabled: false, failed: false });
   private readonly loaded = signal(false);
   private readonly pending = signal(false);
 
+  readonly supported = computed(() => this.loaded() && this.state().supported);
   readonly enabled = computed(() => this.state().enabled);
   readonly failed = computed(() => this.state().failed);
   readonly ready = this.loaded.asReadonly();
@@ -22,11 +23,11 @@ export class LaunchAtLoginFacade {
     if (this.busy()) return;
     this.pending.set(true);
     const previous = this.state();
-    this.state.set({ enabled, failed: false });
+    this.state.set({ ...previous, enabled, failed: false });
     try {
       this.state.set(await this.app.setLaunchAtLogin.execute(enabled));
     } catch {
-      this.state.set({ enabled: previous.enabled, failed: 'write' });
+      this.state.set({ ...previous, failed: 'write' });
     } finally {
       this.pending.set(false);
     }
@@ -36,7 +37,7 @@ export class LaunchAtLoginFacade {
     try {
       this.state.set(await this.app.getLaunchAtLogin.execute());
     } catch {
-      this.state.set({ enabled: false, failed: 'read' });
+      this.state.set({ supported: true, enabled: false, failed: 'read' });
     } finally {
       this.loaded.set(true);
     }

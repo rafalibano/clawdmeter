@@ -1,20 +1,19 @@
-import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
-import type { LaunchAtLogin } from '../../application/ports';
-
-const pluginApi: LaunchAtLogin = { isEnabled, enable, disable };
+import type { LaunchAtLogin, LaunchAtLoginStatus } from '../../application/ports';
+import type { TauriCommands } from './tauri-commands';
 
 export class TauriLaunchAtLogin implements LaunchAtLogin {
-  constructor(private readonly api: LaunchAtLogin = pluginApi) {}
+  constructor(private readonly commands: TauriCommands) {}
 
-  isEnabled(): Promise<boolean> {
-    return this.api.isEnabled();
+  async status(): Promise<LaunchAtLoginStatus> {
+    const raw = await this.commands.call<Partial<LaunchAtLoginStatus> | null>('launch_at_login_status');
+    return { supported: raw?.supported === true, enabled: raw?.enabled === true };
   }
 
   enable(): Promise<void> {
-    return this.api.enable();
+    return this.commands.call<void>('launch_at_login_enable');
   }
 
   disable(): Promise<void> {
-    return this.api.disable();
+    return this.commands.call<void>('launch_at_login_disable');
   }
 }

@@ -12,7 +12,6 @@ use commands::oauth_loopback::LoopbackRegistry;
 use commands::process::ProcessRegistry;
 use commands::updater::PendingUpdate;
 use tauri::Manager;
-use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,10 +26,6 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            None,
-        ))
         .manage(ProcessRegistry::default())
         .manage(LoopbackRegistry::default())
         .manage(PendingUpdate::default())
@@ -51,6 +46,9 @@ pub fn run() {
             commands::open_external::open_url,
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
+            commands::launch_at_login::launch_at_login_status,
+            commands::launch_at_login::launch_at_login_enable,
+            commands::launch_at_login::launch_at_login_disable,
             commands::tray_usage::tray_set_usage,
             commands::updater::updater_check,
             commands::updater::updater_install,
@@ -85,6 +83,18 @@ pub fn run() {
             }
             popover_log::write(&format!("app-start version={}", app.package_info().version));
             platform::configure_app(app);
+            // A dev build would repoint the installed app's login entry at target/debug.
+            if !cfg!(debug_assertions) {
+                let launch_at_login = commands::launch_at_login::system(app.handle());
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) = commands::launch_at_login::refresh(&launch_at_login) {
+                        popover_log::write(&format!(
+                            "launch-at-login refresh {:?}: {}",
+                            error.kind, error.message
+                        ));
+                    }
+                });
+            }
             tray::create(app.handle())?;
             tray::prepare_popover(app.handle());
             tray::register_shortcut(app.handle());

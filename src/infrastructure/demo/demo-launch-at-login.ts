@@ -1,10 +1,10 @@
-import type { LaunchAtLogin } from '../../application/ports';
+import type { LaunchAtLogin, LaunchAtLoginStatus } from '../../application/ports';
 
 export class DemoLaunchAtLogin implements LaunchAtLogin {
   private enabled = false;
 
-  async isEnabled(): Promise<boolean> {
-    return this.enabled;
+  async status(): Promise<LaunchAtLoginStatus> {
+    return { supported: true, enabled: this.enabled };
   }
 
   async enable(): Promise<void> {
