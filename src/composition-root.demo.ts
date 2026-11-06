@@ -3,7 +3,7 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
+import { ImportExternalUsageHistory, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoCalendar,
@@ -42,6 +42,7 @@ export function createComposition(): Application {
   const connectionAdapters = createDemoConnectionAdapters(world);
   const origin = clock.now();
   const usageModel = new DemoUsageModel(origin, world.usage.high);
+  const settingsStore = new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings'));
   const pullRequests = createPullRequests(
     {
       prefs: connectionAdapters.prefs,
@@ -53,7 +54,7 @@ export function createComposition(): Application {
   const application: Application = createApplication({
     clock,
     language,
-    settingsStore: new JsonSettingsStore(new LocalStorageJsonFile('clawdmeter.settings')),
+    settingsStore,
     connectionAdapters,
     updateChecker: new DemoUpdateChecker(world.update),
     skills: ({ connections }) =>
@@ -77,6 +78,7 @@ export function createComposition(): Application {
           connections,
           new DemoUsageIndicator(),
           new ImportExternalUsageHistory(new DemoExternalUsageHistorySource()),
+          new NotifyUsageQuartiles(new DemoNotifier(), connections, translator, settingsStore, clock),
         ),
       }),
       createSessionsPage({

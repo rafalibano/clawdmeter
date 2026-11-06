@@ -45,6 +45,7 @@ describe('migrateSettings', () => {
       language: 'es-MX',
       projectionMethod: 'since-reset',
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
+      usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
@@ -194,7 +195,7 @@ describe('migration 6 -> 7 (series colors)', () => {
 describe('migration 7 -> 8 (last 7 days becomes the default)', () => {
   it('every saved 14d becomes 7d, since the old default and an explicit choice look the same', () => {
     const migrated = migrateSettings({ schemaVersion: 7, projectionMethod: '14d', language: 'pt-BR' });
-    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.projectionMethod).toBe('7d');
     expect(migrated.language).toBe('pt-BR');
   });
@@ -207,5 +208,37 @@ describe('migration 7 -> 8 (last 7 days becomes the default)', () => {
 
   it('a 14d chosen after the migration is kept', () => {
     expect(migrateSettings({ schemaVersion: 8, projectionMethod: '14d' }).projectionMethod).toBe('14d');
+  });
+});
+
+describe('migration 8 -> 9 (usage alerts)', () => {
+  it('a file without usageAlerts gets the default of 50% on both windows', () => {
+    const migrated = migrateSettings({ schemaVersion: 8, language: 'pt-BR' });
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [50], sevenDay: [50] });
+    expect(migrated.language).toBe('pt-BR');
+  });
+
+  it('the default is part of createDefaultSettings and is not shared between calls', () => {
+    const defaults = createDefaultSettings();
+    expect(defaults.usageAlerts).toEqual({ fiveHour: [50], sevenDay: [50] });
+    defaults.usageAlerts.fiveHour.push(75);
+    expect(createDefaultSettings().usageAlerts.fiveHour).toEqual([50]);
+  });
+
+  it('an invalid value becomes the default, per window', () => {
+    expect(migrateSettings({ schemaVersion: 8, usageAlerts: 'x' }).usageAlerts).toEqual({ fiveHour: [50], sevenDay: [50] });
+    expect(migrateSettings({ schemaVersion: 8, usageAlerts: { fiveHour: 'x', sevenDay: [75] } }).usageAlerts).toEqual({
+      fiveHour: [50],
+      sevenDay: [75],
+    });
+  });
+
+  it('lists are sorted, deduplicated and keep only valid quartiles; an empty list is kept', () => {
+    const migrated = migrateSettings({
+      schemaVersion: 9,
+      usageAlerts: { fiveHour: [100, 25, 25, 30, '50', null], sevenDay: [] },
+    });
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [25, 100], sevenDay: [] });
   });
 });

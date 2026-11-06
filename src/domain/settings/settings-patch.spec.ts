@@ -95,3 +95,30 @@ describe('series colors in the patch', () => {
     expect(mergePatches({}, {})).not.toHaveProperty('seriesColors');
   });
 });
+
+describe('usage alerts in the patch', () => {
+  it('changes each window and keeps the other untouched', () => {
+    const next = applyPatch(createDefaultSettings(), { usageAlerts: { fiveHour: [25, 75] } });
+    expect(next.usageAlerts).toEqual({ fiveHour: [25, 75], sevenDay: [50] });
+  });
+
+  it('normalizes the list and allows an empty one', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { usageAlerts: { sevenDay: [100, 25, 25, 33 as never] } }).usageAlerts.sevenDay).toEqual([25, 100]);
+    expect(applyPatch(base, { usageAlerts: { sevenDay: [] } }).usageAlerts.sevenDay).toEqual([]);
+  });
+
+  it('ignores a value that is not a list', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { usageAlerts: { fiveHour: 'x' as never, sevenDay: 50 as never } }).usageAlerts).toEqual(base.usageAlerts);
+    expect(applyPatch(base, {}).usageAlerts).toEqual(base.usageAlerts);
+  });
+
+  it('mergePatches combines both windows', () => {
+    expect(mergePatches({ usageAlerts: { fiveHour: [25] } }, { usageAlerts: { sevenDay: [] } }).usageAlerts).toEqual({
+      fiveHour: [25],
+      sevenDay: [],
+    });
+    expect(mergePatches({}, {})).not.toHaveProperty('usageAlerts');
+  });
+});

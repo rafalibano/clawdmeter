@@ -1,6 +1,9 @@
 export type ApplicationMessageKey =
   | 'notice.run.succeeded'
   | 'notice.run.failed'
+  | 'notice.usage.title'
+  | 'notice.usage.body'
+  | 'notice.usage.body.resets'
   | 'tooltip.unavailable'
   | 'tooltip.noData'
   | 'tooltip.resets'

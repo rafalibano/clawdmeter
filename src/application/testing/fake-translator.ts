@@ -3,6 +3,9 @@ import type { ApplicationMessageKey, MessageArgs, Translator } from '../ports';
 const TEXTS: Record<ApplicationMessageKey, string> = {
   'notice.run.succeeded': '{name} finished',
   'notice.run.failed': '{name} failed',
+  'notice.usage.title': '{window} usage at {percent}%',
+  'notice.usage.body': 'Check your usage in ClawdMeter.',
+  'notice.usage.body.resets': 'Resets {when}',
   'tooltip.unavailable': 'ClawdMeter · usage unavailable',
   'tooltip.noData': '{label}: no data',
   'tooltip.resets': 'resets {when}',

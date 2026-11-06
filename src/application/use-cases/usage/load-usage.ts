@@ -4,6 +4,7 @@ import { recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
 import type { ImportExternalUsageHistory } from './import-external-usage-history';
+import type { NotifyUsageQuartiles } from './notify-usage-quartiles';
 import type {
   Clock,
   ConnectionPrefsStore,
@@ -29,12 +30,14 @@ export class LoadUsage {
     private readonly connections: UsageConnections,
     private readonly indicator: UsageIndicator,
     private readonly external?: ImportExternalUsageHistory,
+    private readonly alerts?: NotifyUsageQuartiles,
   ) {}
 
   async execute(): Promise<UsageData> {
     const now = this.clock.now();
     const snapshot = await this.fetchSnapshot(now);
     this.indicate(snapshot, now);
+    this.alerts?.execute(snapshot).catch(() => undefined);
     const stored = await this.historyStore.load();
     const recorded = recordSnapshot(stored, snapshot, now);
     const imported = await this.migrateExternal(recorded, now);

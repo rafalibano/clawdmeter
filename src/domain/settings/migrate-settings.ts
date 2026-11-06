@@ -2,6 +2,7 @@ import type { AppSettings, SeriesColorSettings, ThemeMode } from './app-settings
 import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
+import { defaultUsageAlerts, normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
 import { isHexColor } from './hex-color';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
@@ -49,6 +50,11 @@ const addSeriesColors: Migration = (raw) => ({
   seriesColors: readSeriesColors(raw['seriesColors']),
 });
 
+const addUsageAlerts: Migration = (raw) => ({
+  ...raw,
+  usageAlerts: readUsageAlerts(raw['usageAlerts']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -58,6 +64,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addProjectionMethod,
   addSeriesColors,
   adoptSevenDayProjection,
+  addUsageAlerts,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,6 +87,15 @@ function optionalHex(value: unknown): string | null {
 function readSeriesColors(value: unknown): SeriesColorSettings {
   const colors = isRecord(value) ? value : {};
   return { fiveHour: optionalHex(colors['fiveHour']), sevenDay: optionalHex(colors['sevenDay']) };
+}
+
+function readUsageAlerts(value: unknown): UsageAlertSettings {
+  const defaults = defaultUsageAlerts();
+  if (!isRecord(value)) return defaults;
+  return {
+    fiveHour: Array.isArray(value['fiveHour']) ? normalizeQuartiles(value['fiveHour']) : defaults.fiveHour,
+    sevenDay: Array.isArray(value['sevenDay']) ? normalizeQuartiles(value['sevenDay']) : defaults.sevenDay,
+  };
 }
 
 function readEnabledPages(value: unknown): Record<string, boolean> {
@@ -108,6 +124,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     language: isAppLanguage(raw['language']) ? raw['language'] : DEFAULT_LANGUAGE,
     projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
     seriesColors: readSeriesColors(raw['seriesColors']),
+    usageAlerts: readUsageAlerts(raw['usageAlerts']),
   };
 }
 

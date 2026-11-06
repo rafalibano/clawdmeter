@@ -1,6 +1,7 @@
 import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings } from './app-settings';
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
+import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
 import { isHexColor } from './hex-color';
 import type { PageId } from './page-id';
 
@@ -10,6 +11,7 @@ export interface SettingsPatch {
   language?: AppLanguage;
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
+  usageAlerts?: Partial<UsageAlertSettings>;
 }
 
 export function mergePatches(first: SettingsPatch, second: SettingsPatch): SettingsPatch {
@@ -23,6 +25,9 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   if (projectionMethod !== undefined) merged.projectionMethod = projectionMethod;
   if (first.seriesColors !== undefined || second.seriesColors !== undefined) {
     merged.seriesColors = { ...first.seriesColors, ...second.seriesColors };
+  }
+  if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
+    merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
   }
   return merged;
 }
@@ -48,6 +53,13 @@ function applySeriesColors(current: SeriesColorSettings, patch: Partial<SeriesCo
   };
 }
 
+function applyUsageAlerts(current: UsageAlertSettings, patch: Partial<UsageAlertSettings>): UsageAlertSettings {
+  return {
+    fiveHour: Array.isArray(patch.fiveHour) ? normalizeQuartiles(patch.fiveHour) : current.fiveHour,
+    sevenDay: Array.isArray(patch.sevenDay) ? normalizeQuartiles(patch.sevenDay) : current.sevenDay,
+  };
+}
+
 export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSettings {
   return {
     ...current,
@@ -56,5 +68,6 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     language: isAppLanguage(patch.language) ? patch.language : current.language,
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
+    usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
   };
 }
