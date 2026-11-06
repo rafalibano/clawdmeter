@@ -9,7 +9,7 @@ import { FakeSettingsStore } from '../../testing/fake-settings-store';
 import { FakeTranslator } from '../../testing/fake-translator';
 import { NotifyUsageQuartiles } from './notify-usage-quartiles';
 
-const START = 1_800_014_400_000;
+const START = new Date(2027, 0, 15, 12).getTime();
 
 const snapshot = (fiveHour: number | null, sevenDay: number | null, resetsAt: number | null = START + 3_600_000): UsageSnapshot => ({
   fiveHour: fiveHour === null ? null : { utilization: fiveHour, resetsAt },
@@ -59,6 +59,13 @@ describe('NotifyUsageQuartiles', () => {
     await notify.execute(snapshot(5, 10, null));
     await notify.execute(snapshot(60, 10, null));
     expect(notifier.sent.at(-1)?.body).toBe('Check your usage in ClawdMeter.');
+  });
+
+  it('the body includes the weekday when the window resets on another local day', async () => {
+    const nextDay = new Date(2027, 0, 16, 9).getTime();
+    await notify.execute(snapshot(10, null, nextDay));
+    await notify.execute(snapshot(55, null, nextDay));
+    expect(notifier.sent[0].body).toMatch(/^Resets \S+ 09:00$/);
   });
 
   it('respects the list of each window', async () => {

@@ -87,6 +87,12 @@ describe('evaluateUsageAlert', () => {
     expect(run([10, 50, 45, 50], [50])).toEqual([null, 50, null, null]);
   });
 
+  it('the margin boundary is exact: 5 points below restarts only at the quartile minus 5', () => {
+    expect(run([10, 50, 44.9, 50], [50])).toEqual([null, 50, null, 50]);
+    expect(run([10, 100, 94, 100], [100])).toEqual([null, 100, null, 100]);
+    expect(run([10, 100, 95, 100], [100])).toEqual([null, 100, null, null]);
+  });
+
   it('a drop beyond the margin restarts silently and keeps the quartiles still above', () => {
     const marked = evaluateUsageAlert(evaluateUsageAlert(null, reading(10), [25]).state, reading(60), [25]);
     const dropped = evaluateUsageAlert(marked.state, reading(30), [25]);
