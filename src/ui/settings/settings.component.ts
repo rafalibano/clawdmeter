@@ -21,11 +21,12 @@ import { appearanceSummary, pagesSummary, projectionSummary } from './settings-s
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
 import { ConnectionsComponent } from './connections/connections.component';
+import { LaunchAtLoginComponent } from './launch-at-login.component';
 import { UpdateSettingsComponent } from '../updates/update-settings.component';
 
 @Component({
   selector: 'cm-settings',
-  imports: [ColorPickerComponent, ConnectionsComponent, SettingsSectionComponent, UpdateSettingsComponent],
+  imports: [ColorPickerComponent, ConnectionsComponent, LaunchAtLoginComponent, SettingsSectionComponent, UpdateSettingsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

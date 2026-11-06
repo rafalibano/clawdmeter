@@ -5,6 +5,8 @@ import {
   connectionDots,
   connectionsAttentionText,
   connectionsNeedAttention,
+  launchAtLoginDescribedBy,
+  launchAtLoginSummary,
   pagesSummary,
   projectionSummary,
 } from './settings-summaries';
@@ -40,5 +42,37 @@ describe('settings section summaries', () => {
     expect(projectionSummary(pt, '14d')).toBe('Últimos 14 dias');
     expect(projectionSummary(pt, '7d')).toBe('Últimos 7 dias');
     expect(appearanceSummary(pt, 'dark')).toBe('Escuro');
+  });
+
+  describe('launch at login', () => {
+    const en = new Localizer('en');
+
+    it('summary shows Off and On from the real state', () => {
+      expect(launchAtLoginSummary(en, { loaded: true, enabled: false, failed: false })).toBe(en.t('settings.launchAtLogin.off'));
+      expect(launchAtLoginSummary(en, { loaded: true, enabled: true, failed: false })).toBe(en.t('settings.launchAtLogin.on'));
+    });
+
+    it('summary is unavailable after a failed read', () => {
+      expect(launchAtLoginSummary(en, { loaded: true, enabled: false, failed: 'read' })).toBe(
+        en.t('settings.launchAtLogin.unknown'),
+      );
+    });
+
+    it('summary keeps the known state after a failed write', () => {
+      expect(launchAtLoginSummary(en, { loaded: true, enabled: true, failed: 'write' })).toBe(en.t('settings.launchAtLogin.on'));
+      expect(launchAtLoginSummary(en, { loaded: true, enabled: false, failed: 'write' })).toBe(en.t('settings.launchAtLogin.off'));
+    });
+
+    it('summary is unavailable before the first load', () => {
+      expect(launchAtLoginSummary(en, { loaded: false, enabled: false, failed: false })).toBe(
+        en.t('settings.launchAtLogin.unknown'),
+      );
+    });
+
+    it('the switch points at the error only while there is a failure', () => {
+      expect(launchAtLoginDescribedBy(false)).toBe('launch-at-login-hint');
+      expect(launchAtLoginDescribedBy('read')).toBe('launch-at-login-hint launch-at-login-error');
+      expect(launchAtLoginDescribedBy('write')).toBe('launch-at-login-hint launch-at-login-error');
+    });
   });
 });

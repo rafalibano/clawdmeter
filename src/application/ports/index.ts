@@ -3,6 +3,7 @@ export * from './claude-credential-source';
 export * from './clock';
 export * from './connection-prefs-store';
 export * from './github-auth';
+export * from './launch-at-login';
 export * from './microsoft-authorizer';
 export * from './notification-permission';
 export * from './notifier';

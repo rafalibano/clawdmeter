@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApplication } from './application';
 import { FakeClock } from './testing/fake-clock';
+import { FakeLaunchAtLogin } from './testing/fake-launch-at-login';
 import { createFakeConnectionWorld } from './testing/fake-connection-adapters';
 import { createFakeSkills } from './testing/fake-skills';
 import { fakePage } from './testing/fake-page';
@@ -14,6 +15,7 @@ function deps() {
     settingsStore: new FakeSettingsStore(),
     connectionAdapters: createFakeConnectionWorld().adapters,
     updateChecker: new FakeUpdateChecker(),
+    launchAtLogin: new FakeLaunchAtLogin(),
     skills: createFakeSkills(clock),
   };
 }

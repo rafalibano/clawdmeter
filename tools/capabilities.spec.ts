@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -74,6 +74,30 @@ describe('capability default', () => {
       (typeof permission === 'string' ? permission : (permission.identifier ?? '')).startsWith('updater:'),
     );
     expect(plugin).toEqual([]);
+  });
+
+  it('launch at login goes only through the three app commands, with no autostart plugin permission left', () => {
+    const launchAtLogin = capability.permissions
+      .map((permission) => (typeof permission === 'string' ? permission : (permission.identifier ?? '')))
+      .filter((identifier) => identifier.includes('launch-at-login'));
+    expect(launchAtLogin).toEqual([
+      'allow-launch-at-login-status',
+      'allow-launch-at-login-enable',
+      'allow-launch-at-login-disable',
+    ]);
+
+    const dir = join(__dirname, '../src-tauri/capabilities');
+    const files = readdirSync(dir);
+    expect(files.filter((file) => !file.endsWith('.json'))).toEqual([]);
+    const autostart = files
+      .flatMap((file) =>
+        (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { permissions?: Array<string | Permission> }).permissions ?? [],
+      )
+      .map((permission) => (typeof permission === 'string' ? permission : (permission.identifier ?? '')))
+      .filter((identifier) => identifier.startsWith('autostart:'));
+    expect(autostart).toEqual([]);
+    expect(readFileSync(join(__dirname, '../src-tauri/Cargo.toml'), 'utf8')).not.toContain('tauri-plugin-autostart');
+    expect(readFileSync(join(__dirname, '../package.json'), 'utf8')).not.toContain('plugin-autostart');
   });
 
   it('the updater config carries the public key and requires the signed version', () => {
