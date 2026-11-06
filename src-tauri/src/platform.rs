@@ -90,14 +90,15 @@ mod popover {
     }
 
     pub const TAO_WINDOW_CLASS: &str = "TaoWindow";
+    const KVO_PREFIX: &str = "NSKVONotifying_";
 
     pub fn can_swap_class(name: &str) -> bool {
-        name == TAO_WINDOW_CLASS
+        name.strip_prefix(KVO_PREFIX).unwrap_or(name) == TAO_WINDOW_CLASS
     }
 
     fn into_panel(window: &NSWindow) -> Option<&NSPanel> {
         if !window.isKindOfClass(PopoverPanel::class()) {
-            // A KVO subclass (NSKVONotifying_TaoWindow) or another wrapper would be lost by the swap.
+            // Something outside the app can wrap the window in a KVO subclass before setup; tauri-nspanel swaps it too.
             if !can_swap_class(&window.class().name().to_string_lossy())
                 || !panel_shares_window_layout()
                 || window.class().instance_size() < PopoverPanel::class().instance_size()
@@ -663,9 +664,16 @@ mod tests {
         }
 
         #[test]
-        fn only_a_plain_tao_window_is_swapped_into_a_panel() {
+        fn only_a_tao_window_is_swapped_into_a_panel() {
             assert!(popover::can_swap_class("TaoWindow"));
-            for other in ["NSKVONotifying_TaoWindow", "NSWindow", "TaoWindowX", ""] {
+            assert!(popover::can_swap_class("NSKVONotifying_TaoWindow"));
+            for other in [
+                "NSKVONotifying_NSWindow",
+                "NSWindow",
+                "TaoWindowX",
+                "NSKVONotifying_",
+                "",
+            ] {
                 assert!(!popover::can_swap_class(other), "{other}");
             }
         }

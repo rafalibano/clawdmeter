@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
-- Automatic updates from the GitHub Releases of the app's repository: checks on launch and every 6 hours with the connected GitHub account, shows "New version X · Update" at the top of the panel, downloads with progress, verifies the signature, installs and asks before restarting. Settings has a new **Updates** section with the current version, the last check and **Check now**. Without GitHub connected the app does not check and says so.
-- The release workflow signs the updater artifacts, publishes `latest.json` and no longer leaves the release as a draft; Windows also gets an NSIS installer.
+- The panel opens again over apps in full screen on macOS (for example Safari). It was not turned into a non-activating panel when macOS had already wrapped the window for key-value observing.
 
 ## 0.1.0
 
 First internally distributed version.
+
+- Automatic updates from the GitHub Releases of the app's repository: checks on launch and every 6 hours with the connected GitHub account, shows "New version X · Update" at the top of the panel, downloads with progress, verifies the signature, installs and asks before restarting. Settings has a new **Updates** section with the current version, the last check and **Check now**. Without GitHub connected the app does not check and says so.
+- The release workflow signs the updater artifacts, publishes `latest.json` and no longer leaves the release as a draft; Windows also gets an NSIS installer.
 
 - macOS menu bar icon with the mascot, which fills up as weekly consumption grows and shows the 5h and 7d bars; the Ctrl + Option + D shortcut opens the panel.
 - Usage tab: 5h and 7d bars with projection up to the reset (Last 24h, Last 7 days, Last 14 days or Since reset; Last 7 days is the default, and a saved Last 14 days moves to it once), chart from 1h to 30d and weekly cycle, smooth curve, up to 30 days of history kept locally and a one-time import of the ClaudeUsageBar history.
