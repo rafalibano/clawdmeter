@@ -48,6 +48,9 @@ export const en = {
   'settings.seriesFiveHour': '5h',
   'settings.seriesSevenDay': '7d',
   'settings.series.reset': 'Use default color',
+  'settings.alerts': 'Usage alerts',
+  'settings.alerts.hint': 'Notifies when the usage of a window crosses the selected percentages. Each one is sent once per cycle.',
+  'settings.alerts.none': 'Off',
   'settings.theme': 'Theme',
   'settings.language': 'Language',
   'settings.updates': 'Updates',
@@ -227,6 +230,7 @@ export const en = {
   'session.attention.long': 'Busy for {span}',
 
   'prs.section.mine': 'My open PRs',
+  'prs.section.assigned': 'Assigned to me (by others)',
   'prs.section.to-review': 'To review',
   'prs.section.reviewed': 'Reviewed by me (open and last 30 days)',
   'prs.group.deploy': 'Deploy',
@@ -278,6 +282,9 @@ export const en = {
 
   'notice.run.succeeded': '{name} completed',
   'notice.run.failed': '{name} failed',
+  'notice.usage.title': '{window} usage at {percent}%',
+  'notice.usage.body': 'Check your usage in ClawdMeter.',
+  'notice.usage.body.resets': 'Resets {when}',
   'tooltip.unavailable': 'ClawdMeter · usage unavailable',
   'tooltip.noData': '{label}: no data',
   'tooltip.resets': 'resets {when}',

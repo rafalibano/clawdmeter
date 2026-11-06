@@ -38,6 +38,9 @@ export const ptBR: Record<MessageKey, string> = {
   'settings.seriesFiveHour': '5h',
   'settings.seriesSevenDay': '7d',
   'settings.series.reset': 'Usar cor padrão',
+  'settings.alerts': 'Avisos de consumo',
+  'settings.alerts.hint': 'Avisa quando o consumo de uma janela passa dos percentuais marcados. Cada um é avisado uma vez por ciclo.',
+  'settings.alerts.none': 'Desligado',
   'settings.theme': 'Tema',
   'settings.language': 'Idioma',
   'settings.updates': 'Atualizações',
@@ -217,6 +220,7 @@ export const ptBR: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada há {span}',
 
   'prs.section.mine': 'Meus PRs abertos',
+  'prs.section.assigned': 'Atribuídos a mim (de outros)',
   'prs.section.to-review': 'Para revisar',
   'prs.section.reviewed': 'Revisados por mim (abertos e últimos 30 dias)',
   'prs.group.deploy': 'Deploy',
@@ -268,6 +272,9 @@ export const ptBR: Record<MessageKey, string> = {
 
   'notice.run.succeeded': '{name} concluída',
   'notice.run.failed': '{name} falhou',
+  'notice.usage.title': 'Consumo de {window} em {percent}%',
+  'notice.usage.body': 'Confira o consumo no ClawdMeter.',
+  'notice.usage.body.resets': 'Reseta {when}',
   'tooltip.unavailable': 'ClawdMeter · usage indisponível',
   'tooltip.noData': '{label}: sem dado',
   'tooltip.resets': 'reseta {when}',

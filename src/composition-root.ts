@@ -4,7 +4,7 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { ImportExternalUsageHistory, LoadSessions, LoadUsage } from './application/use-cases';
+import { ImportExternalUsageHistory, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import { AnthropicUsageGateway } from './infrastructure/anthropic';
 import { TauriSessionDirectory } from './infrastructure/claude-code';
@@ -83,6 +83,8 @@ export function createComposition(): Application {
     terminal: new TauriTerminalLauncher(commands),
   };
 
+  const settingsStore = new JsonSettingsStore(new TauriJsonFile('settings.json'));
+
   const pullRequests = createPullRequests(
     {
       prefs: connectionAdapters.prefs,
@@ -95,7 +97,7 @@ export function createComposition(): Application {
   const application: Application = createApplication({
     clock,
     language,
-    settingsStore: new JsonSettingsStore(new TauriJsonFile('settings.json')),
+    settingsStore,
     connectionAdapters,
     updateChecker: new TauriUpdateChecker(commands),
     launchAtLogin: new TauriLaunchAtLogin(commands),
@@ -123,6 +125,7 @@ export function createComposition(): Application {
           connections,
           new TauriUsageIndicator(commands, translator),
           new ImportExternalUsageHistory(new TauriClaudeUsageBarHistorySource()),
+          new NotifyUsageQuartiles(new TauriNotifier(), connections, translator, settingsStore, clock),
         ),
       }),
       createSessionsPage({

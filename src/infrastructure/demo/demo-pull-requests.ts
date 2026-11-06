@@ -45,6 +45,11 @@ function demoData(): Record<string, PullRequest[]> {
       pr(34, 'acme/mobile', 'wip: nova tela de onboarding', 'dev-demo', 3 * HOUR_MS, { isDraft: true, ci: 'none' }),
       pr(12, 'acme/k8s', 'chore: scale up api replicas', 'dev-demo', 1 * DAY_MS, { review: 'review-required' }),
     ],
+    assigned: [
+      pr(220, 'acme/api', 'feat: webhook de conciliação', 'ana-dev', 1 * DAY_MS, { review: 'review-required' }),
+      pr(61, 'acme/web', 'fix: layout do extrato no mobile', 'bruno-dev', 3 * DAY_MS, { ci: 'pending', review: 'changes-requested' }),
+      pr(15, 'acme/k8s', 'chore: ajuste de HPA do worker', 'carla-dev', 5 * HOUR_MS),
+    ],
     toReview: [
       pr(210, 'acme/api', 'feat: configuration cache', 'ana-dev', 4 * HOUR_MS, { review: 'review-required' }),
       pr(55, 'acme/web', 'fix: focus in the confirmation modal', 'bruno-dev', 1 * DAY_MS, { ci: 'failure', review: 'review-required' }),

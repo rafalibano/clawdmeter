@@ -36,6 +36,7 @@ export class LoadReviews {
           shown: toReview.items.length,
           total: toReview.total,
           searchUrl: searchPageUrl(TO_REVIEW_QUERY),
+          showAuthor: true,
         },
         {
           id: 'reviewed',
@@ -43,6 +44,7 @@ export class LoadReviews {
           shown: reviewed.length,
           total: reviewedOpen.total + reviewedRecent.total,
           searchUrl: searchPageUrl(reviewedAllQuery(this.clock.now())),
+          showAuthor: true,
         },
       ],
     };

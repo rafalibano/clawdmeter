@@ -38,6 +38,9 @@ export const esMX: Record<MessageKey, string> = {
   'settings.seriesFiveHour': '5h',
   'settings.seriesSevenDay': '7d',
   'settings.series.reset': 'Usar color predeterminado',
+  'settings.alerts': 'Avisos de consumo',
+  'settings.alerts.hint': 'Avisa cuando el consumo de una ventana supera los porcentajes marcados. Cada uno se avisa una vez por ciclo.',
+  'settings.alerts.none': 'Desactivado',
   'settings.theme': 'Tema',
   'settings.language': 'Idioma',
   'settings.updates': 'Actualizaciones',
@@ -217,6 +220,7 @@ export const esMX: Record<MessageKey, string> = {
   'session.attention.long': 'Ocupada desde hace {span}',
 
   'prs.section.mine': 'Mis PRs abiertos',
+  'prs.section.assigned': 'Asignados a mí (de otros)',
   'prs.section.to-review': 'Por revisar',
   'prs.section.reviewed': 'Revisados por mí (abiertos y últimos 30 días)',
   'prs.group.deploy': 'Deploy',
@@ -268,6 +272,9 @@ export const esMX: Record<MessageKey, string> = {
 
   'notice.run.succeeded': '{name} completada',
   'notice.run.failed': '{name} falló',
+  'notice.usage.title': 'Consumo de {window} en {percent}%',
+  'notice.usage.body': 'Revisa el consumo en ClawdMeter.',
+  'notice.usage.body.resets': 'Se reinicia {when}',
   'tooltip.unavailable': 'ClawdMeter · usage no disponible',
   'tooltip.noData': '{label}: sin dato',
   'tooltip.resets': 'se reinicia {when}',
