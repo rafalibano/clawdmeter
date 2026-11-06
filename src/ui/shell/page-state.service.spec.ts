@@ -13,6 +13,7 @@ import { createDefaultSettings } from '../../domain/settings';
 import { APPLICATION } from './application.token';
 import { PageStateService } from './page-state.service';
 import { FakeUpdateChecker } from '../../application/testing/fake-update-checker';
+import { FakeUsageHistoryStores } from '../../application/testing/fake-usage-adapters';
 
 interface Count {
   n: number;
@@ -24,6 +25,7 @@ function setup() {
     clock,
     settingsStore: new FakeSettingsStore(),
     connectionAdapters: createFakeConnectionWorld().adapters,
+    usageHistories: new FakeUsageHistoryStores(),
     updateChecker: new FakeUpdateChecker(),
     launchAtLogin: new FakeLaunchAtLogin(),
     skills: createFakeSkills(clock),
@@ -59,6 +61,7 @@ describe('PageStateService', () => {
       clock,
       settingsStore: new FakeSettingsStore(),
       connectionAdapters: createFakeConnectionWorld().adapters,
+      usageHistories: new FakeUsageHistoryStores(),
       updateChecker: new FakeUpdateChecker(),
       launchAtLogin: new FakeLaunchAtLogin(),
       skills: createFakeSkills(clock),

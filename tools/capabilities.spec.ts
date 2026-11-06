@@ -42,6 +42,23 @@ describe('capability default', () => {
     expect((rename[0]?.allow ?? []).map((entry) => entry.path)).toEqual(['$APPCONFIG/**']);
   });
 
+  it('plugin-fs remove only reaches the usage history files in $APPCONFIG', () => {
+    const remove = capability.permissions.filter(
+      (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:allow-remove',
+    );
+    expect(remove).toHaveLength(1);
+    expect((remove[0]?.allow ?? []).map((entry) => entry.path)).toEqual([
+      '$APPCONFIG/usage-history.json',
+      '$APPCONFIG/usage-history.*.json',
+    ]);
+    const removers = capability.permissions.filter((permission) =>
+      /^(fs:allow-remove|fs:default|fs:write-all|fs:allow-app-write|fs:allow-appconfig-write|fs:allow-appconfig-write-recursive)$/.test(
+        typeof permission === 'string' ? permission : (permission.identifier ?? ''),
+      ),
+    );
+    expect(removers).toHaveLength(1);
+  });
+
   it('denies every fs command access to the migration markers in $APPDATA/.migration', () => {
     const global = capability.permissions.find(
       (permission): permission is Permission => typeof permission === 'object' && permission.identifier === 'fs:scope',

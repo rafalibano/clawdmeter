@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-oauth-begin"
+description = "Enables the claude_oauth_begin command without any pre-configured scope."
+commands.allow = ["claude_oauth_begin"]
+
+[[permission]]
+identifier = "deny-claude-oauth-begin"
+description = "Denies the claude_oauth_begin command without any pre-configured scope."
+commands.deny = ["claude_oauth_begin"]

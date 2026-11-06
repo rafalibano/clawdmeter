@@ -10,7 +10,7 @@ import type { NotificationPermissionState } from '../../application/ports';
 import { parseDemoUpdateScenario, type DemoUpdateScenario } from './demo-updates';
 
 export interface DemoWorld {
-  claude: { missing: boolean; expired: boolean; keychainDenied: boolean };
+  claude: { signInRequired: boolean; noAccount: boolean };
   github: { cli: 'logged-in' | GitHubCliMissing; unauthorized: boolean; missingScope: boolean; orgAccess: GitHubOrgAccess };
   microsoft: { expired: boolean };
   skills: { claudeMissing: boolean; mcpNeedsAuth: boolean };
@@ -21,7 +21,7 @@ export interface DemoWorld {
   prefs: ConnectionPrefs;
 }
 
-const ERRORS_SHORTHAND = 'claude:claude-expired,github:github-missing-scope,microsoft:microsoft-expired,notifications:notifications-blocked';
+const ERRORS_SHORTHAND = 'claude:claude-signin-required,github:github-missing-scope,microsoft:microsoft-expired,notifications:notifications-blocked';
 const DEMO_ACCOUNT = 'dev@mottu.com.br';
 
 function parseDemoEntries(search: string): Map<string, string> {
@@ -47,7 +47,7 @@ export function parseDemoScenario(search: string): Map<ConnectionId, string> {
 export function createDemoWorld(search: string): DemoWorld {
   const scenario = parseDemoScenario(search);
   const world: DemoWorld = {
-    claude: { missing: false, expired: false, keychainDenied: false },
+    claude: { signInRequired: false, noAccount: false },
     github: { cli: 'not-logged-in', unauthorized: false, missingScope: false, orgAccess: 'ok' },
     microsoft: { expired: false },
     skills: { claudeMissing: false, mcpNeedsAuth: false },
@@ -59,9 +59,8 @@ export function createDemoWorld(search: string): DemoWorld {
   };
 
   const claude = scenario.get('claude');
-  world.claude.keychainDenied = claude === 'keychain-denied';
-  world.claude.expired = claude === 'claude-expired';
-  world.claude.missing = claude === 'claude-code-missing';
+  world.claude.signInRequired = claude === 'claude-signin-required';
+  world.claude.noAccount = claude === 'claude-no-account';
   if (claude === 'disconnected') world.prefs.claude.enabled = false;
 
   const github = scenario.get('github') ?? (parseDemoEntries(search).has('update') ? 'ok' : undefined);

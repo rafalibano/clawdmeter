@@ -27,12 +27,10 @@ function isCommandError(raw: unknown): raw is { kind: string; message: string; r
 export function toDomainError(raw: unknown): Error {
   if (!isCommandError(raw)) return raw instanceof Error ? raw : new Error(String(raw));
   switch (raw.kind) {
-    case 'keychain_denied':
-      return new ConnectionProblemError('keychain-denied', raw.message);
-    case 'claude_code_missing':
-      return new ConnectionProblemError('claude-code-missing', raw.message);
-    case 'claude_expired':
-      return new ConnectionProblemError('claude-expired', raw.message);
+    case 'claude_signin_required':
+      return new ConnectionProblemError('claude-signin-required', raw.message);
+    case 'keychain':
+      return new ConnectionProblemError('unexpected', raw.message, 'keychain-unavailable');
     case 'rate_limited':
       return new RateLimitedError(
         typeof raw.retryAfterSecs === 'number' && raw.retryAfterSecs > 0 ? raw.retryAfterSecs * 1_000 : null,

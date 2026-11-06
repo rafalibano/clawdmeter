@@ -28,7 +28,7 @@ class FakeCalendar implements CalendarGateway {
 function boot() {
   const world = createFakeConnectionWorld();
   const clock = new FakeClock();
-  const connections = createConnections(world.adapters, clock);
+  const connections = createConnections(world.adapters, world.settings);
   const calendar = new FakeCalendar();
   const reporter = { execute: connections.report.execute.bind(connections.report) };
   const loadAgenda = new LoadAgenda(calendar, { now: () => NOW, every: () => () => undefined }, reporter);

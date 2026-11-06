@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  CLAUDE_CODE_INSTALL_URL,
   ConnectionProblemError,
   GITHUB_ORG_SSO_URL,
   GITHUB_ORG_URL,
@@ -11,18 +10,21 @@ import {
 } from '../../../domain/connections';
 import { createConnections, type Connections } from '../../connections/create-connections';
 import { SECRET_KEYS } from '../../ports';
-import { FakeClock } from '../../testing/fake-clock';
-import { DEVICE_CODE, createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
+import {
+  DEVICE_CODE,
+  FAKE_ACCOUNT,
+  SIGNED_IN,
+  createFakeConnectionWorld,
+  settingsWithAccounts,
+  type FakeConnectionWorld,
+} from '../../testing/fake-connection-adapters';
 
 let world: FakeConnectionWorld;
-let clock: FakeClock;
 let connections: Connections;
 
-beforeEach(async () => {
+beforeEach(() => {
   world = createFakeConnectionWorld();
-  clock = new FakeClock();
-  await clock.advance(10_000);
-  connections = createConnections(world.adapters, clock);
+  connections = createConnections(world.adapters, world.settings);
 });
 
 function fixLabel(id: ConnectionId, status: ConnectionStatus): string | undefined {
@@ -35,55 +37,73 @@ async function runFix(id: ConnectionId, fix: FixAction): Promise<ConnectionStatu
 }
 
 describe('Claude', () => {
-  it('connects with the Claude Code credential and shows the plan', async () => {
-    expect(await connections.check.execute('claude')).toEqual({ state: 'connected', detail: 'Plano max' });
+  it('connects with the active account and shows its name', async () => {
+    expect(await connections.check.execute('claude')).toEqual({ state: 'connected', account: 'Personal' });
   });
 
-  it('never writes or deletes the credential (read only)', async () => {
+  it('checking only reads the status: it never starts nor completes a sign-in', async () => {
     await connections.check.execute('claude');
-    await connections.disconnect.execute('claude');
-    expect(world.secrets.values.size).toBe(0);
-    expect(world.claude.reads).toBe(1);
+    expect(world.claude.begun).toEqual([]);
+    expect(world.claude.completions).toEqual([]);
   });
 
-  it('keychain denied -> "Redo permission" -> re-reading connects', async () => {
-    world.claude.outcome = new ConnectionProblemError('keychain-denied');
+  it('without accounts: "Add account", which only rechecks in the application', async () => {
+    world.settings.emitExternalChange(settingsWithAccounts([]));
     const status = await connections.check.execute('claude');
-    expect(status).toMatchObject({ state: 'error', problem: 'keychain-denied' });
-    expect(fixLabel('claude', status)).toBe('retry-permission');
-    world.claude.outcome = { expiresAt: null, subscriptionType: null };
-    expect(await runFix('claude', 'retry-permission')).toEqual({ state: 'connected' });
+    expect(status).toEqual({ state: 'error', problem: 'claude-no-account' });
+    expect(fixLabel('claude', status)).toBe('add-claude-account');
+    expect(await runFix('claude', 'add-claude-account')).toEqual({ state: 'error', problem: 'claude-no-account' });
+    expect(world.claude.begun).toEqual([]);
   });
 
-  it('expired token -> "Sign in to Claude again" opens the terminal with /login', async () => {
-    world.claude.outcome = { expiresAt: 5_000, subscriptionType: 'pro' };
+  it('an account that must sign in again: "Sign in again" names the account', async () => {
+    world.claude.statuses.set(FAKE_ACCOUNT.id, { signedIn: true, expiresAt: null, needsLogin: true });
     const status = await connections.check.execute('claude');
-    expect(status).toMatchObject({ problem: 'claude-expired' });
-    expect(fixLabel('claude', status)).toBe('relogin-claude');
-    const after = await runFix('claude', 'relogin-claude');
-    expect(world.terminal.commands).toEqual([{ program: 'claude', args: ['/login'] }]);
-    expect(after).toMatchObject({ state: 'error', problem: 'claude-expired' });
+    expect(status).toEqual({
+      state: 'error',
+      problem: 'claude-signin-required',
+      code: 'claude-signin-required',
+      args: { account: 'Personal' },
+    });
+    expect(fixLabel('claude', status)).toBe('reauthenticate-claude');
   });
 
-  it('Claude Code missing -> "Install Claude Code" opens the install page', async () => {
-    world.claude.outcome = new ConnectionProblemError('claude-code-missing');
+  it('missing tokens for the active account also ask to sign in again', async () => {
+    world.claude.statuses.delete(FAKE_ACCOUNT.id);
+    expect(await connections.check.execute('claude')).toMatchObject({ problem: 'claude-signin-required' });
+  });
+
+  it('the status follows the active account', async () => {
+    const work = { id: 'account-2', name: 'Work' };
+    world.settings.emitExternalChange(settingsWithAccounts([FAKE_ACCOUNT, work], work.id));
+    expect(await connections.check.execute('claude')).toMatchObject({ problem: 'claude-signin-required', args: { account: 'Work' } });
+    world.claude.statuses.set(work.id, SIGNED_IN);
+    expect(await connections.check.execute('claude')).toEqual({ state: 'connected', account: 'Work' });
+  });
+
+  it('a status failure in Rust becomes "unexpected" with "Try again"', async () => {
+    world.claude.statuses.set(FAKE_ACCOUNT.id, new Error('keychain locked'));
     const status = await connections.check.execute('claude');
-    expect(fixLabel('claude', status)).toBe('install-claude-code');
-    await runFix('claude', 'install-claude-code');
-    expect(world.urls.opened).toEqual([CLAUDE_CODE_INSTALL_URL]);
+    expect(status).toEqual({ state: 'error', problem: 'unexpected', message: 'keychain locked' });
+    expect(fixLabel('claude', status)).toBe('retry');
   });
 
-  it('a 401 reported by a gateway marks the connection as expired', () => {
-    connections.report.execute('claude', 'claude-expired');
-    expect(connections.monitor.get('claude')).toMatchObject({ problem: 'claude-expired' });
+  it('a sign-in problem reported by the usage load keeps the coded message', () => {
+    connections.report.execute('claude', 'claude-signin-required', undefined, 'claude-signin-required', { account: 'Personal' });
+    expect(connections.monitor.get('claude')).toEqual({
+      state: 'error',
+      problem: 'claude-signin-required',
+      code: 'claude-signin-required',
+      args: { account: 'Personal' },
+    });
   });
 
-  it('Disconnect stops using the credential and Connect reads it again', async () => {
+  it('Disconnect stops using the accounts and Connect checks again', async () => {
     await connections.connect.execute('claude');
     expect(await connections.disconnect.execute('claude')).toEqual({ state: 'disconnected' });
     expect(await connections.check.execute('claude')).toEqual({ state: 'disconnected' });
-    expect(world.claude.reads).toBe(1);
     expect(await connections.connect.execute('claude')).toMatchObject({ state: 'connected' });
+    expect(world.claude.removed).toEqual([]);
   });
 });
 
@@ -413,13 +433,13 @@ describe('unexpected errors and monitor', () => {
   });
 
   it('a late subscriber receives the previously reported problem and sees the fix button', () => {
-    connections.report.execute('claude', 'claude-expired');
+    connections.report.execute('claude', 'claude-signin-required');
     const seen: Array<[ConnectionId, ConnectionStatus]> = [];
     connections.monitor.subscribe((id, status) => seen.push([id, status]));
     expect(seen).toHaveLength(1);
     const [id, status] = seen[0] ?? ['claude', { state: 'unknown' } as ConnectionStatus];
     expect(id).toBe('claude');
-    expect(status).toMatchObject({ state: 'error', problem: 'claude-expired' });
+    expect(status).toMatchObject({ state: 'error', problem: 'claude-signin-required' });
     expect(actionsFor(id, status).some((action) => action.kind === 'fix')).toBe(true);
   });
 

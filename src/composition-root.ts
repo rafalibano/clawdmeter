@@ -21,12 +21,13 @@ import {
   JsonSettingsStore,
   JsonSkillRunStore,
   JsonSkillsConfigStore,
-  JsonUsageHistoryStore,
+  JsonUsageHistoryStores,
 } from './infrastructure/persistence';
 import {
   SystemClock,
-  TauriClaudeCredentialSource,
+  TauriClaudeAccountGateway,
   TauriCommands,
+  TauriJsonDirectory,
   TauriJsonFile,
   TauriLaunchAtLogin,
   TauriNotificationPermission,
@@ -59,7 +60,6 @@ export function createComposition(): Application {
   const commands = new TauriCommands();
   const secrets = new TauriSecretStore(commands);
   const urls = new TauriUrlOpener(commands);
-  const claudeCredentials = new TauriClaudeCredentialSource(commands);
 
   const microsoft = new PkceMicrosoftAuthorizer({
     fetcher: tauriFetch,
@@ -72,7 +72,7 @@ export function createComposition(): Application {
   const connectionAdapters: ConnectionAdapters = {
     prefs: new JsonConnectionPrefsStore(new TauriJsonFile('connections.json')),
     secrets,
-    claudeCredentials,
+    claudeAccounts: new TauriClaudeAccountGateway(commands),
     githubCli: new GhCliTokenSource(new TauriProcessRunner(commands)),
     githubDeviceFlow: new GitHubDeviceFlowAuthorizer(tauriFetch),
     githubAccounts: new GitHubRestAccountGateway(tauriFetch),
@@ -84,6 +84,7 @@ export function createComposition(): Application {
   };
 
   const settingsStore = new JsonSettingsStore(new TauriJsonFile('settings.json'));
+  const usageHistories = new JsonUsageHistoryStores(new TauriJsonDirectory());
 
   const pullRequests = createPullRequests(
     {
@@ -99,6 +100,7 @@ export function createComposition(): Application {
     language,
     settingsStore,
     connectionAdapters,
+    usageHistories,
     updateChecker: new TauriUpdateChecker(commands),
     launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>
@@ -119,8 +121,9 @@ export function createComposition(): Application {
       createUsagePage({
         loadUsage: new LoadUsage(
           connectionAdapters.prefs,
+          settingsStore,
           new AnthropicUsageGateway(commands),
-          new JsonUsageHistoryStore(new TauriJsonFile('usage-history.json')),
+          usageHistories,
           clock,
           connections,
           new TauriUsageIndicator(commands, translator),

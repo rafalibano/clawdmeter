@@ -26,7 +26,6 @@ export class FixGitHubConnection implements StatusUseCase<FixAction> {
 
   async execute(fix: FixAction): Promise<ConnectionStatus> {
     switch (fix) {
-      case 'retry-permission':
       case 'retry':
         return this.check.execute();
       case 'relogin-github':

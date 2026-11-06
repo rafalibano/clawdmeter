@@ -8,6 +8,7 @@ import {
   type ProjectionMethod,
   type UsageWindowKind,
 } from '../../../domain/usage';
+import type { PageUpdate } from '../../../application/scheduler';
 import { ProjectUsage, type UsageData } from '../../../application/use-cases';
 import type { Localizer } from '../../i18n';
 import type { ConnectionRowView } from '../../settings/connections/connection-view';
@@ -85,6 +86,15 @@ export function toUsageView(data: UsageData, rangeId: string, l: Localizer, meth
     data.at,
   );
   return { bars, chart, cycleAvailable: isCycleAvailable(data.snapshot.sevenDay?.resetsAt ?? null, data.at) };
+}
+
+export function activeUsageData(
+  update: PageUpdate<UsageData> | undefined,
+  last: UsageData | undefined,
+  activeAccountId: string | null,
+): UsageData | undefined {
+  const data = update?.status === 'ok' ? update.data : last;
+  return data !== undefined && data.accountId === activeAccountId ? data : undefined;
 }
 
 export function toUsageErrorView(message: string, claude: ConnectionRowView | undefined): UsageErrorView {

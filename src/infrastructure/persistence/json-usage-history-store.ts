@@ -6,8 +6,14 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
   private loading: Promise<UsageHistory> | null = null;
   private writing: Promise<void> = Promise.resolve();
   private imported: number | null = null;
+  private disposed = false;
 
   constructor(private readonly file: AtomicJsonFile) {}
+
+  dispose(): Promise<void> {
+    this.disposed = true;
+    return this.writing;
+  }
 
   load(): Promise<UsageHistory> {
     if (this.loading === null) {
@@ -32,6 +38,7 @@ export class JsonUsageHistoryStore implements UsageHistoryStore {
   }
 
   save(history: UsageHistory): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     this.loading = Promise.resolve(history);
     const body = JSON.stringify({ ...(serializeHistory(history) as object), claudeUsageBarImportedAt: this.imported });
     const write = this.writing.then(() => this.file.writeAtomic(body));

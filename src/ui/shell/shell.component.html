@@ -17,6 +17,9 @@
           </button>
         }
       </nav>
+      @if (accountSwitch(); as accounts) {
+        <cm-account-switch [view]="accounts" [label]="i18n.t('shell.account')" (picked)="selectAccount($event)" />
+      }
     }
   </header>
 

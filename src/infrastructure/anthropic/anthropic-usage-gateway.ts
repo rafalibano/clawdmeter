@@ -6,9 +6,9 @@ import { PlatformCommandError, type TauriCommands } from '../platform/tauri-comm
 export class AnthropicUsageGateway implements UsageGateway {
   constructor(private readonly commands: TauriCommands) {}
 
-  async fetch(): Promise<UsageSnapshot> {
+  async fetch(accountId: string, clientId: string): Promise<UsageSnapshot> {
     try {
-      return parseUsageResponse(await this.commands.call<unknown>('claude_usage_fetch'));
+      return parseUsageResponse(await this.commands.call<unknown>('claude_usage_fetch', { accountId, clientId }));
     } catch (error) {
       if (error instanceof PlatformCommandError && isBackoffMessage(error.message)) throw new RateLimitedError();
       throw error;

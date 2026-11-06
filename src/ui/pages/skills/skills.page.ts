@@ -10,7 +10,7 @@ export function createSkillsPage(deps: { skills: Skills }): PageModule<SkillsPag
   const page: PageModule<SkillsPageData> = {
     id: SKILLS_PAGE.id,
     title: 'Skills',
-    requiredConnections: ['claude', 'notifications'],
+    requiredConnections: ['notifications'],
     pollIntervalMs: null,
     load: async () => {
       await deps.skills.loadRuns.execute();

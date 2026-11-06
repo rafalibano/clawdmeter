@@ -50,10 +50,15 @@ export class PollingScheduler {
     }
   }
 
-  refresh(pageId: PageId): Promise<void> {
+  refresh(pageId: PageId, options: { resetBackoff?: boolean } = {}): Promise<void> {
     const page = this.registry.get(pageId);
     const run = this.runs.get(pageId);
-    return page && run ? this.poll(page, run, true) : Promise.resolve();
+    if (!page || !run) return Promise.resolve();
+    if (options.resetBackoff) {
+      run.rateLimitFailures = 0;
+      run.blockedUntil = 0;
+    }
+    return this.poll(page, run, true);
   }
 
   stopAll(): void {

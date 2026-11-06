@@ -10,7 +10,9 @@ import {
 import { toRowView, type ConnectionRowView } from '../settings/connections/connection-view';
 import { APPLICATION } from './application.token';
 import { I18n } from '../i18n/i18n.service';
+import { ClaudeAccountsFacade } from './claude-accounts.facade';
 import { SettingsFacade } from './settings.facade';
+import { CLAUDE_ACCOUNTS_SECTION, ShellNavigation } from './shell-navigation.service';
 
 @Injectable({ providedIn: 'root' })
 export class ConnectionsFacade {
@@ -18,6 +20,8 @@ export class ConnectionsFacade {
   private readonly registry = inject(APPLICATION).registry;
   private readonly settings = inject(SettingsFacade);
   private readonly i18n = inject(I18n);
+  private readonly navigation = inject(ShellNavigation);
+  private readonly claudeAccounts = inject(ClaudeAccountsFacade);
   private readonly statuses = signal<ReadonlyMap<ConnectionId, ConnectionStatus>>(new Map());
 
   readonly requiredIds = computed(() => {
@@ -54,9 +58,19 @@ export class ConnectionsFacade {
         await this.connections.check.execute(id);
         return;
       case 'fix':
-        await this.connections.fix.execute(id, action.fix);
+        if (this.opensSettings(id, action)) await this.fixInSettings(action);
+        else await this.connections.fix.execute(id, action.fix);
         return;
     }
+  }
+
+  opensSettings(id: ConnectionId, action: ConnectionAction): boolean {
+    return id === 'claude' && action.kind === 'fix' && (action.fix === 'add-claude-account' || action.fix === 'reauthenticate-claude');
+  }
+
+  private async fixInSettings(action: ConnectionAction): Promise<void> {
+    this.navigation.openSettings(CLAUDE_ACCOUNTS_SECTION);
+    if (action.kind === 'fix' && action.fix === 'reauthenticate-claude') void this.claudeAccounts.reauthenticateActive();
   }
 
   openUrl(url: string): Promise<void> {

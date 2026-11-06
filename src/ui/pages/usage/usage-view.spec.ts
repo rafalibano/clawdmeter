@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ProjectUsage, type UsageData } from '../../../application/use-cases';
-import { actionsFor, errorStatus } from '../../../domain/connections';
+import { actionsFor, claudeSignInStatus, errorStatus } from '../../../domain/connections';
 import { HOUR_MS, MINUTE_MS } from '../../../domain/time';
 import { createEmptyHistory, type Forecast, type ProjectionMethod, type UsageHistory } from '../../../domain/usage';
 import { toRowView } from '../../settings/connections/connection-view';
 import { Localizer } from '../../i18n';
 import {
+  activeUsageData,
   projectionOf as projectionWith,
   resetText as resetTextWith,
   toUsageErrorView,
@@ -26,7 +27,7 @@ function dataWith(history: UsageHistory, fiveHour = 40): UsageData {
     fiveHour: { utilization: fiveHour, resetsAt: RESET },
     sevenDay: { utilization: 12.4, resetsAt: NOW + 6 * 24 * HOUR_MS + 2 * HOUR_MS },
   };
-  return { at: NOW, snapshot, history };
+  return { accountId: 'account-1', at: NOW, snapshot, history };
 }
 
 function ramp(valueAt: (index: number) => number): UsageHistory {
@@ -255,14 +256,20 @@ describe('toUsageView', () => {
 });
 
 describe('toUsageErrorView', () => {
-  it('401: shows the connection message and the "Sign in to Claude again" button', () => {
-    const status = errorStatus('claude-expired');
+  it('sign-in required: shows the account in the message and the "Sign in again" button', () => {
+    const status = claudeSignInStatus('Trabalho');
     const row = toRowView('claude', status, PT);
-    const view = toUsageErrorView('claude-expired', row);
-    expect(view.message).toBe('Token vencido — abra o Claude Code para renová-lo ou refaça o login.');
-    expect(view.actions.map((action) => action.label)).toEqual(['relogin-claude', 'recheck']);
+    const view = toUsageErrorView('claude-signin-required', row);
+    expect(view.message).toBe('Faça login de novo na conta Trabalho.');
+    expect(view.actions.map((action) => action.label)).toEqual(['reauthenticate-claude', 'recheck']);
     expect(actionsFor('claude', status).some((action) => action.kind === 'disconnect')).toBe(true);
     expect(view.actions.some((action) => action.kind === 'disconnect')).toBe(false);
+  });
+
+  it('no account: tells to add one and offers "Add account"', () => {
+    const view = toUsageErrorView('claude-no-account', toRowView('claude', errorStatus('claude-no-account'), PT));
+    expect(view.message).toBe('Nenhuma conta do Claude ainda. Adicione uma em Ajustes > Contas do Claude.');
+    expect(view.actions.map((action) => action.label)).toEqual(['add-claude-account', 'recheck']);
   });
 
   it('disconnected: offers Connect', () => {
@@ -274,5 +281,23 @@ describe('toUsageErrorView', () => {
     const view = toUsageErrorView('Anthropic respondeu 500', toRowView('claude', { state: 'connected' }, PT));
     expect(view).toEqual({ message: 'Anthropic respondeu 500', actions: [] });
     expect(toUsageErrorView('x', undefined)).toEqual({ message: 'x', actions: [] });
+  });
+});
+
+describe('activeUsageData', () => {
+  const personal = dataWith(createEmptyHistory());
+  const work = { ...personal, accountId: 'account-2' };
+
+  it('shows the data of the active account, fresh or the last good one', () => {
+    expect(activeUsageData({ pageId: 'usage', status: 'ok', data: personal, at: NOW }, undefined, 'account-1')).toBe(personal);
+    const failed = { pageId: 'usage', status: 'error' as const, error: 'x', at: NOW };
+    expect(activeUsageData(failed, personal, 'account-1')).toBe(personal);
+  });
+
+  it('ignores data of an account that is not the active one (shows loading instead)', () => {
+    expect(activeUsageData({ pageId: 'usage', status: 'ok', data: personal, at: NOW }, personal, 'account-2')).toBeUndefined();
+    expect(activeUsageData(undefined, personal, 'account-2')).toBeUndefined();
+    expect(activeUsageData({ pageId: 'usage', status: 'ok', data: work, at: NOW }, personal, 'account-2')).toBe(work);
+    expect(activeUsageData(undefined, personal, null)).toBeUndefined();
   });
 });

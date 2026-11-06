@@ -11,6 +11,7 @@ import {
 } from './fake-feature-adapters';
 
 export function createFakeSkills(clock: Clock): Skills {
+  const world = createFakeConnectionWorld();
   return createSkills(
     {
       config: new FakeSkillsConfigStore(),
@@ -22,6 +23,6 @@ export function createFakeSkills(clock: Clock): Skills {
       translator: new FakeTranslator(),
     },
     clock,
-    createConnections(createFakeConnectionWorld().adapters, clock),
+    createConnections(world.adapters, world.settings),
   );
 }

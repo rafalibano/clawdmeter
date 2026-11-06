@@ -2,24 +2,34 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterRenderEffect, computed, inject, signal } from '@angular/core';
 import type { PageModule } from '../../application/pages';
 import { I18n } from '../i18n';
+import { USAGE_PAGE } from '../pages/usage/usage-page-ref';
 import { REFRESH_COOLDOWN_MS, refreshState } from './refresh-state';
 import { APPLICATION } from './application.token';
+import { AccountSwitchComponent } from './account-switch.component';
+import { accountSwitchView } from './account-switch-view';
+import { ClaudeAccountsFacade } from './claude-accounts.facade';
 import { PageStateService } from './page-state.service';
 import { SettingsFacade } from './settings.facade';
+import { ShellNavigation } from './shell-navigation.service';
+import { errorText } from '../settings/claude-accounts/claude-accounts-view';
 import { SettingsComponent } from '../settings/settings.component';
 import { UpdateBannerComponent } from '../updates/update-banner.component';
 
 const CLOCK_TICK_MS = 1_000;
+const SWITCH_ERROR_MS = 10_000;
+const ACCOUNT_OPTION_ID = 'cm-account-option';
 
 @Component({
   selector: 'cm-shell',
-  imports: [NgComponentOutlet, SettingsComponent, UpdateBannerComponent],
+  imports: [AccountSwitchComponent, NgComponentOutlet, SettingsComponent, UpdateBannerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
 })
 export class ShellComponent {
   private readonly facade = inject(SettingsFacade);
+  private readonly navigation = inject(ShellNavigation);
+  private readonly claudeAccounts = inject(ClaudeAccountsFacade);
   protected readonly i18n = inject(I18n);
   private readonly scheduler = inject(APPLICATION).scheduler;
   private readonly pageState = inject(PageStateService);
@@ -29,15 +39,23 @@ export class ShellComponent {
 
   private readonly refreshing = signal(false);
   private readonly cooldowns = signal<ReadonlyMap<string, number>>(new Map());
+  private readonly switchFailure = signal<{ error: unknown; at: number } | null>(null);
 
-  protected readonly showingSettings = signal(false);
+  protected readonly showingSettings = this.navigation.settingsOpen;
   protected readonly pages = this.facade.enabledPages;
   protected readonly errorMessage = computed(() => {
+    const failed = this.switchFailure();
+    if (failed !== null && this.now() - failed.at < SWITCH_ERROR_MS) return errorText(failed.error, this.i18n.localizer());
     const error = this.facade.error();
     return error === null ? null : this.i18n.t(`shell.error.${error}`);
   });
   protected readonly current = computed<PageModule | null>(
     () => this.pages().find((page) => page.id === this.requestedPageId()) ?? this.pages()[0] ?? null,
+  );
+  protected readonly accountSwitch = computed(() =>
+    this.showingSettings()
+      ? null
+      : accountSwitchView(this.facade.settings().claude, this.current()?.id ?? null, USAGE_PAGE.id, ACCOUNT_OPTION_ID),
   );
   protected readonly updatedAgo = computed(() => {
     const page = this.current();
@@ -72,7 +90,14 @@ export class ShellComponent {
 
   protected select(id: string): void {
     this.requestedPageId.set(id);
-    this.showingSettings.set(false);
+    this.navigation.closeSettings();
+  }
+
+  protected async selectAccount(accountId: string): Promise<void> {
+    this.switchFailure.set(null);
+    if (await this.claudeAccounts.select(accountId)) return;
+    this.switchFailure.set({ error: this.claudeAccounts.failure(), at: this.clock.now() });
+    this.claudeAccounts.clearFailure();
   }
 
   protected async reload(): Promise<void> {
@@ -88,6 +113,6 @@ export class ShellComponent {
   }
 
   protected toggleSettings(): void {
-    this.showingSettings.update((open) => !open);
+    this.navigation.toggleSettings();
   }
 }

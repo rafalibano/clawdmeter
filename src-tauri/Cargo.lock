@@ -514,7 +514,9 @@ name = "clawdmeter"
 version = "0.1.1"
 dependencies = [
  "auto-launch",
+ "base64 0.22.1",
  "block2",
+ "getrandom 0.3.4",
  "keyring",
  "libc",
  "objc2",
@@ -522,8 +524,10 @@ dependencies = [
  "objc2-foundation",
  "objc2-user-notifications",
  "percent-encoding",
+ "security-framework 3.7.0",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",

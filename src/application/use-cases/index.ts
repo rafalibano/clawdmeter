@@ -1,3 +1,4 @@
+export * from './claude-accounts';
 export * from './get-launch-at-login';
 export * from './get-settings';
 export * from './get-settings-status';

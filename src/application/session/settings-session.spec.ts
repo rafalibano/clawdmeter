@@ -191,3 +191,114 @@ describe('SettingsSession', () => {
     expect(session.current.settings.enabledPages).toEqual({ teams: false, skills: false });
   });
 });
+
+describe('SettingsSession and the Claude accounts written by the use cases', () => {
+  const ACCOUNTS = { accounts: [{ id: 'a1', name: 'Personal' }], activeAccountId: 'a1' };
+
+  it('adopts the Claude section saved through the shared UpdateSettings', async () => {
+    const store = new FakeSettingsStore();
+    const deps = depsFor(store);
+    const session = new SettingsSession(deps, () => undefined);
+    await session.start();
+    await deps.updateSettings.execute({ claude: ACCOUNTS });
+    expect(session.current.settings.claude).toMatchObject(ACCOUNTS);
+  });
+
+  it('a pending write of the session does not bring back an older Claude section', async () => {
+    const store = new FakeSettingsStore();
+    const release: Array<() => void> = [];
+    const originalSave = store.save.bind(store);
+    store.save = (settings: AppSettings) => new Promise<void>((resolve) => release.push(() => void originalSave(settings).then(resolve)));
+    const deps = depsFor(store);
+    const session = new SettingsSession(deps, () => undefined);
+    await session.start();
+    session.update({ appearance: { theme: 'dark' } });
+    const accounts = deps.updateSettings.execute({ claude: ACCOUNTS });
+    await delay(0);
+    release[0]?.();
+    await delay(0);
+    release[1]?.();
+    await accounts;
+    await session.idle();
+    expect(session.current.settings.appearance.theme).toBe('dark');
+    expect(session.current.settings.claude).toMatchObject(ACCOUNTS);
+    expect(store.saved.at(-1)?.claude).toMatchObject(ACCOUNTS);
+    expect(store.saved.at(-1)?.appearance.theme).toBe('dark');
+  });
+
+  it('a Claude write that lands between two batches of the session survives the end of the flush', async () => {
+    const store = new FakeSettingsStore();
+    const release: Array<() => void> = [];
+    const originalSave = store.save.bind(store);
+    store.save = (settings: AppSettings) => new Promise<void>((resolve) => release.push(() => void originalSave(settings).then(resolve)));
+    const deps = depsFor(store);
+    const states: SettingsSessionState[] = [];
+    const session = new SettingsSession(deps, (state) => states.push(state));
+    await session.start();
+    session.update({ appearance: { theme: 'dark' } });
+    await delay(0);
+    session.update({ language: 'pt-BR' });
+    const accounts = deps.updateSettings.execute({ claude: ACCOUNTS });
+    for (let index = 0; index < 3; index++) {
+      await delay(0);
+      release[index]?.();
+    }
+    await accounts;
+    await session.idle();
+    expect(release).toHaveLength(3);
+    expect(states.at(-1)?.settings).toMatchObject({ language: 'pt-BR', appearance: { theme: 'dark' }, claude: ACCOUNTS });
+    expect(store.saved.at(-1)).toMatchObject({ language: 'pt-BR', claude: ACCOUNTS });
+  });
+
+  it('stops adopting after dispose', async () => {
+    const store = new FakeSettingsStore();
+    const deps = depsFor(store);
+    const session = new SettingsSession(deps, () => undefined);
+    await session.start();
+    session.dispose();
+    await deps.updateSettings.execute({ claude: ACCOUNTS });
+    expect(session.current.settings.claude.accounts).toEqual([]);
+  });
+});
+
+describe('UpdateSettings', () => {
+  it('serializes writes so a change computed from the current settings sees the previous write', async () => {
+    const store = new FakeSettingsStore();
+    const update = new UpdateSettings(store);
+    const first = update.execute({ claude: { accounts: [{ id: 'a1', name: 'Personal' }] } });
+    const second = update.execute((current) => ({
+      claude: { accounts: [...current.claude.accounts, { id: 'a2', name: 'Work' }] },
+    }));
+    await Promise.all([first, second]);
+    expect(store.saved.at(-1)?.claude.accounts.map((account) => account.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('a change that throws writes nothing and does not block the next one', async () => {
+    const store = new FakeSettingsStore();
+    const update = new UpdateSettings(store);
+    const seen: AppSettings[] = [];
+    update.subscribe((settings) => seen.push(settings));
+    await expect(
+      update.execute(() => {
+        throw new Error('invalid');
+      }),
+    ).rejects.toThrow('invalid');
+    await update.execute({ language: 'pt-BR' });
+    expect(store.saved).toHaveLength(1);
+    expect(seen.map((settings) => settings.language)).toEqual(['pt-BR']);
+  });
+
+  it('a listener that throws neither fails the saved write nor keeps the other listeners from hearing it', async () => {
+    const store = new FakeSettingsStore();
+    const update = new UpdateSettings(store);
+    const seen: string[] = [];
+    update.subscribe(() => {
+      throw new Error('listener broke');
+    });
+    update.subscribe((settings) => seen.push(settings.language));
+    await expect(update.execute({ language: 'pt-BR' })).resolves.toMatchObject({ language: 'pt-BR' });
+    expect(store.saved).toHaveLength(1);
+    expect(seen).toEqual(['pt-BR']);
+  });
+});
+

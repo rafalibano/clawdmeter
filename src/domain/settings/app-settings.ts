@@ -1,4 +1,5 @@
 import type { ProjectionMethod } from '../usage/projection-method';
+import type { ClaudeSettings } from './claude-accounts';
 import type { UsageAlertSettings } from '../usage/usage-alerts';
 import type { PageId } from './page-id';
 
@@ -35,4 +36,5 @@ export interface AppSettings {
   projectionMethod: ProjectionMethod;
   seriesColors: SeriesColorSettings;
   usageAlerts: UsageAlertSettings;
+  claude: ClaudeSettings;
 }

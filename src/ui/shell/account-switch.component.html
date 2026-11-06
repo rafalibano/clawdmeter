@@ -1,0 +1,44 @@
+<button
+  type="button"
+  class="switch"
+  aria-haspopup="listbox"
+  [attr.aria-expanded]="open()"
+  [attr.aria-controls]="open() ? listId : null"
+  [attr.aria-label]="label() + ': ' + view().activeName"
+  [title]="label() + ': ' + view().activeName"
+  (mousedown)="press($event)"
+  (click)="toggle()"
+  (keydown)="buttonKey($event)"
+>
+  <span class="avatar" aria-hidden="true">{{ view().activeInitials }}</span>
+  <span class="caret" aria-hidden="true">▾</span>
+</button>
+@if (open()) {
+  <ul
+    class="menu"
+    role="listbox"
+    tabindex="-1"
+    [id]="listId"
+    [attr.aria-label]="label()"
+    [attr.aria-activedescendant]="activeDescendant()"
+    (keydown)="listKey($event)"
+  >
+    @for (option of view().options; track option.id; let index = $index) {
+      <li
+        class="option"
+        role="option"
+        [id]="option.domId"
+        [attr.aria-selected]="option.active"
+        [class.highlighted]="index === highlighted()"
+        [class.active]="option.active"
+        [title]="option.name"
+        (mouseenter)="highlighted.set(index)"
+        (mousedown)="$event.preventDefault()"
+        (click)="choose(option.id)"
+      >
+        <span class="check" aria-hidden="true">{{ option.active ? '✓' : '' }}</span>
+        <span class="option-name">{{ option.name }}</span>
+      </li>
+    }
+  </ul>
+}

@@ -27,12 +27,16 @@ serde_json = "1"
 url = "2"
 thiserror = "2"
 percent-encoding = "2"
+base64 = "0.22"
+getrandom = "0.3"
+sha2 = "0.10"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 auto-launch = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+security-framework = "3"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "libc", "objc2-core-foundation", "NSEvent", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSWindow", "NSWorkspace"] }

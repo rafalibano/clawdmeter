@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, MAX_CLAUDE_ACCOUNTS } from './claude-accounts';
 import { createDefaultSettings } from './defaults';
 import { migrateSettings, type Migration } from './migrate-settings';
 import { isPageEnabled } from './page-enabled';
@@ -46,6 +47,15 @@ describe('migrateSettings', () => {
       projectionMethod: 'since-reset',
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
       usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
+      claude: {
+        useDefaultClientId: false,
+        clientId: '11111111-2222-4333-8444-555555555555',
+        accounts: [
+          { id: 'a1', name: 'Personal' },
+          { id: 'a2', name: 'Work' },
+        ],
+        activeAccountId: 'a2',
+      },
     };
     expect(migrateSettings(current)).toEqual({
       ...current,
@@ -242,3 +252,113 @@ describe('migration 8 -> 9 (usage alerts)', () => {
     expect(migrated.usageAlerts).toEqual({ fiveHour: [25, 100], sevenDay: [] });
   });
 });
+
+describe('migration 9 -> 10 (Claude accounts)', () => {
+  it('a file from version 9 without claude uses the default client id, with no custom id and zero accounts, keeping the rest', () => {
+    const migrated = migrateSettings({ schemaVersion: 9, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(10);
+    expect(migrated.claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null });
+    expect(migrated.language).toBe('pt-BR');
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
+  });
+
+  it('the default client id is the one ClaudeUsageBar uses and is part of createDefaultSettings', () => {
+    expect(DEFAULT_CLAUDE_OAUTH_CLIENT_ID).toBe('9d1c250a-e61b-44d9-88ed-5944d1962f5e');
+    const defaults = createDefaultSettings();
+    expect(defaults.claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null });
+    defaults.claude.accounts.push({ id: 'x', name: 'x' });
+    expect(createDefaultSettings().claude.accounts).toEqual([]);
+  });
+
+  const CUSTOM = '11111111-2222-4333-8444-55555555555a';
+  const mode = (claude: Record<string, unknown>, schemaVersion = 10) => {
+    const { useDefaultClientId, clientId } = migrateSettings({ schemaVersion, claude }).claude;
+    return { useDefaultClientId, clientId };
+  };
+  const DEFAULT_MODE = { useDefaultClientId: true, clientId: '' };
+
+  it('a schema 10 file of the earlier beta without useDefaultClientId and with the default id uses the default, in any case', () => {
+    expect(mode({ clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID, accounts: [{ id: 'a1', name: 'Personal' }], activeAccountId: 'a1' })).toEqual(DEFAULT_MODE);
+    expect(mode({ clientId: ` ${DEFAULT_CLAUDE_OAUTH_CLIENT_ID.toUpperCase()} ` })).toEqual(DEFAULT_MODE);
+    expect(migrateSettings({ schemaVersion: 10, claude: { clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID, accounts: [{ id: 'a1', name: 'Personal' }] } }).claude).toEqual({
+      ...DEFAULT_MODE,
+      accounts: [{ id: 'a1', name: 'Personal' }],
+      activeAccountId: 'a1',
+    });
+  });
+
+  it('without useDefaultClientId, a missing or invalid client id uses the default', () => {
+    for (const claude of [{}, { clientId: 'not-a-uuid' }, { clientId: 42 }, { clientId: '' }, { clientId: null }]) {
+      expect(mode(claude)).toEqual(DEFAULT_MODE);
+      expect(mode(claude, 9)).toEqual(DEFAULT_MODE);
+    }
+  });
+
+  it('without useDefaultClientId, a valid id other than the default was a custom one: it stays in use, in lowercase', () => {
+    expect(mode({ clientId: ' 11111111-2222-4333-8444-55555555555A ' })).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+    expect(mode({ clientId: CUSTOM }, 9)).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+  });
+
+  it('a boolean useDefaultClientId is respected and the custom id is kept for later', () => {
+    expect(mode({ useDefaultClientId: true, clientId: CUSTOM })).toEqual({ useDefaultClientId: true, clientId: CUSTOM });
+    expect(mode({ useDefaultClientId: true })).toEqual(DEFAULT_MODE);
+    expect(mode({ useDefaultClientId: true, clientId: 'nope' })).toEqual(DEFAULT_MODE);
+    expect(mode({ useDefaultClientId: false, clientId: CUSTOM.toUpperCase() })).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+  });
+
+  it('useDefaultClientId false without a valid custom id is inconsistent and falls back to the default', () => {
+    for (const clientId of [undefined, '', '   ', 'not-a-uuid', 42]) {
+      expect(mode({ useDefaultClientId: false, clientId })).toEqual(DEFAULT_MODE);
+    }
+  });
+
+  it('a useDefaultClientId that is not a boolean is ignored and decided by the client id', () => {
+    expect(mode({ useDefaultClientId: 'no', clientId: CUSTOM })).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+    expect(mode({ useDefaultClientId: 0, clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID })).toEqual(DEFAULT_MODE);
+  });
+
+  it('drops invalid accounts: bad id, empty or long name, duplicated id or name, and more than five', () => {
+    const migrated = migrateSettings({
+      schemaVersion: 10,
+      claude: {
+        accounts: [
+          { id: 'a1', name: '  Personal  ' },
+          { id: 'bad id!', name: 'Space' },
+          { id: 'a2', name: '' },
+          { id: 'a3', name: 'x'.repeat(41) },
+          { id: 'a1', name: 'Again' },
+          { id: 'a4', name: 'PERSONAL' },
+          { id: 'a5', name: 'Work' },
+          'garbage',
+          { id: 'a6', name: 'Three' },
+          { id: 'a7', name: 'Four' },
+          { id: 'a8', name: 'Five' },
+          { id: 'a9', name: 'Six' },
+        ],
+        activeAccountId: 'a5',
+      },
+    });
+    expect(migrated.claude.accounts).toEqual([
+      { id: 'a1', name: 'Personal' },
+      { id: 'a5', name: 'Work' },
+      { id: 'a6', name: 'Three' },
+      { id: 'a7', name: 'Four' },
+      { id: 'a8', name: 'Five' },
+    ]);
+    expect(migrated.claude.accounts).toHaveLength(MAX_CLAUDE_ACCOUNTS);
+    expect(migrated.claude.activeAccountId).toBe('a5');
+  });
+
+  it('the active account always points to an existing account, or null without accounts', () => {
+    const accounts = [
+      { id: 'a1', name: 'Personal' },
+      { id: 'a2', name: 'Work' },
+    ];
+    expect(migrateSettings({ schemaVersion: 10, claude: { accounts, activeAccountId: 'gone' } }).claude.activeAccountId).toBe('a1');
+    expect(migrateSettings({ schemaVersion: 10, claude: { accounts, activeAccountId: null } }).claude.activeAccountId).toBe('a1');
+    expect(migrateSettings({ schemaVersion: 10, claude: { accounts: [], activeAccountId: 'a1' } }).claude.activeAccountId).toBeNull();
+    expect(migrateSettings({ schemaVersion: 10, claude: 'x' }).claude).toEqual(createDefaultSettings().claude);
+  });
+});
+

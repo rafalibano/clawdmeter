@@ -1,5 +1,6 @@
 import { CodedError } from '../../../domain/coded-error';
-import { ConnectionProblemError } from '../../../domain/connections';
+import { ConnectionProblemError, claudeSignInRequired, customMessage } from '../../../domain/connections';
+import { activeClaudeAccount, effectiveClaudeClientId, type ClaudeAccount } from '../../../domain/settings';
 import { recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
@@ -8,12 +9,15 @@ import type { NotifyUsageQuartiles } from './notify-usage-quartiles';
 import type {
   Clock,
   ConnectionPrefsStore,
+  SettingsStore,
   UsageGateway,
   UsageHistoryStore,
+  UsageHistoryStores,
   UsageIndicator,
 } from '../../ports';
 
 export interface UsageData {
+  accountId: string;
   at: number;
   snapshot: UsageSnapshot;
   history: UsageHistory;
@@ -24,8 +28,9 @@ export type UsageConnections = Pick<Connections, 'monitor' | 'check' | 'report'>
 export class LoadUsage {
   constructor(
     private readonly prefs: ConnectionPrefsStore,
+    private readonly settings: Pick<SettingsStore, 'load'>,
     private readonly gateway: UsageGateway,
-    private readonly historyStore: UsageHistoryStore,
+    private readonly histories: UsageHistoryStores,
     private readonly clock: Clock,
     private readonly connections: UsageConnections,
     private readonly indicator: UsageIndicator,
@@ -35,36 +40,63 @@ export class LoadUsage {
 
   async execute(): Promise<UsageData> {
     const now = this.clock.now();
-    const snapshot = await this.fetchSnapshot(now);
-    this.indicate(snapshot, now);
-    this.alerts?.execute(snapshot).catch(() => undefined);
-    const stored = await this.historyStore.load();
+    const { account, snapshot } = await this.fetchSnapshot(now);
+    const current = await this.stillActive(account.id);
+    if (current) this.indicate(snapshot, now);
+    this.alerts?.execute(account.id, snapshot).catch(() => undefined);
+    const store = this.histories.forAccount(account.id);
+    const stored = await store.load();
     const recorded = recordSnapshot(stored, snapshot, now);
-    const imported = await this.migrateExternal(recorded, now);
+    const imported = await this.migrateExternal(store, recorded, now);
     const history = retainHistory(imported.history, now);
-    await this.historyStore.save(history);
-    if (imported.markAt !== null) await this.historyStore.markImported(imported.markAt);
-    await this.recoverConnection();
-    return { at: now, snapshot, history };
+    await store.save(history);
+    if (imported.markAt !== null) await store.markImported(imported.markAt);
+    if (current) await this.recoverConnection();
+    return { accountId: account.id, at: now, snapshot, history };
   }
 
-  private async migrateExternal(history: UsageHistory, now: number): Promise<{ history: UsageHistory; markAt: number | null }> {
+  private async migrateExternal(
+    store: UsageHistoryStore,
+    history: UsageHistory,
+    now: number,
+  ): Promise<{ history: UsageHistory; markAt: number | null }> {
     if (this.external === undefined) return { history, markAt: null };
-    const previous = await this.historyStore.importedAt();
+    const previous = await store.importedAt();
     const outcome = await this.external.execute(history, previous, now);
     return { history: outcome.history, markAt: previous === null ? outcome.importedAt : null };
   }
 
-  private async fetchSnapshot(now: number): Promise<UsageSnapshot> {
+  private async fetchSnapshot(now: number): Promise<{ account: ClaudeAccount; snapshot: UsageSnapshot }> {
+    let account: ClaudeAccount | null = null;
     try {
       if (!(await this.prefs.load()).claude.enabled) {
         throw new CodedError('usage-disconnected');
       }
-      return await this.gateway.fetch();
+      const { claude } = await this.settings.load();
+      account = activeClaudeAccount(claude);
+      if (account === null) throw new ConnectionProblemError('claude-no-account');
+      return { account, snapshot: await this.fetchFor(account, effectiveClaudeClientId(claude)) };
     } catch (error) {
-      this.indicate(null, now);
-      if (error instanceof ConnectionProblemError) {
-        this.connections.report.execute('claude', error.problem, error.message === error.problem ? undefined : error.message);
+      if (account === null || (await this.stillActive(account.id))) {
+        this.indicate(null, now);
+        if (error instanceof ConnectionProblemError) {
+          this.connections.report.execute('claude', error.problem, customMessage(error), error.code, error.args);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async stillActive(accountId: string): Promise<boolean> {
+    return (await this.settings.load()).claude.activeAccountId === accountId;
+  }
+
+  private async fetchFor(account: ClaudeAccount, clientId: string): Promise<UsageSnapshot> {
+    try {
+      return await this.gateway.fetch(account.id, clientId);
+    } catch (error) {
+      if (error instanceof ConnectionProblemError && error.problem === 'claude-signin-required') {
+        throw claudeSignInRequired(account.name);
       }
       throw error;
     }

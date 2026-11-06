@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { actionsFor, actionsForProblem } from './connection-actions';
 import { CONNECTIONS } from './connection';
 import { createDefaultConnectionPrefs, parseConnectionPrefs } from './connection-prefs';
-import { CONNECTION_PROBLEMS } from './connection-problem';
-import { errorStatus } from './connection-status';
+import { CONNECTION_PROBLEMS, ConnectionProblemError, claudeSignInRequired } from './connection-problem';
+import { claudeSignInStatus, errorStatus } from './connection-status';
 import { FIX_FOR } from './fix-action';
 import { evaluateGitHubAccount, missingScopes, parseSsoUrl } from './github';
 
@@ -13,9 +13,8 @@ describe('fix table', () => {
   });
 
   it.each([
-    ['keychain-denied', 'retry-permission'],
-    ['claude-expired', 'relogin-claude'],
-    ['claude-code-missing', 'install-claude-code'],
+    ['claude-no-account', 'add-claude-account'],
+    ['claude-signin-required', 'reauthenticate-claude'],
     ['github-unauthorized', 'relogin-github'],
     ['github-missing-scope', 'regrant-scopes'],
     ['github-org-access', 'authorize-org'],
@@ -61,7 +60,7 @@ describe('actionsFor', () => {
 
   it('the generic fix does not duplicate "Check again"', () => {
     expect(actionsFor('claude', errorStatus('unexpected')).map((a) => a.kind)).toEqual(['fix', 'disconnect']);
-    expect(actionsFor('claude', errorStatus('claude-expired')).map((a) => a.kind)).toEqual([
+    expect(actionsFor('claude', errorStatus('claude-signin-required')).map((a) => a.kind)).toEqual([
       'fix',
       'recheck',
       'disconnect',
@@ -152,5 +151,39 @@ describe('actionsForProblem', () => {
 
   it('Microsoft never connected offers only Connect', () => {
     expect(actionsForProblem('microsoft', 'microsoft-not-connected')).toEqual([{ kind: 'connect', label: 'connect' }]);
+  });
+});
+
+describe('Claude account problems', () => {
+  it('the old Claude Code problems no longer exist', () => {
+    for (const old of ['keychain-denied', 'claude-expired', 'claude-code-missing']) {
+      expect(CONNECTION_PROBLEMS).not.toContain(old);
+    }
+  });
+
+  it('no account offers "Add account" and an account that must sign in again offers "Sign in again"', () => {
+    expect(actionsFor('claude', errorStatus('claude-no-account'))[0]).toEqual({
+      kind: 'fix',
+      fix: 'add-claude-account',
+      label: 'add-claude-account',
+    });
+    expect(actionsFor('claude', claudeSignInStatus('Work'))[0]).toEqual({
+      kind: 'fix',
+      fix: 'reauthenticate-claude',
+      label: 'reauthenticate-claude',
+    });
+  });
+
+  it('the sign-in problem carries the account name as a coded message', () => {
+    expect(claudeSignInStatus('Work')).toEqual({
+      state: 'error',
+      problem: 'claude-signin-required',
+      code: 'claude-signin-required',
+      args: { account: 'Work' },
+    });
+    const error = claudeSignInRequired('Work');
+    expect(error).toBeInstanceOf(ConnectionProblemError);
+    expect(error).toMatchObject({ problem: 'claude-signin-required', code: 'claude-signin-required', args: { account: 'Work' } });
+    expect(error.message).toBe('claude-signin-required');
   });
 });

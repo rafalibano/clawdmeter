@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_LANGUAGES, createDefaultSettings, migrateSettings } from '../../domain/settings';
+import { APP_LANGUAGES, DEFAULT_CLAUDE_OAUTH_CLIENT_ID, createDefaultSettings, migrateSettings } from '../../domain/settings';
 import { CONNECTION_PROBLEMS } from '../../domain/connections';
 import type { ErrorCode } from '../../domain/coded-error';
 import { DICTIONARIES, Localizer, interpolate, translate, type MessageKey } from './localizer';
@@ -25,6 +25,21 @@ const ERROR_CODES: readonly ErrorCode[] = [
   'github-rate-limited',
   'microsoft-calendar-denied',
   'client-id-missing',
+  'claude-signin-required',
+  'claude-account-name-empty',
+  'claude-account-name-too-long',
+  'claude-account-name-taken',
+  'claude-account-limit',
+  'claude-account-missing',
+  'claude-client-id-invalid',
+  'claude-login-code-empty',
+  'claude-login-code-invalid',
+  'claude-login-busy',
+  'keychain-unavailable',
+  'claude-login-timeout',
+  'claude-login-cancelled',
+  'claude-login-rate-limited',
+  'claude-login-failed',
 ];
 
 const KEYS = Object.keys(enDictionary) as MessageKey[];
@@ -42,6 +57,17 @@ describe('dictionaries', () => {
 
   it.each(APP_LANGUAGES)('%s uses the same placeholders for each key', (language) => {
     for (const key of KEYS) expect(placeholders(DICTIONARIES[language][key]), key).toEqual(placeholders(enDictionary[key]));
+  });
+
+  it('no text shows the default Claude client id or its prefix', () => {
+    expect(APP_LANGUAGES).toEqual(expect.arrayContaining(['en', 'pt-BR', 'es-MX']));
+    const hidden = [DEFAULT_CLAUDE_OAUTH_CLIENT_ID.toLowerCase(), '9d1c250a'];
+    for (const language of APP_LANGUAGES) {
+      for (const key of KEYS) {
+        const text = DICTIONARIES[language][key].toLowerCase();
+        for (const fragment of hidden) expect(text.includes(fragment), `${language} ${key}`).toBe(false);
+      }
+    }
   });
 
   it('every connection problem has text in the three languages', () => {

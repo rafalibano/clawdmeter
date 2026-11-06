@@ -1,5 +1,5 @@
 import type { ConnectionId } from '../../domain/connections';
-import type { Clock } from '../ports';
+import type { SettingsStore } from '../ports';
 import {
   CheckClaudeConnection,
   CheckConnection,
@@ -48,12 +48,12 @@ export interface Connections {
   };
 }
 
-export function createConnections(adapters: ConnectionAdapters, clock: Clock): Connections {
+export function createConnections(adapters: ConnectionAdapters, settings: Pick<SettingsStore, 'load'>): Connections {
   const monitor = new ConnectionMonitor();
   const runner = new ConnectionRunner(monitor);
   const tokens = new GitHubTokenResolver(adapters.githubCli, adapters.secrets);
 
-  const checkClaude = new CheckClaudeConnection(adapters.prefs, adapters.claudeCredentials, clock);
+  const checkClaude = new CheckClaudeConnection(adapters.prefs, settings, adapters.claudeAccounts);
   const checkGitHub = new CheckGitHubConnection(adapters.prefs, tokens, adapters.githubAccounts, adapters.githubCli);
   const checkMicrosoft = new CheckMicrosoftConnection(adapters.prefs, adapters.microsoft);
   const checkNotifications = new CheckNotifications(adapters.notifications);
@@ -92,7 +92,7 @@ export function createConnections(adapters: ConnectionAdapters, clock: Clock): C
     ),
     fix: new FixConnection(
       {
-        claude: new FixClaudeConnection(checkClaude, adapters.terminal, adapters.urlOpener),
+        claude: new FixClaudeConnection(checkClaude),
         github: new FixGitHubConnection(
           adapters.prefs,
           checkGitHub,

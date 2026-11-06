@@ -1,10 +1,11 @@
+import { createClaudeAccounts, type ClaudeAccounts } from './claude-accounts';
 import type { ConnectionAdapters } from './connections/connection-adapters';
 import { createConnections, type Connections } from './connections/create-connections';
 import { GitHubTokenResolver } from './connections/github-token-resolver';
 import type { PageModule } from './pages/page-module';
 import { PageRegistry } from './pages/page-registry';
 import { CurrentLanguage } from './language';
-import type { Clock, LaunchAtLogin, SettingsStore, UpdateChecker } from './ports';
+import type { Clock, LaunchAtLogin, SettingsStore, UpdateChecker, UsageHistoryStores } from './ports';
 import { GitHubSession } from './pull-requests/github-session';
 import { PollingScheduler } from './scheduler/polling-scheduler';
 import type { Skills } from './skills';
@@ -25,6 +26,7 @@ export interface Application {
   registry: PageRegistry;
   scheduler: PollingScheduler;
   connections: Connections;
+  claudeAccounts: ClaudeAccounts;
   joinMeeting: JoinMeeting;
   openGitHubUrl: OpenGitHubUrl;
   skills: Skills;
@@ -51,14 +53,21 @@ export interface ApplicationDeps {
   language?: CurrentLanguage;
   settingsStore: SettingsStore;
   connectionAdapters: ConnectionAdapters;
+  usageHistories: UsageHistoryStores;
+  newAccountId?: () => string;
   updateChecker: UpdateChecker;
   launchAtLogin: LaunchAtLogin;
   skills: Skills | ((context: SkillsContext) => Skills);
   pages: readonly PageModule[] | ((context: PageContext) => readonly PageModule[]);
 }
 
+function randomAccountId(): string {
+  return globalThis.crypto.randomUUID();
+}
+
 export function createApplication(deps: ApplicationDeps): Application {
-  const connections = createConnections(deps.connectionAdapters, deps.clock);
+  const connections = createConnections(deps.connectionAdapters, deps.settingsStore);
+  const updateSettings = new UpdateSettings(deps.settingsStore);
   const skills = typeof deps.skills === 'function' ? deps.skills({ connections }) : deps.skills;
   const registry = new PageRegistry(typeof deps.pages === 'function' ? deps.pages({ connections, skills }) : deps.pages);
   const adapters = deps.connectionAdapters;
@@ -68,6 +77,15 @@ export function createApplication(deps: ApplicationDeps): Application {
     registry,
     scheduler: new PollingScheduler(registry, deps.clock),
     connections,
+    claudeAccounts: createClaudeAccounts({
+      settings: deps.settingsStore,
+      updateSettings,
+      gateway: adapters.claudeAccounts,
+      urls: adapters.urlOpener,
+      histories: deps.usageHistories,
+      clock: deps.clock,
+      newId: deps.newAccountId ?? randomAccountId,
+    }),
     joinMeeting: new JoinMeeting(deps.connectionAdapters.urlOpener),
     openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
@@ -75,7 +93,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     language: deps.language ?? new CurrentLanguage(),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),
-    updateSettings: new UpdateSettings(deps.settingsStore),
+    updateSettings,
     watchSettings: new WatchSettings(deps.settingsStore),
     getLaunchAtLogin: new GetLaunchAtLogin(deps.launchAtLogin),
     setLaunchAtLogin: new SetLaunchAtLogin(deps.launchAtLogin),

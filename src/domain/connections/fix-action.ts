@@ -1,9 +1,8 @@
 import type { ConnectionProblem } from './connection-problem';
 
 export type FixAction =
-  | 'retry-permission'
-  | 'relogin-claude'
-  | 'install-claude-code'
+  | 'add-claude-account'
+  | 'reauthenticate-claude'
   | 'relogin-github'
   | 'connect-github-cli'
   | 'install-github-cli'
@@ -16,9 +15,8 @@ export type FixAction =
   | 'retry';
 
 export const FIX_FOR: Record<ConnectionProblem, FixAction> = {
-  'keychain-denied': 'retry-permission',
-  'claude-expired': 'relogin-claude',
-  'claude-code-missing': 'install-claude-code',
+  'claude-no-account': 'add-claude-account',
+  'claude-signin-required': 'reauthenticate-claude',
   'github-unauthorized': 'relogin-github',
   'github-missing-scope': 'regrant-scopes',
   'github-org-access': 'authorize-org',
