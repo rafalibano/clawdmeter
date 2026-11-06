@@ -275,14 +275,23 @@ pub fn token_key(account_id: &str) -> CommandResult<String> {
     Ok(format!("{TOKEN_KEY_PREFIX}{account_id}"))
 }
 
+fn parse_stored(raw: Option<String>) -> Option<StoredTokens> {
+    raw.and_then(|raw| serde_json::from_str::<StoredTokens>(&raw).ok())
+        .filter(|tokens| !tokens.access_token.is_empty())
+}
+
 pub fn load_tokens(
     store: &dyn SecretStore,
     account_id: &str,
 ) -> CommandResult<Option<StoredTokens>> {
-    let raw = store.get(&token_key(account_id)?)?;
-    Ok(raw
-        .and_then(|raw| serde_json::from_str::<StoredTokens>(&raw).ok())
-        .filter(|tokens| !tokens.access_token.is_empty()))
+    Ok(parse_stored(store.get(&token_key(account_id)?)?))
+}
+
+pub fn load_fresh_tokens(
+    store: &dyn SecretStore,
+    account_id: &str,
+) -> CommandResult<Option<StoredTokens>> {
+    Ok(parse_stored(store.get_fresh(&token_key(account_id)?)?))
 }
 
 pub fn save_tokens(

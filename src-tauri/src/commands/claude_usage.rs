@@ -6,8 +6,8 @@ use tauri_plugin_http::reqwest;
 
 use super::blocking::run_blocking;
 use super::claude_oauth::{
-    load_tokens, refresh_tokens, save_tokens, signin_required, validate_account_id,
-    validate_client_id, AccountLocks, Endpoints, StoredTokens,
+    load_fresh_tokens, load_tokens, refresh_tokens, save_tokens, signin_required,
+    validate_account_id, validate_client_id, AccountLocks, Endpoints, StoredTokens,
 };
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::secrets::{app_store, SecretStore};
@@ -162,6 +162,17 @@ async fn load(store: TokenStore, account_id: &str) -> CommandResult<Option<Store
     run_blocking(move || load_tokens(store, &account_id)).await
 }
 
+async fn load_current(store: TokenStore, account_id: &str) -> CommandResult<StoredTokens> {
+    let account_id = account_id.to_string();
+    let tokens = run_blocking(move || load_fresh_tokens(store, &account_id))
+        .await?
+        .ok_or_else(signin_required)?;
+    if tokens.rejected {
+        return Err(signin_required());
+    }
+    Ok(tokens)
+}
+
 async fn save(store: TokenStore, account_id: &str, tokens: &StoredTokens) -> CommandResult<()> {
     let account_id = account_id.to_string();
     let tokens = tokens.clone();
@@ -215,6 +226,9 @@ pub async fn fetch_usage(
     if tokens.rejected {
         return Err(signin_required());
     }
+    if tokens.needs_refresh(now_ms()) {
+        tokens = load_current(store, account_id).await?;
+    }
     let mut renewed = false;
     if tokens.needs_refresh(now_ms()) {
         match refresh_tokens(endpoints.token, client_id, &tokens).await {
@@ -239,14 +253,20 @@ pub async fn fetch_usage(
     if renewed || !tokens.has_refresh_token() {
         return Err(reject(store, account_id, tokens).await);
     }
-    let fresh = match refresh_tokens(endpoints.token, client_id, &tokens).await {
-        Ok(fresh) => fresh,
-        Err(error) if is_signin_required(&error) => {
-            return Err(reject(store, account_id, tokens).await)
-        }
-        Err(error) => return Err(error),
+    let current = load_current(store, account_id).await?;
+    let fresh = if current.access_token != tokens.access_token {
+        current
+    } else {
+        let fresh = match refresh_tokens(endpoints.token, client_id, &current).await {
+            Ok(fresh) => fresh,
+            Err(error) if is_signin_required(&error) => {
+                return Err(reject(store, account_id, current).await)
+            }
+            Err(error) => return Err(error),
+        };
+        save_rotated(store, account_id, &fresh).await?;
+        fresh
     };
-    save_rotated(store, account_id, &fresh).await?;
     match request_usage(endpoints.usage, &fresh.access_token).await {
         Err(error) if is_signin_required(&error) => Err(reject(store, account_id, fresh).await),
         outcome => outcome,
@@ -917,8 +937,119 @@ mod tests {
         let saved = load_tokens(store, "acc").unwrap().unwrap();
         assert_eq!(saved.access_token, "at-new");
         assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
-        assert_eq!(store.backend().reads() - before, 1);
+        assert_eq!(store.backend().reads() - before, 2);
         let stored = load_tokens(store.backend(), "acc").unwrap().unwrap();
         assert_eq!(stored, saved);
+    }
+
+    #[test]
+    fn a_denied_save_of_rotated_tokens_is_not_retried() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(1)));
+        store.fail_next_writes_with(ErrorKind::KeychainDenied, 2);
+        let before = store.writes();
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        let error = fetch(store, &token, &usage, "acc").unwrap_err();
+        assert_eq!(error.kind, ErrorKind::KeychainDenied);
+        assert_eq!(store.writes() - before, 1);
+        assert!(usage.requests().is_empty());
+    }
+
+    fn renewed_elsewhere(
+        cached: &StoredTokens,
+        stored: &StoredTokens,
+    ) -> &'static CachedStore<MemoryStore> {
+        let store = MemoryStore::cached();
+        save_tokens(store, "acc", cached).unwrap();
+        save_tokens(store.backend(), "acc", stored).unwrap();
+        store
+    }
+
+    fn refresh_body(request: &str) -> serde_json::Value {
+        serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_refresh_spends_the_refresh_token_another_instance_saved_not_the_cached_one() {
+        let store = renewed_elsewhere(
+            &tokens("at-old", Some("rt-old"), in_minutes(1)),
+            &tokens("at-other", Some("rt-other"), in_minutes(2)),
+        );
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        cached_fetch(store, &token, &usage).unwrap();
+        let refreshes = token.requests();
+        assert_eq!(refreshes.len(), 1);
+        assert_eq!(refresh_body(&refreshes[0])["refresh_token"], "rt-other");
+        assert!(!refreshes[0].contains("rt-old"));
+        let saved = load_tokens(store.backend(), "acc").unwrap().unwrap();
+        assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
+    }
+
+    #[test]
+    fn tokens_another_instance_already_renewed_are_used_without_a_refresh() {
+        let store = renewed_elsewhere(
+            &tokens("at-old", Some("rt-old"), in_minutes(1)),
+            &tokens("at-other", Some("rt-other"), in_minutes(60)),
+        );
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        cached_fetch(store, &token, &usage).unwrap();
+        assert!(token.requests().is_empty());
+        assert!(usage.requests()[0]
+            .to_lowercase()
+            .contains("authorization: bearer at-other"));
+        let current = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(current.refresh_token.as_deref(), Some("rt-other"));
+    }
+
+    #[test]
+    fn a_401_retries_with_tokens_another_instance_renewed_before_refreshing() {
+        let store = renewed_elsewhere(
+            &tokens("at-old", Some("rt-old"), in_minutes(60)),
+            &tokens("at-other", Some("rt-other"), in_minutes(60)),
+        );
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::start(
+            "/usage",
+            vec![
+                json_response("401 Unauthorized", "{}"),
+                json_response("200 OK", USAGE_JSON),
+            ],
+        );
+        cached_fetch(store, &token, &usage).unwrap();
+        assert!(token.requests().is_empty());
+        let calls = usage.requests();
+        assert!(calls[0]
+            .to_lowercase()
+            .contains("authorization: bearer at-old"));
+        assert!(calls[1]
+            .to_lowercase()
+            .contains("authorization: bearer at-other"));
+    }
+
+    #[test]
+    fn a_rejection_found_on_the_reread_is_not_refreshed() {
+        let store = renewed_elsewhere(
+            &tokens("at-old", Some("rt-old"), in_minutes(1)),
+            &StoredTokens {
+                rejected: true,
+                ..tokens("at-old", Some("rt-old"), in_minutes(1))
+            },
+        );
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        let error = cached_fetch(store, &token, &usage).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
+        assert!(token.requests().is_empty());
+        assert!(usage.requests().is_empty());
     }
 }

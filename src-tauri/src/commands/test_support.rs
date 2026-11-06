@@ -145,8 +145,9 @@ fn read_request(stream: &mut TcpStream) -> String {
 #[derive(Default)]
 pub struct MemoryStore {
     entries: Mutex<HashMap<String, String>>,
-    failing_writes: Mutex<usize>,
+    failing_writes: Mutex<Vec<ErrorKind>>,
     reads: AtomicUsize,
+    writes: AtomicUsize,
 }
 
 impl MemoryStore {
@@ -155,7 +156,15 @@ impl MemoryStore {
     }
 
     pub fn fail_next_writes(&self, count: usize) {
-        *self.failing_writes.lock().unwrap() = count;
+        self.fail_next_writes_with(ErrorKind::Keychain, count);
+    }
+
+    pub fn fail_next_writes_with(&self, kind: ErrorKind, count: usize) {
+        *self.failing_writes.lock().unwrap() = vec![kind; count];
+    }
+
+    pub fn writes(&self) -> usize {
+        self.writes.load(Ordering::SeqCst)
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -180,15 +189,10 @@ impl SecretBackend for MemoryStore {
     }
 
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
-        let mut failing = self.failing_writes.lock().unwrap();
-        if *failing > 0 {
-            *failing -= 1;
-            return Err(CommandError::new(
-                ErrorKind::Keychain,
-                "keychain write failed",
-            ));
+        self.writes.fetch_add(1, Ordering::SeqCst);
+        if let Some(kind) = self.failing_writes.lock().unwrap().pop() {
+            return Err(CommandError::new(kind, "keychain write failed"));
         }
-        drop(failing);
         self.entries
             .lock()
             .unwrap()

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use keyring::Entry;
 
 use super::blocking::run_blocking;
-use super::error::{CommandError, CommandResult, ErrorKind};
+use super::error::{keychain_write_error, CommandError, CommandResult, ErrorKind};
 use crate::legacy_migration::{write_marker, LEGACY_IDENTIFIER};
 
 const SERVICE: &str = "com.mottu.clawdmeter";
@@ -28,7 +28,7 @@ fn ensure_known_key(key: &str) -> CommandResult<()> {
 const CHUNK_BYTES: usize = 1_200;
 const MAX_CHUNKS: usize = 64;
 const HEADER_PREFIX: &str = "dp-chunked:v1:";
-const DENIAL_PAUSE: Duration = Duration::from_secs(5 * 60);
+const KEYCHAIN_DENIAL_PAUSE: Duration = Duration::from_secs(30 * 60);
 
 pub trait SecretBackend {
     fn read(&self, key: &str) -> CommandResult<Option<String>>;
@@ -38,12 +38,18 @@ pub trait SecretBackend {
 
 pub trait SecretStore {
     fn get(&self, key: &str) -> CommandResult<Option<String>>;
+    fn get_fresh(&self, key: &str) -> CommandResult<Option<String>>;
     fn set(&self, key: &str, value: &str) -> CommandResult<()>;
     fn delete(&self, key: &str) -> CommandResult<()>;
 }
 
+#[cfg(test)]
 impl<B: SecretBackend> SecretStore for B {
     fn get(&self, key: &str) -> CommandResult<Option<String>> {
+        get_secret(self, key)
+    }
+
+    fn get_fresh(&self, key: &str) -> CommandResult<Option<String>> {
         get_secret(self, key)
     }
 
@@ -152,26 +158,18 @@ impl<B: SecretBackend> CachedStore<B> {
         }
     }
 
-    #[cfg(test)]
-    pub fn backend(&self) -> &B {
-        &self.inner
-    }
-}
-
-impl<B: SecretBackend> SecretStore for CachedStore<B> {
-    fn get(&self, key: &str) -> CommandResult<Option<String>> {
-        check_key(key)?;
-        let slot = self.slot(key);
-        let mut slot = lock(&slot);
-        match &*slot {
-            Slot::Known { value, .. } => return Ok(value.clone()),
+    fn paused(&self, slot: &Slot) -> Option<CommandError> {
+        match slot {
             Slot::Denied { error, since }
-                if (self.clock)().saturating_duration_since(*since) < DENIAL_PAUSE =>
+                if (self.clock)().saturating_duration_since(*since) < KEYCHAIN_DENIAL_PAUSE =>
             {
-                return Err(error.clone())
+                Some(error.clone())
             }
-            _ => {}
+            _ => None,
         }
+    }
+
+    fn reload(&self, slot: &mut Slot, key: &str) -> CommandResult<Option<String>> {
         match read_secret(&self.inner, key) {
             Ok((value, pieces)) => {
                 *slot = Slot::Known {
@@ -194,10 +192,49 @@ impl<B: SecretBackend> SecretStore for CachedStore<B> {
         }
     }
 
+    #[cfg(test)]
+    pub fn backend(&self) -> &B {
+        &self.inner
+    }
+}
+
+impl<B: SecretBackend> SecretStore for CachedStore<B> {
+    fn get(&self, key: &str) -> CommandResult<Option<String>> {
+        check_key(key)?;
+        let slot = self.slot(key);
+        let mut slot = lock(&slot);
+        if let Slot::Known { value, .. } = &*slot {
+            return Ok(value.clone());
+        }
+        if let Some(error) = self.paused(&slot) {
+            return Err(error);
+        }
+        self.reload(&mut slot, key)
+    }
+
+    fn get_fresh(&self, key: &str) -> CommandResult<Option<String>> {
+        check_key(key)?;
+        let slot = self.slot(key);
+        let mut slot = lock(&slot);
+        if let Some(error) = self.paused(&slot) {
+            return Err(error);
+        }
+        self.reload(&mut slot, key)
+    }
+
     fn set(&self, key: &str, value: &str) -> CommandResult<()> {
         let pieces = slice_secret(key, value)?;
         let slot = self.slot(key);
         let mut slot = lock(&slot);
+        if let Slot::Known {
+            value: Some(current),
+            pieces: stored,
+        } = &*slot
+        {
+            if current == value && *stored == pieces.len() {
+                return Ok(());
+            }
+        }
         let previous = self.known_pieces(&slot, key)?;
         write_value(&self.inner, key, value, &pieces)?;
         *slot = Slot::Known {
@@ -244,7 +281,7 @@ impl SecretBackend for KeyringBackend {
     fn write(&self, key: &str, value: &str) -> CommandResult<()> {
         self.entry(key)?
             .set_password(value)
-            .map_err(CommandError::from)
+            .map_err(keychain_write_error)
     }
 
     fn remove(&self, key: &str) -> CommandResult<()> {
@@ -394,6 +431,7 @@ fn remove_pieces(backend: &dyn SecretBackend, key: &str, previous: usize) -> Com
     backend.remove(key)
 }
 
+#[cfg(test)]
 pub fn set_secret(backend: &dyn SecretBackend, key: &str, value: &str) -> CommandResult<()> {
     let pieces = slice_secret(key, value)?;
     let previous = stored_pieces(backend, key)?;
@@ -518,6 +556,8 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::mpsc::{channel, Receiver, Sender};
     use std::thread;
+
+    const WAIT: Duration = Duration::from_secs(5);
 
     use super::*;
 
@@ -920,6 +960,8 @@ mod tests {
         failing_reads: Mutex<Vec<ErrorKind>>,
         failing_writes: AtomicBool,
         failing_removes: AtomicBool,
+        panicking_reads: AtomicBool,
+        writes: AtomicUsize,
         gate: Option<ReadGate>,
     }
 
@@ -930,6 +972,7 @@ mod tests {
                 set_secret(&backend, key, value).unwrap();
             }
             backend.reads.store(0, Ordering::SeqCst);
+            backend.writes.store(0, Ordering::SeqCst);
             backend
         }
 
@@ -951,6 +994,10 @@ mod tests {
             self.reads.load(Ordering::SeqCst)
         }
 
+        fn writes(&self) -> usize {
+            self.writes.load(Ordering::SeqCst)
+        }
+
         fn fail_next_read(&self, kind: ErrorKind) {
             self.failing_reads.lock().unwrap().push(kind);
         }
@@ -965,7 +1012,10 @@ mod tests {
             self.reads.fetch_add(1, Ordering::SeqCst);
             if let Some(gate) = self.gate.as_ref().filter(|gate| gate.key == key) {
                 let _ = gate.arrived.lock().unwrap().send(());
-                let _ = gate.release.lock().unwrap().recv();
+                let _ = gate.release.lock().unwrap().recv_timeout(WAIT);
+            }
+            if self.panicking_reads.swap(false, Ordering::SeqCst) {
+                panic!("backend panicked while reading");
             }
             if let Some(kind) = self.failing_reads.lock().unwrap().pop() {
                 return Err(CommandError::new(kind, "read failed"));
@@ -974,6 +1024,7 @@ mod tests {
         }
 
         fn write(&self, key: &str, value: &str) -> CommandResult<()> {
+            self.writes.fetch_add(1, Ordering::SeqCst);
             if self.failing_writes.load(Ordering::SeqCst) {
                 return Err(CommandError::new(ErrorKind::Keychain, "write failed"));
             }
@@ -1100,12 +1151,32 @@ mod tests {
         let store = CachedStore::new(backend);
         thread::scope(|scope| {
             let first = scope.spawn(|| store.get("github.token"));
-            arrived.recv().unwrap();
+            arrived
+                .recv_timeout(WAIT)
+                .expect("the first read never reached the keychain");
+            let (started, on_start) = channel();
             let others: Vec<_> = (0..4)
-                .map(|_| scope.spawn(|| store.get("github.token")))
+                .map(|_| {
+                    let started = started.clone();
+                    let store = &store;
+                    scope.spawn(move || {
+                        let _ = started.send(());
+                        store.get("github.token")
+                    })
+                })
                 .collect();
-            assert_eq!(store.get("k").unwrap().as_deref(), Some("v"));
-            thread::sleep(Duration::from_millis(50));
+            for _ in 0..4 {
+                on_start.recv_timeout(WAIT).expect("a waiter never started");
+            }
+            let (other_key, on_other_key) = channel();
+            let store_ref = &store;
+            scope.spawn(move || {
+                let _ = other_key.send(store_ref.get("k"));
+            });
+            let read = on_other_key
+                .recv_timeout(WAIT)
+                .expect("another key waited for the gated read");
+            assert_eq!(read.unwrap().as_deref(), Some("v"));
             drop(release);
             for run in std::iter::once(first).chain(others) {
                 assert_eq!(run.join().unwrap().unwrap().as_deref(), Some("gho_abc"));
@@ -1115,7 +1186,44 @@ mod tests {
     }
 
     #[test]
-    fn a_denied_prompt_is_not_asked_again_for_five_minutes() {
+    fn readers_waiting_on_a_denied_read_all_get_the_denial_from_one_keychain_read() {
+        let (backend, arrived, release) =
+            CountingBackend::gated("github.token", &[("github.token", "gho_abc")]);
+        backend.fail_next_read(ErrorKind::KeychainDenied);
+        let store = CachedStore::new(backend);
+        thread::scope(|scope| {
+            let first = scope.spawn(|| store.get("github.token"));
+            arrived
+                .recv_timeout(WAIT)
+                .expect("the first read never reached the keychain");
+            let (started, on_start) = channel();
+            let others: Vec<_> = (0..4)
+                .map(|_| {
+                    let started = started.clone();
+                    let store = &store;
+                    scope.spawn(move || {
+                        let _ = started.send(());
+                        store.get("github.token")
+                    })
+                })
+                .collect();
+            for _ in 0..4 {
+                on_start.recv_timeout(WAIT).expect("a waiter never started");
+            }
+            drop(release);
+            for run in std::iter::once(first).chain(others) {
+                assert_eq!(
+                    run.join().unwrap().unwrap_err().kind,
+                    ErrorKind::KeychainDenied
+                );
+            }
+        });
+        assert_eq!(store.backend().reads(), 1);
+    }
+
+    #[test]
+    fn a_denied_prompt_is_not_asked_again_for_thirty_minutes() {
+        assert_eq!(KEYCHAIN_DENIAL_PAUSE, Duration::from_secs(30 * 60));
         let (clock, advanced) = manual_clock();
         let store =
             CachedStore::with_clock(CountingBackend::with(&[("github.token", "gho_abc")]), clock);
@@ -1126,13 +1234,17 @@ mod tests {
                 ErrorKind::KeychainDenied
             );
         }
-        *advanced.lock().unwrap() = DENIAL_PAUSE - Duration::from_millis(1);
+        *advanced.lock().unwrap() = KEYCHAIN_DENIAL_PAUSE - Duration::from_millis(1);
         assert_eq!(
             store.get("github.token").unwrap_err().kind,
             ErrorKind::KeychainDenied
         );
+        assert_eq!(
+            store.get_fresh("github.token").unwrap_err().kind,
+            ErrorKind::KeychainDenied
+        );
         assert_eq!(store.backend().reads(), 1);
-        *advanced.lock().unwrap() = DENIAL_PAUSE;
+        *advanced.lock().unwrap() = KEYCHAIN_DENIAL_PAUSE;
         assert_eq!(
             store.get("github.token").unwrap().as_deref(),
             Some("gho_abc")
@@ -1212,6 +1324,93 @@ mod tests {
             Some("gho_old")
         );
         assert_eq!(store.backend().reads(), 1);
+    }
+
+    #[test]
+    fn saving_the_value_already_cached_does_not_touch_the_keychain() {
+        let big = big_secret(5_000);
+        let store = CachedStore::new(CountingBackend::with(&[
+            ("github.token", "gho_abc"),
+            ("k", big.as_str()),
+        ]));
+        store.get("github.token").unwrap();
+        store.get("k").unwrap();
+        let reads = store.backend().reads();
+        store.set("github.token", "gho_abc").unwrap();
+        store.set("k", &big).unwrap();
+        assert_eq!(store.backend().writes(), 0);
+        assert_eq!(store.backend().reads(), reads);
+        store.set("github.token", "gho_new").unwrap();
+        assert_eq!(store.backend().writes(), 1);
+    }
+
+    #[test]
+    fn saving_over_a_key_never_read_still_writes_even_with_the_same_value() {
+        let store = CachedStore::new(CountingBackend::with(&[("github.token", "gho_abc")]));
+        store.set("github.token", "gho_abc").unwrap();
+        assert_eq!(store.backend().writes(), 1);
+        assert_eq!(store.backend().reads(), 1);
+    }
+
+    #[test]
+    fn a_failed_delete_leaves_the_cache_untouched() {
+        let store = CachedStore::new(CountingBackend::with(&[("github.token", "gho_abc")]));
+        store.get("github.token").unwrap();
+        store
+            .backend()
+            .failing_removes
+            .store(true, Ordering::SeqCst);
+        assert_eq!(
+            store.delete("github.token").unwrap_err().kind,
+            ErrorKind::Keychain
+        );
+        assert_eq!(
+            store.get("github.token").unwrap().as_deref(),
+            Some("gho_abc")
+        );
+        assert_eq!(store.backend().reads(), 1);
+    }
+
+    #[test]
+    fn a_fresh_read_replaces_the_cached_copy_with_what_the_keychain_holds() {
+        let store = CachedStore::new(CountingBackend::with(&[("k", "old")]));
+        assert_eq!(store.get("k").unwrap().as_deref(), Some("old"));
+        let big = big_secret(5_000);
+        set_secret(store.backend(), "k", &big).unwrap();
+        assert_eq!(store.get("k").unwrap().as_deref(), Some("old"));
+        assert_eq!(store.get_fresh("k").unwrap().as_deref(), Some(big.as_str()));
+        let reads = store.backend().reads();
+        assert_eq!(store.get("k").unwrap().as_deref(), Some(big.as_str()));
+        store.delete("k").unwrap();
+        assert!(store.backend().entries.lock().unwrap().is_empty());
+        assert_eq!(store.backend().reads(), reads);
+    }
+
+    #[test]
+    fn a_transient_failure_on_a_fresh_read_drops_the_cached_copy() {
+        let store = CachedStore::new(CountingBackend::with(&[("k", "old")]));
+        store.get("k").unwrap();
+        store.backend().fail_next_read(ErrorKind::Keychain);
+        assert_eq!(store.get_fresh("k").unwrap_err().kind, ErrorKind::Keychain);
+        assert_eq!(store.get("k").unwrap().as_deref(), Some("old"));
+        assert_eq!(store.backend().reads(), 3);
+    }
+
+    #[test]
+    fn a_panic_during_a_read_does_not_lock_the_key_forever() {
+        let store = CachedStore::new(CountingBackend::with(&[("github.token", "gho_abc")]));
+        store
+            .backend()
+            .panicking_reads
+            .store(true, Ordering::SeqCst);
+        let crashed = thread::scope(|scope| scope.spawn(|| store.get("github.token")).join());
+        assert!(crashed.is_err());
+        assert!(store.slot("github.token").is_poisoned());
+        assert_eq!(
+            store.get("github.token").unwrap().as_deref(),
+            Some("gho_abc")
+        );
+        assert_eq!(store.backend().reads(), 2);
     }
 
     #[test]
