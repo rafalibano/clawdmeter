@@ -135,4 +135,26 @@
     }
 </cm-settings-section>
 
+<cm-settings-section name="usage-alerts" [heading]="i18n.t('settings.alerts')">
+  <span summary>{{ alertsSummaryText() }}</span>
+  @for (row of alertRows(); track row.kind) {
+    <div class="field" [attr.data-alert-window]="row.kind">
+      <span class="label">{{ i18n.t(row.labelKey) }}</span>
+      <div class="checks" role="group" [attr.aria-label]="i18n.t('settings.alerts') + ' ' + i18n.t(row.labelKey)">
+        @for (option of row.options; track option.quartile) {
+          <label class="check">
+            <input
+              type="checkbox"
+              [checked]="option.checked"
+              (change)="toggleAlert(row.kind, option.quartile, checkedOf($event))"
+            />
+            <span>{{ option.quartile }}%</span>
+          </label>
+        }
+      </div>
+    </div>
+  }
+  <span class="hint">{{ i18n.t('settings.alerts.hint') }}</span>
+</cm-settings-section>
+
 <cm-update-settings />

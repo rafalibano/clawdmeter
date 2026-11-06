@@ -8,7 +8,7 @@ import {
   type SeriesColorSettings,
   type ThemeMode,
 } from '../../domain/settings';
-import { PROJECTION_METHODS, type ProjectionMethod } from '../../domain/usage';
+import { PROJECTION_METHODS, type ProjectionMethod, type Quartile, type UsageWindowKind } from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
@@ -19,6 +19,7 @@ import { ColorPickerComponent } from './color-picker.component';
 import { SettingsSectionComponent } from './settings-section.component';
 import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
+import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
 import { ConnectionsComponent } from './connections/connections.component';
 import { UpdateSettingsComponent } from '../updates/update-settings.component';
 
@@ -58,6 +59,8 @@ export class SettingsComponent {
   );
 
   protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
+  protected readonly alertRows = computed(() => usageAlertRows(this.settings().usageAlerts));
+  protected readonly alertsSummaryText = computed(() => usageAlertsSummary(this.i18n.localizer(), this.settings().usageAlerts));
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
@@ -68,6 +71,10 @@ export class SettingsComponent {
 
   protected setSeriesColor(kind: keyof SeriesColorSettings, color: string | null): void {
     this.facade.update({ seriesColors: { [kind]: color } });
+  }
+
+  protected toggleAlert(kind: UsageWindowKind, quartile: Quartile, checked: boolean): void {
+    this.facade.update({ usageAlerts: { [kind]: toggleQuartile(this.settings().usageAlerts[kind], quartile, checked) } });
   }
 
   protected togglePage(id: string, enabled: boolean): void {

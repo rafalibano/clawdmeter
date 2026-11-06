@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Usage alerts: notifications when the 5h or 7d consumption crosses 25%, 50%, 75% or 100%, configurable per window in the new **Usage alerts** section of Settings (50% on both by default; an empty list turns a window off). Each percentage is notified once per cycle, only the highest one when several are crossed at once, and nothing is notified for what was already crossed when the app opens. It needs the Notifications connection. Settings schema goes to 9.
+
 ## 0.1.1
 
 - The panel opens again over apps in full screen on macOS (for example Safari). It was not turned into a non-activating panel when macOS had already wrapped the window for key-value observing.

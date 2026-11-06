@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ConnectionProblemError, actionsFor } from '../../../domain/connections';
 import { DAY_MS, MINUTE_MS } from '../../../domain/time';
-import { createEmptyHistory } from '../../../domain/usage';
+import { createEmptyHistory, type UsageSnapshot } from '../../../domain/usage';
 import { createConnections, type Connections } from '../../connections/create-connections';
 import { FakeClock } from '../../testing/fake-clock';
 import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
@@ -13,6 +13,7 @@ import {
 } from '../../testing/fake-usage-adapters';
 import { ImportExternalUsageHistory } from './import-external-usage-history';
 import { LoadUsage } from './load-usage';
+import type { NotifyUsageQuartiles } from './notify-usage-quartiles';
 
 const START = 1_800_000_000_000;
 
@@ -258,5 +259,24 @@ describe('LoadUsage with external history (one-time migration)', () => {
     source.outcome = [{ at: START - 31 * DAY_MS, fiveHour: 50, sevenDay: 50 }];
     const data = await withImport.execute();
     expect(data.history.fiveHour).toHaveLength(1);
+  });
+
+  it('hands the snapshot to the quartile alerts without waiting for them', async () => {
+    const received: UsageSnapshot[] = [];
+    const alerts = {
+      execute: (snapshot: UsageSnapshot) => {
+        received.push(snapshot);
+        return new Promise<void>(() => undefined);
+      },
+    } as unknown as NotifyUsageQuartiles;
+    const withAlerts = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator, undefined, alerts);
+    const data = await withAlerts.execute();
+    expect(received).toEqual([data.snapshot]);
+  });
+
+  it('keeps working when the alerts reject', async () => {
+    const alerts = { execute: () => Promise.reject(new Error('boom')) } as unknown as NotifyUsageQuartiles;
+    const withAlerts = new LoadUsage(world.prefs, gateway, history, clock, connections, indicator, undefined, alerts);
+    await expect(withAlerts.execute()).resolves.toMatchObject({ snapshot: gateway.outcome });
   });
 });
