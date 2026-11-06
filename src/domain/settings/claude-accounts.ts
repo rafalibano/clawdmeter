@@ -10,6 +10,7 @@ export interface ClaudeAccount {
 }
 
 export interface ClaudeSettings {
+  useDefaultClientId: boolean;
   clientId: string;
   accounts: ClaudeAccount[];
   activeAccountId: string | null;
@@ -20,8 +21,10 @@ export type ClaudeAccountNameProblem = 'empty' | 'too-long' | 'taken';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACCOUNT_ID = /^[A-Za-z0-9-]{1,64}$/;
 
+export type ClaudeClientIdMode = Pick<ClaudeSettings, 'useDefaultClientId' | 'clientId'>;
+
 export function defaultClaudeSettings(): ClaudeSettings {
-  return { clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID, accounts: [], activeAccountId: null };
+  return { useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null };
 }
 
 export function isUuid(value: unknown): value is string {
@@ -32,6 +35,21 @@ export function normalizeClientId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return isUuid(trimmed) ? trimmed.toLowerCase() : null;
+}
+
+export function effectiveClaudeClientId(claude: ClaudeClientIdMode): string {
+  if (claude.useDefaultClientId) return DEFAULT_CLAUDE_OAUTH_CLIENT_ID;
+  return normalizeClientId(claude.clientId) ?? DEFAULT_CLAUDE_OAUTH_CLIENT_ID;
+}
+
+export function readClaudeClientIdMode(useDefault: unknown, rawClientId: unknown): ClaudeClientIdMode {
+  const clientId = normalizeClientId(rawClientId);
+  if (typeof useDefault === 'boolean') {
+    if (!useDefault && clientId !== null) return { useDefaultClientId: false, clientId };
+    return { useDefaultClientId: true, clientId: clientId ?? '' };
+  }
+  if (clientId === null || clientId === DEFAULT_CLAUDE_OAUTH_CLIENT_ID) return { useDefaultClientId: true, clientId: '' };
+  return { useDefaultClientId: false, clientId };
 }
 
 export function isClaudeAccountId(value: unknown): value is string {
@@ -96,7 +114,7 @@ export function readClaudeSettings(raw: unknown): ClaudeSettings {
   const source = raw as Record<string, unknown>;
   const accounts = readClaudeAccounts(source['accounts']) ?? [];
   return {
-    clientId: normalizeClientId(source['clientId']) ?? defaults.clientId,
+    ...readClaudeClientIdMode(source['useDefaultClientId'], source['clientId']),
     accounts,
     activeAccountId: normalizeActiveAccountId(accounts, source['activeAccountId']),
   };

@@ -3,12 +3,12 @@ import type { ClaudeLoginMode } from '../../../application/use-cases';
 import { CodedError } from '../../../domain/coded-error';
 import { ConnectionProblemError } from '../../../domain/connections';
 import {
-  DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
   MAX_CLAUDE_ACCOUNTS,
   MAX_CLAUDE_ACCOUNT_NAME,
   activeClaudeAccount,
   normalizeClientId,
   type ClaudeAccountNameProblem,
+  type ClaudeClientIdMode,
   type ClaudeSettings,
 } from '../../../domain/settings';
 import type { Localizer } from '../../i18n';
@@ -32,12 +32,23 @@ export interface AddAccountView {
   limitReached: boolean;
 }
 
+export type ClientIdChoice = 'default' | 'custom';
+
+export const CLIENT_ID_CHOICES: readonly ClientIdChoice[] = ['default', 'custom'];
+
+export interface ClientIdDraft {
+  choice: ClientIdChoice | null;
+  value: string | null;
+}
+
 export interface ClientIdView {
+  choice: ClientIdChoice;
+  showField: boolean;
   value: string;
   invalid: boolean;
   canSave: boolean;
-  isDefault: boolean;
-  dirty: boolean;
+  pending: boolean;
+  disabled: boolean;
 }
 
 export type ClaudeLoginView =
@@ -80,15 +91,29 @@ export function claudeAccountsSummary(claude: ClaudeSettings, l: Localizer): str
   return l.t('claudeAccounts.summary.count', { active: active.name, count: claude.accounts.length, max: MAX_CLAUDE_ACCOUNTS });
 }
 
-export function clientIdView(draft: string | null, current: string): ClientIdView {
-  const value = draft ?? current;
+export function savedClientIdChoice(claude: ClaudeClientIdMode): ClientIdChoice {
+  return claude.useDefaultClientId ? 'default' : 'custom';
+}
+
+export function otherClientIdChoice(choice: ClientIdChoice): ClientIdChoice {
+  return choice === 'default' ? 'custom' : 'default';
+}
+
+export function clientIdView(claude: ClaudeClientIdMode, draft: ClientIdDraft, loginBusy: boolean): ClientIdView {
+  const saved = savedClientIdChoice(claude);
+  const choice = draft.choice ?? saved;
+  const value = draft.value ?? claude.clientId;
   const normalized = normalizeClientId(value);
+  const custom = choice === 'custom';
+  const unchanged = saved === 'custom' && normalized === claude.clientId;
   return {
+    choice,
+    showField: custom,
     value,
-    invalid: normalized === null,
-    canSave: normalized !== null && normalized !== current,
-    isDefault: current === DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
-    dirty: draft !== null && draft !== current,
+    invalid: custom && value.trim() !== '' && normalized === null,
+    canSave: custom && !loginBusy && normalized !== null && !unchanged,
+    pending: custom && saved === 'default',
+    disabled: loginBusy,
   };
 }
 

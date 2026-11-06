@@ -100,7 +100,7 @@ Each command has its own permission (`allow-<name>` in `src-tauri/capabilities/d
 
 ClawdMeter runs its own Claude.ai OAuth sign-in and stores the resulting tokens, which [Anthropic's legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance) ("Authentication and credential use") does not allow: third-party developers must not offer Claude.ai login in their applications nor collect, store or route Claude.ai credentials or session tokens.
 The user accepted this risk for personal use, knowing Anthropic may enforce it against the account without notice.
-The OAuth client id defaults to the one ClaudeUsageBar uses (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`, apparently Claude Code's public client) and can be replaced in Settings; Rust receives it as `clientId` and validates it as a UUID.
+The OAuth client id defaults to the one ClaudeUsageBar uses (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`, apparently Claude Code's public client) and can be replaced in Settings (**Use default client ID: No**); Rust receives it as `clientId` and validates it as a UUID.
 This replaced the earlier source, which read Claude Code's own login (macOS Keychain item `Claude Code-credentials` through `/usr/bin/security`, or `~/.claude/.credentials.json`); that code, the `claude_credentials_status` command with its `allow-claude-credentials-status` permission, and the open item S3 are gone.
 
 ## Known limitations

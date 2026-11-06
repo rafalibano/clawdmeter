@@ -9,7 +9,7 @@ import {
   RemoveClaudeAccount,
   RenameClaudeAccount,
   SelectClaudeAccount,
-  SetClaudeClientId,
+  SetClaudeClientIdMode,
   type ClaudeAccountDeps,
 } from '../use-cases/claude-accounts';
 
@@ -23,7 +23,7 @@ export interface ClaudeAccounts {
   rename: RenameClaudeAccount;
   remove: RemoveClaudeAccount;
   select: SelectClaudeAccount;
-  setClientId: SetClaudeClientId;
+  setClientIdMode: SetClaudeClientIdMode;
 }
 
 export function createClaudeAccounts(deps: ClaudeAccountDeps): ClaudeAccounts {
@@ -38,6 +38,6 @@ export function createClaudeAccounts(deps: ClaudeAccountDeps): ClaudeAccounts {
     rename: new RenameClaudeAccount(deps),
     remove: new RemoveClaudeAccount(deps, logins),
     select: new SelectClaudeAccount(deps),
-    setClientId: new SetClaudeClientId(deps),
+    setClientIdMode: new SetClaudeClientIdMode(deps),
   };
 }

@@ -79,10 +79,24 @@ describe('LoadUsage', () => {
     expect(data.history.sevenDay).toEqual([]);
   });
 
-  it('reads the active account with the client id from the settings and tags the data with it', async () => {
+  it('reads the active account with the default client id and tags the data with it', async () => {
     const data = await loadUsage.execute();
     expect(gateway.requests).toEqual([{ accountId: FAKE_ACCOUNT.id, clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID }]);
     expect(data.accountId).toBe(FAKE_ACCOUNT.id);
+  });
+
+  it('sends the custom client id only while the default is off', async () => {
+    const custom = '11111111-2222-4333-8444-555555555555';
+    const withMode = (useDefaultClientId: boolean) => {
+      const base = settingsWithAccounts([FAKE_ACCOUNT]);
+      return { ...base, claude: { ...base.claude, useDefaultClientId, clientId: custom } };
+    };
+    world.settings.emitExternalChange(withMode(false));
+    await loadUsage.execute();
+    world.settings.emitExternalChange(withMode(true));
+    await clock.advance(MINUTE_MS);
+    await loadUsage.execute();
+    expect(gateway.requests.map((request) => request.clientId)).toEqual([custom, DEFAULT_CLAUDE_OAUTH_CLIENT_ID]);
   });
 
   it('each account records into its own history', async () => {

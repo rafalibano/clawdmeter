@@ -12,7 +12,6 @@ import {
   untracked,
 } from '@angular/core';
 import {
-  DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
   MAX_CLAUDE_ACCOUNTS,
   MAX_CLAUDE_ACCOUNT_NAME,
   accountNameProblem,
@@ -23,6 +22,7 @@ import { ClaudeAccountsFacade } from '../../shell/claude-accounts.facade';
 import { CLAUDE_ACCOUNTS_SECTION } from '../../shell/shell-navigation.service';
 import { SettingsSectionComponent } from '../settings-section.component';
 import {
+  CLIENT_ID_CHOICES,
   accountNameProblemText,
   addAccountView,
   claudeAccountRows,
@@ -30,9 +30,14 @@ import {
   clientIdView,
   errorText,
   loginStatusText,
+  otherClientIdChoice,
+  savedClientIdChoice,
+  type ClientIdChoice,
 } from './claude-accounts-view';
 
 const NAME_INPUT = '#claude-account-name';
+
+const CLIENT_ID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 
 @Component({
   selector: 'cm-claude-accounts',
@@ -49,7 +54,8 @@ export class ClaudeAccountsComponent {
 
   protected readonly section = CLAUDE_ACCOUNTS_SECTION;
   protected readonly maxName = MAX_CLAUDE_ACCOUNT_NAME;
-  protected readonly defaultClientId = DEFAULT_CLAUDE_OAUTH_CLIENT_ID;
+  protected readonly clientIdChoices = CLIENT_ID_CHOICES;
+  protected readonly clientIdMask = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
   protected readonly claude = this.facade.claude;
   protected readonly busy = this.facade.busy;
   protected readonly loginBusy = this.facade.loginBusy;
@@ -59,6 +65,7 @@ export class ClaudeAccountsComponent {
   protected readonly removing = signal<string | null>(null);
   protected readonly nameDraft = signal('');
   private readonly nameProblem = signal<ClaudeAccountNameProblem | null>(null);
+  private readonly clientIdChoice = signal<ClientIdChoice | null>(null);
   private readonly clientIdDraft = signal<string | null>(null);
   private readonly accountIds = computed(() => this.claude().accounts.map((account) => account.id).join(','));
   private readonly loginShown = computed(() => this.login() !== null);
@@ -67,7 +74,9 @@ export class ClaudeAccountsComponent {
   protected readonly summary = computed(() => claudeAccountsSummary(this.claude(), this.i18n.localizer()));
   protected readonly addView = computed(() => addAccountView(this.claude(), this.loginBusy()));
   protected readonly limitText = computed(() => this.i18n.t('error.claude-account-limit', { max: MAX_CLAUDE_ACCOUNTS }));
-  protected readonly clientId = computed(() => clientIdView(this.clientIdDraft(), this.claude().clientId));
+  protected readonly clientId = computed(() =>
+    clientIdView(this.claude(), { choice: this.clientIdChoice(), value: this.clientIdDraft() }, this.loginBusy()),
+  );
   protected readonly statusText = computed(() => loginStatusText(this.login(), this.facade.success(), this.i18n.localizer()));
   protected readonly nameError = computed(() => {
     const problem = this.nameProblem();
@@ -178,6 +187,31 @@ export class ClaudeAccountsComponent {
     void this.facade.cancelLogin();
   }
 
+  protected clientIdChoiceLabel(choice: ClientIdChoice): string {
+    return this.i18n.t(choice === 'default' ? 'claudeAccounts.clientId.yes' : 'claudeAccounts.clientId.no');
+  }
+
+  protected async chooseClientId(choice: ClientIdChoice): Promise<void> {
+    if (this.clientId().disabled || this.clientId().choice === choice) return;
+    this.facade.clearFailure();
+    if (choice === 'custom') {
+      this.clientIdChoice.set('custom');
+      return;
+    }
+    this.clientIdChoice.set('default');
+    this.clientIdDraft.set(null);
+    if (savedClientIdChoice(this.claude()) === 'custom') await this.facade.setClientIdMode({ useDefault: true });
+    if (this.clientIdChoice() === 'default') this.clientIdChoice.set(null);
+  }
+
+  protected clientIdKey(event: KeyboardEvent, choice: ClientIdChoice): void {
+    if (!CLIENT_ID_KEYS.has(event.key)) return;
+    event.preventDefault();
+    const next = otherClientIdChoice(choice);
+    void this.chooseClientId(next);
+    this.focusLater(`[data-client-id-choice="${next}"]`);
+  }
+
   protected typeClientId(event: Event): void {
     this.clientIdDraft.set((event.target as HTMLInputElement).value);
   }
@@ -185,16 +219,9 @@ export class ClaudeAccountsComponent {
   protected async saveClientId(): Promise<void> {
     const view = this.clientId();
     if (!view.canSave) return;
-    if (await this.facade.setClientId(view.value)) this.clientIdDraft.set(null);
-  }
-
-  protected async resetClientId(): Promise<void> {
-    const view = this.clientId();
-    if (view.isDefault) {
-      this.clientIdDraft.set(null);
-      return;
-    }
-    if (await this.facade.setClientId(null)) this.clientIdDraft.set(null);
+    if (!(await this.facade.setClientIdMode({ useDefault: false, clientId: view.value }))) return;
+    this.clientIdChoice.set(null);
+    this.clientIdDraft.set(null);
   }
 
   private rowAction(accountId: string, action: string): string {

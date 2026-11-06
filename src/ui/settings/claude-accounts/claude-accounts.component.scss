@@ -195,8 +195,33 @@
   cursor: pointer;
 }
 
-.client-id .link {
-  margin-top: 8px;
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--cm-radius-md);
+  background: var(--cm-surface);
+}
+
+.segment {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--cm-radius-btn);
+  background: transparent;
+  cursor: pointer;
+}
+
+.segment.selected {
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
+}
+
+.segment:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.client-id-form {
+  margin-top: 10px;
 }
 
 .link:disabled {

@@ -18,6 +18,7 @@ import type { PendingClaudeLogin } from './claude-login';
 
 const START = 1_800_000_000_000;
 const WORK: ClaudeAccount = { id: 'account-2', name: 'Work' };
+const CUSTOM_CLIENT_ID = '11111111-2222-4333-8444-55555555555a';
 
 let settings: FakeSettingsStore;
 let gateway: FakeClaudeAccountGateway;
@@ -75,17 +76,20 @@ describe('AddClaudeAccount', () => {
     expect(urls.opened).toEqual(['https://claude.ai/oauth/authorize?state=state-1']);
     expect(gateway.completions).toEqual([{ loginId: 'login-1', accountId: 'account-new-1', timeoutMs: 60_000 }]);
     expect(await claude()).toEqual({
-      clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+      useDefaultClientId: true,
+      clientId: '',
       accounts: [{ id: 'account-new-1', name: 'Personal' }],
       activeAccountId: 'account-new-1',
     });
     expect(settings.saved).toHaveLength(1);
   });
 
-  it('uses the client id from the settings', async () => {
-    await settings.save({ ...(await settings.load()), claude: { ...(await claude()), clientId: '11111111-2222-4333-8444-555555555555' } });
+  it('signs in with the custom client id when the default is off, and with the default when it is on', async () => {
+    await accounts.setClientIdMode.execute({ useDefault: false, clientId: CUSTOM_CLIENT_ID });
     await accounts.add.execute('Personal');
-    expect(gateway.begun).toEqual(['11111111-2222-4333-8444-555555555555']);
+    await accounts.setClientIdMode.execute({ useDefault: true });
+    await accounts.add.execute('Work');
+    expect(gateway.begun).toEqual([CUSTOM_CLIENT_ID, DEFAULT_CLAUDE_OAUTH_CLIENT_ID]);
   });
 
   it('a second account is added without changing the active one', async () => {
@@ -342,6 +346,13 @@ describe('ReauthenticateClaudeAccount', () => {
     expect(gateway.completions).toEqual([{ loginId: 'login-1', accountId: WORK.id, timeoutMs: 60_000 }]);
     expect(await gateway.status(WORK.id)).toMatchObject({ signedIn: true, needsLogin: false });
     expect(settings.saved).toEqual([]);
+    expect(gateway.begun).toEqual([DEFAULT_CLAUDE_OAUTH_CLIENT_ID]);
+  });
+
+  it('signs in again with the custom client id when the default is off', async () => {
+    await accounts.setClientIdMode.execute({ useDefault: false, clientId: CUSTOM_CLIENT_ID });
+    await accounts.reauthenticate.execute(WORK.id);
+    expect(gateway.begun).toEqual([CUSTOM_CLIENT_ID]);
   });
 
   it('a cancelled sign-in keeps the account and cancels the login', async () => {
@@ -452,7 +463,7 @@ describe('RemoveClaudeAccount', () => {
   });
 });
 
-describe('SelectClaudeAccount, SetClaudeClientId and ListClaudeAccounts', () => {
+describe('SelectClaudeAccount, SetClaudeClientIdMode and ListClaudeAccounts', () => {
   beforeEach(() => setup([FAKE_ACCOUNT, WORK]));
 
   it('persists the active account', async () => {
@@ -462,18 +473,45 @@ describe('SelectClaudeAccount, SetClaudeClientId and ListClaudeAccounts', () => 
     expect((await claude()).activeAccountId).toBe(WORK.id);
   });
 
-  it('accepts only a UUID as client id and restores the default with null', async () => {
-    expect(await accounts.setClientId.execute(' 11111111-2222-4333-8444-55555555555A ')).toBe('11111111-2222-4333-8444-55555555555a');
-    expect((await claude()).clientId).toBe('11111111-2222-4333-8444-55555555555a');
-    await expect(accounts.setClientId.execute('not-a-uuid')).rejects.toMatchObject({ code: 'claude-client-id-invalid' });
-    expect(await accounts.setClientId.execute(null)).toBe(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
-    expect((await claude()).clientId).toBe(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
+  const clientIdMode = async () => {
+    const { useDefaultClientId, clientId } = await claude();
+    return { useDefaultClientId, clientId };
+  };
+
+  it('turns the default off only with a valid UUID, stored in lowercase', async () => {
+    expect(await accounts.setClientIdMode.execute({ useDefault: false, clientId: ' 11111111-2222-4333-8444-55555555555A ' })).toBe(CUSTOM_CLIENT_ID);
+    expect(await clientIdMode()).toEqual({ useDefaultClientId: false, clientId: CUSTOM_CLIENT_ID });
+    expect(settings.saved).toHaveLength(1);
+  });
+
+  it('refuses to turn the default off with an invalid or empty id and writes nothing', async () => {
+    for (const clientId of ['not-a-uuid', '', '   ']) {
+      await expect(accounts.setClientIdMode.execute({ useDefault: false, clientId })).rejects.toMatchObject({ code: 'claude-client-id-invalid' });
+    }
+    expect(await clientIdMode()).toEqual({ useDefaultClientId: true, clientId: '' });
+    expect(settings.saved).toEqual([]);
+  });
+
+  it('turning the default on persists right away and keeps the custom id stored', async () => {
+    await accounts.setClientIdMode.execute({ useDefault: false, clientId: CUSTOM_CLIENT_ID });
+    expect(await accounts.setClientIdMode.execute({ useDefault: true })).toBe(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
+    expect(await clientIdMode()).toEqual({ useDefaultClientId: true, clientId: CUSTOM_CLIENT_ID });
+  });
+
+  it('changes the custom id while the default is off, validating the new one', async () => {
+    await accounts.setClientIdMode.execute({ useDefault: false, clientId: CUSTOM_CLIENT_ID });
+    const other = '22222222-3333-4444-8555-666666666666';
+    expect(await accounts.setClientIdMode.execute({ useDefault: false, clientId: other })).toBe(other);
+    await expect(accounts.setClientIdMode.execute({ useDefault: false, clientId: 'oops' })).rejects.toMatchObject({ code: 'claude-client-id-invalid' });
+    expect(await clientIdMode()).toEqual({ useDefaultClientId: false, clientId: other });
   });
 
   it('lists every account with its status, and an unknown status when Rust fails', async () => {
     gateway.statuses.set(WORK.id, new Error('keychain locked'));
+    expect(await accounts.list.execute()).toMatchObject({ clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID });
+    await accounts.setClientIdMode.execute({ useDefault: false, clientId: CUSTOM_CLIENT_ID });
     expect(await accounts.list.execute()).toEqual({
-      clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+      clientId: CUSTOM_CLIENT_ID,
       activeAccountId: FAKE_ACCOUNT.id,
       accounts: [
         { account: FAKE_ACCOUNT, active: true, status: SIGNED_IN },

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID } from './claude-accounts';
 import { createDefaultSettings } from './defaults';
 import { applyPatch, mergePatches } from './settings-patch';
 import { isPageEnabled } from './page-enabled';
@@ -130,7 +129,7 @@ describe('Claude accounts in the patch', () => {
   const withAccounts = () => applyPatch(createDefaultSettings(), { claude: { accounts: [PERSONAL, WORK], activeAccountId: 'a2' } });
 
   it('replaces the account list and the active account', () => {
-    expect(withAccounts().claude).toEqual({ clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID, accounts: [PERSONAL, WORK], activeAccountId: 'a2' });
+    expect(withAccounts().claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [PERSONAL, WORK], activeAccountId: 'a2' });
   });
 
   it('ignores an invalid list as a whole: duplicated name (case-insensitive), bad id, long name or more than five', () => {
@@ -158,20 +157,53 @@ describe('Claude accounts in the patch', () => {
     expect(applyPatch(base, { claude: { accounts: [] } }).claude.activeAccountId).toBeNull();
   });
 
-  it('accepts only a UUID as client id', () => {
+  const CUSTOM = '11111111-2222-4333-8444-555555555555';
+  const OTHER = '22222222-3333-4444-8555-666666666666';
+  const mode = (settings: ReturnType<typeof createDefaultSettings>) => ({
+    useDefaultClientId: settings.claude.useDefaultClientId,
+    clientId: settings.claude.clientId,
+  });
+  const custom = () => applyPatch(createDefaultSettings(), { claude: { useDefaultClientId: false, clientId: CUSTOM } });
+
+  it('turns the default off only together with a valid UUID, stored in lowercase', () => {
+    expect(mode(custom())).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
     const base = createDefaultSettings();
-    expect(applyPatch(base, { claude: { clientId: 'x' } }).claude.clientId).toBe(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
-    expect(applyPatch(base, { claude: { clientId: '11111111-2222-4333-8444-555555555555' } }).claude.clientId).toBe(
-      '11111111-2222-4333-8444-555555555555',
-    );
+    expect(mode(applyPatch(base, { claude: { useDefaultClientId: false, clientId: CUSTOM.toUpperCase() } }))).toEqual({
+      useDefaultClientId: false,
+      clientId: CUSTOM,
+    });
+    for (const clientId of ['x', '', '   ']) {
+      expect(mode(applyPatch(base, { claude: { useDefaultClientId: false, clientId } }))).toEqual({ useDefaultClientId: true, clientId: '' });
+    }
+    expect(mode(applyPatch(base, { claude: { useDefaultClientId: false } }))).toEqual({ useDefaultClientId: true, clientId: '' });
+  });
+
+  it('turning the default on keeps the custom id for later, and turning it off again reuses it', () => {
+    const back = applyPatch(custom(), { claude: { useDefaultClientId: true } });
+    expect(mode(back)).toEqual({ useDefaultClientId: true, clientId: CUSTOM });
+    expect(mode(applyPatch(back, { claude: { useDefaultClientId: false } }))).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+  });
+
+  it('changes the custom id only to another UUID, and an invalid one never turns the default off', () => {
+    expect(mode(applyPatch(custom(), { claude: { clientId: OTHER } }))).toEqual({ useDefaultClientId: false, clientId: OTHER });
+    expect(mode(applyPatch(custom(), { claude: { clientId: 'x' } }))).toEqual({ useDefaultClientId: false, clientId: CUSTOM });
+    const back = applyPatch(custom(), { claude: { useDefaultClientId: true } });
+    expect(mode(applyPatch(back, { claude: { useDefaultClientId: false, clientId: 'x' } }))).toEqual({ useDefaultClientId: true, clientId: CUSTOM });
+  });
+
+  it('ignores a useDefaultClientId that is not a boolean', () => {
+    const patch = { claude: { useDefaultClientId: 'no' as unknown as boolean, clientId: OTHER } };
+    expect(mode(applyPatch(custom(), patch))).toEqual({ useDefaultClientId: false, clientId: OTHER });
+    expect(mode(applyPatch(createDefaultSettings(), patch))).toEqual({ useDefaultClientId: true, clientId: OTHER });
   });
 
   it('other patches keep the Claude section and mergePatches combines its fields', () => {
     const base = withAccounts();
     expect(applyPatch(base, { language: 'pt-BR' }).claude).toEqual(base.claude);
-    expect(mergePatches({ claude: { activeAccountId: 'a1' } }, { claude: { clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID } }).claude).toEqual({
+    expect(mergePatches({ claude: { activeAccountId: 'a1' } }, { claude: { useDefaultClientId: false, clientId: CUSTOM } }).claude).toEqual({
       activeAccountId: 'a1',
-      clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+      useDefaultClientId: false,
+      clientId: CUSTOM,
     });
     expect(mergePatches({}, {})).not.toHaveProperty('claude');
   });

@@ -1,4 +1,4 @@
-import type { ClaudeAccount } from '../../../domain/settings';
+import { effectiveClaudeClientId, type ClaudeAccount } from '../../../domain/settings';
 import type { ClaudeAccountStatus } from '../../ports';
 import type { ClaudeAccountDeps } from './claude-account-deps';
 
@@ -26,6 +26,6 @@ export class ListClaudeAccounts {
         status: await this.deps.gateway.status(account.id).catch(() => null),
       })),
     );
-    return { clientId: claude.clientId, activeAccountId: claude.activeAccountId, accounts };
+    return { clientId: effectiveClaudeClientId(claude), activeAccountId: claude.activeAccountId, accounts };
   }
 }

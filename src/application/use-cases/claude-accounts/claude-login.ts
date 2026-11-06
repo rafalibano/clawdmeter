@@ -1,5 +1,5 @@
 import { CodedError } from '../../../domain/coded-error';
-import { isClaudeAccountId, type ClaudeAccount } from '../../../domain/settings';
+import { effectiveClaudeClientId, isClaudeAccountId, type ClaudeAccount } from '../../../domain/settings';
 import { CLAUDE_LOGIN_TIMEOUT_MS, checkedNewAccount, type ClaudeAccountDeps } from './claude-account-deps';
 
 export type ClaudeLoginMode = 'add' | 'reauthenticate';
@@ -69,7 +69,7 @@ export class ClaudeLogins {
 
   async begin(account: ClaudeAccount, mode: ClaudeLoginMode, onPending?: PendingLoginListener): Promise<PendingClaudeLogin> {
     const { claude } = await this.deps.settings.load();
-    const start = await this.deps.gateway.begin(claude.clientId);
+    const start = await this.deps.gateway.begin(effectiveClaudeClientId(claude));
     const login = new PendingClaudeLogin(start.loginId, account, mode, start.manualAuthorizeUrl);
     this.open.add(login);
     onPending?.(login);

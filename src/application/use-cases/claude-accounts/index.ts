@@ -9,4 +9,4 @@ export * from './reauthenticate-claude-account';
 export * from './remove-claude-account';
 export * from './rename-claude-account';
 export * from './select-claude-account';
-export * from './set-claude-client-id';
+export * from './set-claude-client-id-mode';

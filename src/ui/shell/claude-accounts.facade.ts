@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { ClaudeAccountStatus } from '../../application/ports';
-import type { ClaudeLoginMode, PendingClaudeLogin } from '../../application/use-cases';
+import type { ClaudeClientIdChoice, ClaudeLoginMode, PendingClaudeLogin } from '../../application/use-cases';
 import { CodedError } from '../../domain/coded-error';
 import type { ClaudeAccount } from '../../domain/settings';
 import { USAGE_PAGE } from '../pages/usage/usage-page-ref';
@@ -123,9 +123,9 @@ export class ClaudeAccountsFacade {
     });
   }
 
-  async setClientId(value: string | null): Promise<boolean> {
+  async setClientIdMode(choice: ClaudeClientIdChoice): Promise<boolean> {
     return this.change(async () => {
-      await this.app.claudeAccounts.setClientId.execute(value);
+      await this.app.claudeAccounts.setClientIdMode.execute(choice);
     });
   }
 

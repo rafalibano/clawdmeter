@@ -10,10 +10,13 @@ import {
   addAccountView,
   claudeAccountRows,
   claudeAccountsSummary,
+  CLIENT_ID_CHOICES,
   clientIdView,
   errorText,
   loginStatusText,
   loginText,
+  otherClientIdChoice,
+  savedClientIdChoice,
 } from './claude-accounts-view';
 
 const NOW = 1_800_000_000_000;
@@ -107,30 +110,82 @@ describe('one status line for the sign-in', () => {
   });
 });
 
-describe('client id field', () => {
-  it('validates the draft as a UUID and only saves a different valid value', () => {
-    expect(clientIdView(null, DEFAULT_CLAUDE_OAUTH_CLIENT_ID)).toEqual({
-      value: DEFAULT_CLAUDE_OAUTH_CLIENT_ID,
+describe('client id choice', () => {
+  const CUSTOM = '11111111-2222-4333-8444-555555555555';
+  const OTHER = '22222222-3333-4444-8555-666666666666';
+  const DEFAULT_MODE = { useDefaultClientId: true, clientId: '' };
+  const CUSTOM_MODE = { useDefaultClientId: false, clientId: CUSTOM };
+  const NO_DRAFT = { choice: null, value: null };
+
+  it('is "Yes" by default, without the field and without the default id anywhere in the view', () => {
+    const view = clientIdView(DEFAULT_MODE, NO_DRAFT, false);
+    expect(view).toEqual({ choice: 'default', showField: false, value: '', invalid: false, canSave: false, pending: false, disabled: false });
+    expect(JSON.stringify(view)).not.toContain(DEFAULT_CLAUDE_OAUTH_CLIENT_ID);
+    expect(savedClientIdChoice(DEFAULT_MODE)).toBe('default');
+    expect(CLIENT_ID_CHOICES).toEqual(['default', 'custom']);
+  });
+
+  it('choosing "No" shows the field without saving yet: the default stays in use until a valid UUID is saved', () => {
+    expect(clientIdView(DEFAULT_MODE, { choice: 'custom', value: null }, false)).toMatchObject({
+      choice: 'custom',
+      showField: true,
+      value: '',
       invalid: false,
       canSave: false,
-      isDefault: true,
-      dirty: false,
+      pending: true,
     });
-    expect(clientIdView('nope', DEFAULT_CLAUDE_OAUTH_CLIENT_ID)).toMatchObject({ invalid: true, canSave: false });
-    expect(clientIdView('11111111-2222-4333-8444-555555555555', DEFAULT_CLAUDE_OAUTH_CLIENT_ID)).toMatchObject({
+    expect(clientIdView(DEFAULT_MODE, { choice: 'custom', value: 'nope' }, false)).toMatchObject({ invalid: true, canSave: false, pending: true });
+    expect(clientIdView(DEFAULT_MODE, { choice: 'custom', value: ` ${CUSTOM.toUpperCase()} ` }, false)).toMatchObject({
       invalid: false,
       canSave: true,
     });
-    expect(clientIdView(null, '11111111-2222-4333-8444-555555555555').isDefault).toBe(false);
   });
 
-  it('is dirty only while the draft differs from the saved value, so the default can still be restored from a typo', () => {
-    expect(clientIdView('9d1c250a-oops', DEFAULT_CLAUDE_OAUTH_CLIENT_ID)).toMatchObject({ isDefault: true, dirty: true });
-    expect(clientIdView(DEFAULT_CLAUDE_OAUTH_CLIENT_ID, DEFAULT_CLAUDE_OAUTH_CLIENT_ID).dirty).toBe(false);
+  it('the custom id already stored fills the field when "No" is chosen again', () => {
+    const stored = { useDefaultClientId: true, clientId: CUSTOM };
+    expect(clientIdView(stored, NO_DRAFT, false)).toMatchObject({ choice: 'default', showField: false });
+    expect(clientIdView(stored, { choice: 'custom', value: null }, false)).toMatchObject({ showField: true, value: CUSTOM, canSave: true, pending: true });
   });
 
-  it('an invalid id says what to paste', () => {
-    expect(errorText(new CodedError('claude-client-id-invalid'), PT)).toBe('Cole o ID inteiro, no formato 9d1c250a-e61b-44d9-88ed-5944d1962f5e.');
+  it('a saved custom id shows "No" with the field, and only a different valid UUID can be saved', () => {
+    expect(savedClientIdChoice(CUSTOM_MODE)).toBe('custom');
+    expect(clientIdView(CUSTOM_MODE, NO_DRAFT, false)).toEqual({
+      choice: 'custom',
+      showField: true,
+      value: CUSTOM,
+      invalid: false,
+      canSave: false,
+      pending: false,
+      disabled: false,
+    });
+    expect(clientIdView(CUSTOM_MODE, { choice: null, value: CUSTOM.toUpperCase() }, false).canSave).toBe(false);
+    expect(clientIdView(CUSTOM_MODE, { choice: null, value: OTHER }, false).canSave).toBe(true);
+    expect(clientIdView(CUSTOM_MODE, { choice: null, value: '' }, false)).toMatchObject({ invalid: false, canSave: false });
+  });
+
+  it('choosing "Yes" hides the field whatever the draft', () => {
+    expect(clientIdView(CUSTOM_MODE, { choice: 'default', value: 'nope' }, false)).toMatchObject({
+      choice: 'default',
+      showField: false,
+      invalid: false,
+      canSave: false,
+      pending: false,
+    });
+  });
+
+  it('is disabled while a sign-in is in progress', () => {
+    expect(clientIdView(DEFAULT_MODE, NO_DRAFT, true).disabled).toBe(true);
+    expect(clientIdView(CUSTOM_MODE, { choice: null, value: OTHER }, true)).toMatchObject({ disabled: true, canSave: false });
+  });
+
+  it('the arrows move between the two options', () => {
+    expect(otherClientIdChoice('default')).toBe('custom');
+    expect(otherClientIdChoice('custom')).toBe('default');
+  });
+
+  it('an invalid id says what to paste with a neutral mask', () => {
+    expect(errorText(new CodedError('claude-client-id-invalid'), PT)).toBe('Cole o ID inteiro, no formato xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.');
+    expect(errorText(new CodedError('claude-client-id-invalid'), EN)).toBe('Paste the whole ID, in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.');
   });
 });
 

@@ -3,9 +3,11 @@ import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
 import {
+  isUuid,
   normalizeActiveAccountId,
   normalizeClientId,
   readStrictClaudeAccounts,
+  type ClaudeClientIdMode,
   type ClaudeSettings,
 } from './claude-accounts';
 import { isHexColor } from './hex-color';
@@ -70,13 +72,21 @@ function applyUsageAlerts(current: UsageAlertSettings, patch: Partial<UsageAlert
   };
 }
 
+function applyClientIdMode(current: ClaudeSettings, patch: Partial<ClaudeSettings>): ClaudeClientIdMode {
+  const requested = patch.clientId === undefined ? current.clientId : normalizeClientId(patch.clientId);
+  const clientId = requested ?? current.clientId;
+  if (patch.useDefaultClientId === true) return { useDefaultClientId: true, clientId };
+  if (patch.useDefaultClientId === false && requested !== null && isUuid(clientId)) return { useDefaultClientId: false, clientId };
+  return { useDefaultClientId: current.useDefaultClientId, clientId };
+}
+
 function applyClaude(current: ClaudeSettings, patch: Partial<ClaudeSettings>): ClaudeSettings {
   const accounts = patch.accounts === undefined ? current.accounts : (readStrictClaudeAccounts(patch.accounts) ?? current.accounts);
   const wanted = patch.activeAccountId;
   const known = wanted === null || accounts.some((account) => account.id === wanted);
   const requested = wanted !== undefined && known ? wanted : current.activeAccountId;
   return {
-    clientId: normalizeClientId(patch.clientId) ?? current.clientId,
+    ...applyClientIdMode(current, patch),
     accounts,
     activeAccountId: normalizeActiveAccountId(accounts, requested),
   };

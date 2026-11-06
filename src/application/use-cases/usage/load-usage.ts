@@ -1,6 +1,6 @@
 import { CodedError } from '../../../domain/coded-error';
 import { ConnectionProblemError, claudeSignInRequired, customMessage } from '../../../domain/connections';
-import { activeClaudeAccount, type ClaudeAccount } from '../../../domain/settings';
+import { activeClaudeAccount, effectiveClaudeClientId, type ClaudeAccount } from '../../../domain/settings';
 import { recordSnapshot, retainHistory } from '../../../domain/usage';
 import type { UsageHistory, UsageSnapshot } from '../../../domain/usage';
 import type { Connections } from '../../connections/create-connections';
@@ -75,7 +75,7 @@ export class LoadUsage {
       const { claude } = await this.settings.load();
       account = activeClaudeAccount(claude);
       if (account === null) throw new ConnectionProblemError('claude-no-account');
-      return { account, snapshot: await this.fetchFor(account, claude.clientId) };
+      return { account, snapshot: await this.fetchFor(account, effectiveClaudeClientId(claude)) };
     } catch (error) {
       if (account === null || (await this.stillActive(account.id))) {
         this.indicate(null, now);
