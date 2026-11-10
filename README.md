@@ -47,9 +47,7 @@ The `.dmg` is universal: it runs on Macs with an Apple chip (M1 or newer) and on
 
 ClawdMeter updates itself from the [Releases](https://github.com/rafalibano/clawdmeter/releases) of its GitHub repository. The repository is public, so any GitHub account can read the releases, but the app still asks GitHub with your connected account: you need **GitHub connected** in **Settings > Connections** (gh CLI, browser or token). Without it, Settings > Updates shows "Connect GitHub to receive updates" and the app does not check. You can always download a new version by hand from the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest).
 
-The app checks when it opens and every 6 hours. When there is a new version, a "New version X · Update" bar appears at the top of the panel: click **Update**, wait for the download and choose **Restart** (or **Later**). Settings > Updates shows the current version, the last check and a **Check now** button. Every update is signed, and the app refuses a file whose signature does not match.
-
-> **On 0.2.0?** That release offered an older version to the updater, so 0.2.0 never updates by itself. Install 0.2.1 or later by hand from the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest); from then on updates work again.
+The app checks when it opens and every 6 hours. When there is a new version, a "New version X · Update" bar appears at the top of the panel: click **Update**, wait for the download and choose **Restart** (or **Later**). Settings > Updates shows the current version, the last check and a **Check now** button. Every update is signed, and the app refuses a file whose signature does not match. If Settings > Updates shows version 0.1.1 (the build published as 0.2.0 reports that number), the app offers the update on its next check.
 
 ## Privacy and security
 
