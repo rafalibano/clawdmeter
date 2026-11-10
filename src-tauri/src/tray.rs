@@ -98,6 +98,7 @@ pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
 
 pub fn prepare_popover(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        platform::keep_painting_when_occluded(&window);
         platform::prepare_popover(&window);
     }
 }

@@ -385,7 +385,7 @@ fn on_ns_window(
 // WebKit stops painting while it thinks the window is occluded and only resumes on an occlusion
 // change, so the panel opened blank over a big window until that window moved or minimized.
 #[cfg(target_os = "macos")]
-fn keep_painting_when_occluded(window: &tauri::WebviewWindow) {
+pub fn keep_painting_when_occluded(window: &tauri::WebviewWindow) {
     use objc2::runtime::{NSObject, NSObjectProtocol};
     use objc2::{msg_send, sel};
 
@@ -404,9 +404,11 @@ fn keep_painting_when_occluded(window: &tauri::WebviewWindow) {
 #[cfg(target_os = "macos")]
 pub fn prepare_popover(window: &tauri::WebviewWindow) {
     let _ = window.set_visible_on_all_workspaces(true);
-    keep_painting_when_occluded(window);
     on_ns_window(window, popover::apply);
 }
+
+#[cfg(not(target_os = "macos"))]
+pub fn keep_painting_when_occluded(_window: &tauri::WebviewWindow) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn prepare_popover(_window: &tauri::WebviewWindow) {}
