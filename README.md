@@ -4,6 +4,15 @@ ClawdMeter is a menu bar app for macOS (and, experimentally, a notification area
 
 ![ClawdMeter Usage tab](docs/images/usage.png)
 
+## Contents
+
+1. [Download](#1-download)
+2. [Install and open the app](#2-install-and-open-the-app): [macOS](#macos-14-or-later) · [Windows (experimental)](#windows-1011-x64-experimental)
+3. [First setup inside the app](#3-first-setup-inside-the-app)
+4. [Daily use](#4-daily-use)
+5. [Updates](#5-updates)
+6. [Privacy and security](#privacy-and-security) · [Uninstall](#uninstall) · [Common problems](#common-problems) · [For developers](#for-developers)
+
 ## What it shows
 
 | Tab | What it shows |
@@ -15,39 +24,90 @@ ClawdMeter is a menu bar app for macOS (and, experimentally, a notification area
 
 The **Skills** (run Claude Code skills) and **Agenda** (Outlook/Teams meetings) tabs are under maintenance and come turned off.
 
-## Installation (macOS 14 or later)
+## 1. Download
 
-1. Download the `.dmg` file (`ClawdMeter_<version>_universal.dmg`) from the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest), open it and drag **ClawdMeter** into the **Applications** folder.
-2. The app is not signed by Apple, so macOS blocks the first launch. Open **Terminal** and run:
+Open the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest), scroll down to **Assets** and download the file for your computer (`<version>` is the release number, for example `0.2.1`):
+
+| Your computer | File to download |
+|---|---|
+| Mac with an Apple chip (M1 or newer) or an Intel chip, macOS 14 or later | `ClawdMeter_<version>_universal.dmg` |
+| Windows 10 or 11, 64-bit (experimental) | `ClawdMeter_<version>_x64-setup.exe` (recommended) |
+| Windows, if you prefer an MSI package | `ClawdMeter_<version>_x64_en-US.msi` |
+
+Ignore the other files (`.sig`, `.tar.gz`, `latest.json`): they are for the automatic updater.
+
+## 2. Install and open the app
+
+### macOS (14 or later)
+
+1. Double-click the downloaded `.dmg`. A window opens with the ClawdMeter icon and the **Applications** folder: drag **ClawdMeter** onto **Applications**, then eject the disk image.
+2. The app is not signed by Apple, so macOS refuses to open it ("ClawdMeter cannot be opened" or "is damaged"). Open **Terminal** (Applications > Utilities) and run:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/ClawdMeter.app"
    ```
 
-3. Open ClawdMeter from the Applications folder. The mascot icon appears in the menu bar (the app does not appear in the Dock).
-4. Open **Settings > Claude accounts**, type a name for the account (for example "Personal") and click **Add account**. The browser opens on the Claude sign-in page; sign in and authorize, and the account shows up in the list. The Usage tab only shows data after this step.
-
-The `.dmg` is universal: it runs on Macs with an Apple chip (M1 or newer) and on Intel Macs. Claude usage no longer depends on Claude Code: ClawdMeter signs in to your Claude account by itself. Claude Code is only needed for the Sessions tab and for Skills.
+3. Open **ClawdMeter** from the Applications folder (always from there, not from the disk image). Nothing opens in the Dock: the mascot icon shows up in the menu bar, at the top right of the screen.
+4. Click the mascot icon. A panel opens under it with the tabs; until you add a Claude account (step 3), the Usage tab says there is no account yet.
+5. When the app saves or reads a token for the first time (your Claude account, a GitHub token), macOS may ask "ClawdMeter wants to use your confidential information stored in … in your keychain". Type your Mac password and click **Always Allow** (or **Allow**). Because the app has no Apple signature, macOS asks again once after each update.
 
 > **Upgrading from 0.1.x:** the old versions read the Claude Code login from the Keychain. That reading was removed, so after the upgrade add your account once in **Settings > Claude accounts**. Your usage history is kept and moves to the first account you add.
 
-## Getting started
+### Windows 10/11, x64 (experimental)
 
-- Click the mascot icon in the menu bar to open the panel. If the icon is hidden, use the **Ctrl + Option + D** shortcut.
-- Click the gear (⚙) in the bottom right corner to open **Settings**: enabled tabs, connections, projection method, language, colors and light/dark theme. The app opens in English; pick Português (Brasil) or Español (México) under Settings > Language.
-- **Claude accounts:** add up to 5 accounts in **Settings > Claude accounts**, each with its own name. With two or more, the Usage tab shows a compact selector to the right of the tabs (the initials of the active account) that lists the account names; each account keeps its own history and alerts. In the same section you can rename, remove or sign in again to an account. If the browser does not come back to the app after the sign-in, click **Paste code**, authorize on the page that opens and paste the code it shows.
-- To see Pull Requests and Reviews, connect GitHub in **Settings > Connections**. There are three ways: use the `gh` CLI that is already signed in on your Mac, sign in through the browser, or paste an access token.
-- **Usage alerts:** in **Settings > Usage alerts** choose the percentages (25%, 50%, 75%, 100%) that notify you for the 5h and 7d windows (50% on both by default). They need notifications allowed: click **Connect** on the Notifications row in **Settings > Connections**, or wait for the first alert that is due, which asks macOS by itself. Allow it in the system prompt; if you denied it before, the row shows **Open system settings**.
-- **Launch at login:** turn it on in **Settings > System** (it is off by default). On macOS it only turns on when the app runs from the Applications folder, not from the mounted `.dmg`.
-- To quit the app, right-click the menu bar icon.
+> **Experimental.** The code supports Windows and every release ships Windows installers, built and signed for the updater by CI, but the app has **never been validated on a real Windows computer**. Expect rough edges and please [report problems](https://github.com/rafalibano/clawdmeter/issues), attaching the log file listed in [Uninstall > Windows](#windows).
+
+1. Double-click the downloaded `.exe` (or `.msi`).
+2. The installer is not signed with a Windows certificate, so SmartScreen shows a blue "Windows protected your PC" window with only a **Don't run** button. Click **More info**, check that the app is `ClawdMeter_…`, and click **Run anyway**. Then follow the installer.
+3. Open **ClawdMeter** from the Start menu. No window and no taskbar button appear: the mascot icon shows up in the notification area, next to the clock. If you do not see it, click the **^** arrow (hidden icons) and drag the mascot onto the taskbar to keep it visible.
+4. Left-click the mascot to open the panel. Right-click it for **Quit ClawdMeter**.
+
+What is different on Windows:
+
+- **Icon:** the tray icon shows only the mascot, which fills as the 7d consumption grows; the 5h and 7d percentages and reset times are in the tooltip (hover the icon).
+- **Tokens** are kept in the Windows Credential Manager instead of the Keychain.
+- **Notifications:** there is no permission prompt. The app reads whether notifications are allowed for ClawdMeter in Windows Settings > System > Notifications; if they are blocked, the Notifications row shows **Open system settings**, which opens that page.
+- **Shortcut:** **Ctrl + Alt + D**. If it does nothing, another app may already use it (or AltGr on your keyboard layout sends Ctrl + Alt); the failure is written to the log.
+
+## 3. First setup inside the app
+
+Open the panel and click the gear (⚙) in the bottom right corner: **Settings** opens, with collapsible sections. Do these steps in order.
 
 ![ClawdMeter Settings](docs/images/settings.png)
 
-## Updates
+1. **Add your Claude account** (required for the Usage tab). Open **Claude accounts**, type a name in **Account name** (for example "Work") and click **Add account**. The app shows "Opening the browser…" and then "Waiting for the browser to sign in to Work…", and the browser opens the Claude sign-in page. Sign in and authorize; the browser comes back to a local page, the app shows "Work added." and the Usage tab starts filling in.
+   - If the browser does not come back to the app, click **Paste code**: a Claude page opens with a code. Copy it, paste it in **Code shown in the browser** and click **Confirm**.
+   - You can add up to 5 accounts, each with its own history and alerts. With two or more, the Usage tab shows the initials of the active account to the right of the tabs; click them to switch. The same section has **Rename**, **Remove** and **Sign in again**.
+   - Claude usage does not depend on Claude Code: ClawdMeter signs in by itself. Claude Code is only needed for the Sessions tab and for Skills.
+2. **Connect GitHub** (required for Pull Requests, Reviews and automatic updates). Open **Connections**; the GitHub row shows **Disconnected** and offers three ways to connect:
+   - **GitHub CLI:** if `gh` is installed and signed in (`gh auth login`), the app uses it. Without it, the row offers **Install GitHub CLI** or **Connect GitHub CLI**; finish in the Terminal and click **Check again**.
+   - **Sign in with the browser:** the app shows a code with a **Copy** button and opens a GitHub page. Paste the code there and click **Authorize**; the app shows "Waiting for authorization…" until it is done (**Cancel** stops it).
+   - **Paste token:** click **Create token on GitHub**, create a token with the `repo` and `read:org` scopes, paste it and click **Save**.
 
-ClawdMeter updates itself from the [Releases](https://github.com/rafalibano/clawdmeter/releases) of its GitHub repository. The repository is public, so any GitHub account can read the releases, but the app still asks GitHub with your connected account: you need **GitHub connected** in **Settings > Connections** (gh CLI, browser or token). Without it, Settings > Updates shows "Connect GitHub to receive updates" and the app does not check. You can always download a new version by hand from the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest).
+   When it works, the row shows **Connected**. The connection also checks access to the `Mottu-ops` organization; outside it, the row shows a warning, but automatic updates only need the token.
+3. **Allow notifications** (required for usage alerts). In **Connections**, the **Notifications** row shows **Connect** while macOS was never asked. Click it and click **Allow** in the macOS prompt; the row turns **Connected**. If you skip this, the first alert that is due asks by itself. If you denied it before, the row shows **Open system settings**: turn on notifications for ClawdMeter there and click **Check again**. (On Windows, see the differences above.)
+4. **Choose the usage alerts.** In **Usage alerts**, tick the percentages (25%, 50%, 75%, 100%) for the 5h and 7d windows; 50% on both is the default and a window with nothing ticked is off. Each percentage notifies once per cycle.
+5. **Launch at login** (optional, off by default). In **System**, turn on **Launch at login**. On macOS it only turns on when the app runs from the Applications folder (not from the disk image); otherwise the switch goes back off with an error. On Windows it writes only the `ClawdMeter` value under the current user's `Run` key, so it never needs administrator rights, and turning the app off in Task Manager > Startup apps is respected.
+6. **Language and look.** The app opens in English; in **Appearance** pick Português (Brasil) or Español (México), plus the accent color, background and light/dark/system theme. **Pages** turns tabs on and off, and **Projection** chooses how the reset projection is computed. Changes apply right away.
 
-The app checks when it opens and every 6 hours. When there is a new version, a "New version X · Update" bar appears at the top of the panel: click **Update**, wait for the download and choose **Restart** (or **Later**). Settings > Updates shows the current version, the last check and a **Check now** button. Every update is signed, and the app refuses a file whose signature does not match. If Settings > Updates shows version 0.1.1 (the build published as 0.2.0 reports that number), the app offers the update on its next check.
+## 4. Daily use
+
+- **Open the panel:** click the mascot icon, or press **Ctrl + Option + D** on macOS (**Ctrl + Alt + D** on Windows), which also works when the icon is hidden. Click outside the panel to close it.
+- **Read the icon without opening it:** on macOS the mascot fills as the weekly (7d) consumption grows and shows the 5h and 7d bars; on Windows the numbers are in the tooltip.
+- **Tabs** (details in [What it shows](#what-it-shows)): Usage has the 5h and 7d bars with the projected % at the reset and a history chart; Sessions lists your open Claude Code sessions; Pull Requests and Reviews list your PRs and the ones waiting for your review (click one to open it on GitHub).
+- **Quit:** right-click the icon and choose **Quit ClawdMeter**.
+
+## 5. Updates
+
+ClawdMeter updates itself from the [Releases](https://github.com/rafalibano/clawdmeter/releases) of its GitHub repository. The repository is public, so any GitHub account can read the releases, but the app still asks GitHub with your connected account: you need **GitHub connected** (step 3.2). Without it, Settings > Updates shows "Connect GitHub to receive updates" and the app does not check.
+
+1. The app checks when it opens and every 6 hours. When there is a new version, a "New version X · Update" bar appears at the top of the panel.
+2. Click **Update**. The bar shows "Downloading X… N%". Every update is signed, and the app refuses a file whose signature does not match.
+3. On macOS the bar then asks "Version X installed. Restart now?": click **Restart** (or **Later**, and restart when you want). On Windows the installer runs in passive mode and closes the app.
+
+To check right away, open **Settings > Updates**: it shows the current version, the last check and a **Check now** button. If Settings > Updates shows version 0.1.1 (the build published as 0.2.0 reports that number), the app offers the update on its next check.
+
+To update by hand (no GitHub connected, or an update that fails), download the new file from the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest) and install it over the old one as in step 2; settings, accounts and history are kept. On macOS, run the `xattr` command again after replacing the app.
 
 ## Privacy and security
 
@@ -71,14 +131,15 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Uninstall
 
+### macOS
+
 1. If you turned on **Settings > System > Launch at login**, turn it off before deleting the app. If the app is already gone, delete the login entry by hand:
 
    ```bash
    rm -f "$HOME/Library/LaunchAgents/ClawdMeter.plist"
    ```
 
-   On Windows, delete the `ClawdMeter` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (Registry Editor, or `reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v ClawdMeter /f`).
-2. Quit the app (right-click the menu bar icon > Quit) and delete **ClawdMeter** from the Applications folder.
+2. Quit the app (right-click the menu bar icon > Quit ClawdMeter) and delete **ClawdMeter** from the Applications folder.
 3. Delete the app folders:
 
    ```bash
@@ -89,33 +150,9 @@ Technical details: [docs/SECURITY.md](docs/SECURITY.md).
 
 4. Open the **Keychain Access** app, search for `com.mottu.clawdmeter` and delete the items found (they include the Claude accounts' tokens; removing an account in Settings deletes its tokens too).
 
-## Common problems
+### Windows
 
-- **"Anthropic rate limit" (error 429):** Anthropic limits how often usage can be queried. The app waits on its own and tries again, showing the latest data in the meantime. You do not need to do anything.
-- **The panel opens blank or does not show up over a large or full-screen window:** fixed in 0.2.1; update if you are on an older version. If it happens again, send the `~/Library/Logs/com.mottu.clawdmeter/popover.log` file to whoever maintains the app.
-- **Usage alerts never arrive:** check the Notifications row in **Settings > Connections**. **Connect** means macOS was never asked (click it and allow); **Open system settings** means notifications are blocked for ClawdMeter.
-- **The icon disappeared from the menu bar:** on Macs with a notch, macOS may hide icons when the bar is full. Use the **Ctrl + Option + D** shortcut to open the panel.
-- **"Sign in again" on a Claude account:** the app could not renew that account's sign-in. Click **Sign in again** (on the Usage tab or in Settings > Claude accounts) and sign in in the browser.
-- **"No Claude account yet":** add an account in **Settings > Claude accounts**.
-
-## Installation (Windows 10/11, x64)
-
-> **Experimental.** The code supports Windows and every release ships Windows installers, built and signed for the updater by CI, but the app has **never been validated on a real Windows computer**. Expect rough edges and please [report problems](https://github.com/rafalibano/clawdmeter/issues), attaching the log file listed below.
-
-1. From the [latest release](https://github.com/rafalibano/clawdmeter/releases/latest), download either installer: `ClawdMeter_<version>_x64-setup.exe` (recommended, the same format the updater uses) or `ClawdMeter_<version>_x64_en-US.msi`.
-2. The installers are not signed with a Windows certificate, so SmartScreen shows "Windows protected your PC". Click **More info** and then **Run anyway**.
-3. Open ClawdMeter from the Start menu. The mascot icon appears in the notification area, next to the clock (the app does not show a taskbar button). Windows may put new icons in the hidden icons area: click the **^** arrow to find it, and drag it onto the taskbar to keep it visible.
-4. Left-click the icon to open the panel, or press **Ctrl + Alt + D**. Right-click it for **Quit ClawdMeter**. If the shortcut does nothing, another app may already use it (or AltGr on your keyboard layout sends Ctrl + Alt); the failure is written to the log.
-5. Add your Claude account in **Settings > Claude accounts**, as on macOS.
-
-Differences from macOS:
-
-- **Icon:** the tray icon shows only the mascot, which fills as the 7d consumption grows; the 5h and 7d percentages and reset times are in the tooltip.
-- **Notifications:** Windows has no permission prompt. The app reads whether notifications are allowed for ClawdMeter in Windows Settings > System > Notifications; if they are blocked, the Notifications row shows **Open system settings**.
-- **Launch at login:** **Settings > System** writes only the `ClawdMeter` value under the current user's `Run` key, so it never needs administrator rights. Turning the app off in Task Manager > Startup apps is respected.
-- **Updates:** same rules as macOS (GitHub connected). The new version installs with the installer in passive mode, which closes the app.
-
-Where the app keeps its files on Windows:
+Where the app keeps its files:
 
 | What | Where |
 |---|---|
@@ -125,7 +162,19 @@ Where the app keeps its files on Windows:
 | Claude account and GitHub tokens | Windows Credential Manager (Windows Credentials), entries with `com.mottu.clawdmeter` |
 | Claude Code sessions read by the app | `%USERPROFILE%\.claude\sessions` |
 
-To uninstall on Windows: turn off **Launch at login** first, quit the app, uninstall **ClawdMeter** in Windows Settings > Apps > Installed apps, delete the `%APPDATA%\com.mottu.clawdmeter` and `%LOCALAPPDATA%\com.mottu.clawdmeter` folders and remove the `com.mottu.clawdmeter` entries in Credential Manager. If the `Run` value was left behind, see step 1 of Uninstall above.
+1. Turn off **Settings > System > Launch at login**. If the app is already gone, delete the `ClawdMeter` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` (Registry Editor, or `reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v ClawdMeter /f`).
+2. Quit the app (right-click the icon > Quit ClawdMeter) and uninstall **ClawdMeter** in Windows Settings > Apps > Installed apps.
+3. Delete the `%APPDATA%\com.mottu.clawdmeter` and `%LOCALAPPDATA%\com.mottu.clawdmeter` folders.
+4. Open **Credential Manager** > **Windows Credentials** and remove the entries with `com.mottu.clawdmeter`.
+
+## Common problems
+
+- **"Anthropic rate limit" (error 429):** Anthropic limits how often usage can be queried. The app waits on its own and tries again, showing the latest data in the meantime. You do not need to do anything.
+- **The panel opens blank or does not show up over a large or full-screen window:** fixed in 0.2.1; update if you are on an older version. If it happens again, send the `~/Library/Logs/com.mottu.clawdmeter/popover.log` file (Windows: `%LOCALAPPDATA%\com.mottu.clawdmeter\logs\popover.log`) to whoever maintains the app.
+- **Usage alerts never arrive:** check the Notifications row in **Settings > Connections**. **Connect** means macOS was never asked (click it and allow); **Open system settings** means notifications are blocked for ClawdMeter.
+- **The icon disappeared from the menu bar:** on Macs with a notch, macOS may hide icons when the bar is full. Use the **Ctrl + Option + D** shortcut to open the panel. On Windows, look in the hidden icons (**^**) of the notification area.
+- **"Sign in again" on a Claude account:** the app could not renew that account's sign-in. Click **Sign in again** (on the Usage tab or in Settings > Claude accounts) and sign in in the browser.
+- **"No Claude account yet":** add an account in **Settings > Claude accounts**.
 
 ## For developers
 
