@@ -32,4 +32,11 @@ describe('PageRegistry', () => {
     const noGithub = { ...createDefaultSettings(), enabledPages: { prs: false, reviews: false } };
     expect(registry.requiredConnections(noGithub)).toEqual(['claude']);
   });
+
+  it('lists the optional connections of enabled pages next to the required ones, without requiring them', () => {
+    const withAlerts = new PageRegistry([fakePage({ id: 'usage', requiredConnections: ['claude'], optionalConnections: () => ['notifications'] }), prs]);
+    expect(withAlerts.requiredConnections(createDefaultSettings())).toEqual(['claude', 'github']);
+    expect(withAlerts.listedConnections(createDefaultSettings())).toEqual(['claude', 'github', 'notifications']);
+    expect(withAlerts.listedConnections({ ...createDefaultSettings(), enabledPages: { usage: false } })).toEqual(['github']);
+  });
 });

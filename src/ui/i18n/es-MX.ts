@@ -181,7 +181,7 @@ export const esMX: Record<MessageKey, string> = {
   'note.authorize-org': 'Autoriza el token en la org y haz clic en "Verificar de nuevo".',
   'note.ask-invite': 'Pide la invitación a la org {org} y haz clic en "Verificar de nuevo".',
   'note.enable-notifications': 'Permite las notificaciones y haz clic en "Verificar de nuevo".',
-  'note.notifications-not-authorized': 'El sistema aún no permite las notificaciones de ClawdMeter. Permítelas en los ajustes del sistema.',
+  'note.notifications-not-authorized': 'ClawdMeter aún no ha pedido permiso para notificaciones. Haz clic en Conectar y permítelas en el aviso del sistema.',
   'note.missing-scopes': 'Faltan: {scopes}',
 
   'action.connect': 'Conectar',

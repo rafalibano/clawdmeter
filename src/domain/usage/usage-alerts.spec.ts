@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DROP_MARGIN, evaluateUsageAlert, normalizeQuartiles, type Quartile, type WindowAlertState } from './usage-alerts';
+import { DROP_MARGIN, evaluateUsageAlert, hasUsageAlerts, normalizeQuartiles, type Quartile, type WindowAlertState } from './usage-alerts';
 
 const RESETS = 1_800_000_000_000;
 const reading = (utilization: number, resetsAt: number | null = RESETS) => ({ utilization, resetsAt });
@@ -125,6 +125,13 @@ describe('evaluateUsageAlert', () => {
     expect(evaluateUsageAlert(crossed.state, reading(60, RESETS + 60_000), [50]).alert).toBeNull();
     expect(evaluateUsageAlert(crossed.state, reading(60, RESETS - 60_000), [50]).alert).toBeNull();
     expect(evaluateUsageAlert(crossed.state, reading(60, RESETS + 60_001), [50]).alert).toBe(50);
+  });
+});
+
+describe('hasUsageAlerts', () => {
+  it('is true when any window has a quartile and false when both are empty', () => {
+    expect(hasUsageAlerts({ fiveHour: [], sevenDay: [75] })).toBe(true);
+    expect(hasUsageAlerts({ fiveHour: [], sevenDay: [] })).toBe(false);
   });
 });
 

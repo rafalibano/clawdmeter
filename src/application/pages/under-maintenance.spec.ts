@@ -27,6 +27,7 @@ describe('underMaintenance', () => {
   it('enabled, requires no connections', () => {
     const settings = { ...createDefaultSettings(), enabledPages: { teams: true } };
     expect(new PageRegistry([page]).requiredConnections(settings)).toEqual([]);
+    expect(new PageRegistry([page]).listedConnections(settings)).toEqual([]);
   });
 
   it('Skills and Agenda are in the maintenance list and off by default', () => {

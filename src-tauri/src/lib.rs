@@ -53,6 +53,7 @@ pub fn run() {
             commands::open_external::open_url,
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
+            commands::notification_permission::notification_permission_request,
             commands::launch_at_login::launch_at_login_status,
             commands::launch_at_login::launch_at_login_enable,
             commands::launch_at_login::launch_at_login_disable,

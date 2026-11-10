@@ -24,13 +24,13 @@ export class ConnectionsFacade {
   private readonly claudeAccounts = inject(ClaudeAccountsFacade);
   private readonly statuses = signal<ReadonlyMap<ConnectionId, ConnectionStatus>>(new Map());
 
-  readonly requiredIds = computed(() => {
-    const required = new Set(this.registry.requiredConnections(this.settings.settings()));
+  readonly listedIds = computed(() => {
+    const required = new Set(this.registry.listedConnections(this.settings.settings()));
     return CONNECTIONS.filter((connection) => required.has(connection.id)).map((connection) => connection.id);
   });
 
   readonly rows = computed<ConnectionRowView[]>(() =>
-    this.requiredIds().map((id) => toRowView(id, this.statuses().get(id) ?? UNKNOWN_STATUS, this.i18n.localizer())),
+    this.listedIds().map((id) => toRowView(id, this.statuses().get(id) ?? UNKNOWN_STATUS, this.i18n.localizer())),
   );
 
   constructor() {
@@ -42,7 +42,7 @@ export class ConnectionsFacade {
 
   refresh(onlyUnknown: boolean): Promise<void> {
     const statuses = this.statuses();
-    const ids = this.requiredIds().filter((id) => !onlyUnknown || (statuses.get(id) ?? UNKNOWN_STATUS).state === 'unknown');
+    const ids = this.listedIds().filter((id) => !onlyUnknown || (statuses.get(id) ?? UNKNOWN_STATUS).state === 'unknown');
     return this.connections.checkMany.execute(ids);
   }
 

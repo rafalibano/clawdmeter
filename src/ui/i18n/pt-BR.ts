@@ -181,7 +181,7 @@ export const ptBR: Record<MessageKey, string> = {
   'note.authorize-org': 'Autorize o token na org e clique em "Verificar de novo".',
   'note.ask-invite': 'Peça o convite para a org {org} e clique em "Verificar de novo".',
   'note.enable-notifications': 'Libere as notificações e clique em "Verificar de novo".',
-  'note.notifications-not-authorized': 'O sistema ainda não liberou as notificações do ClawdMeter. Libere nos ajustes do sistema.',
+  'note.notifications-not-authorized': 'O ClawdMeter ainda não pediu permissão de notificação. Clique em Conectar e permita no aviso do sistema.',
   'note.missing-scopes': 'Faltam: {scopes}',
 
   'action.connect': 'Conectar',

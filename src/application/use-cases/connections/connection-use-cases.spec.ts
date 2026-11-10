@@ -401,14 +401,20 @@ describe('Notifications', () => {
     expect(after).toMatchObject({ problem: 'notifications-unverifiable' });
   });
 
-  it('not requested yet (prompt) leads to the system settings, without asking through the plugin', async () => {
+  it('not requested yet (prompt) shows Connect, which asks the OS for the permission', async () => {
     world.notifications.state = 'prompt';
     const status = await connections.check.execute('notifications');
+    expect(status).toEqual({ state: 'disconnected', note: 'notifications-not-authorized' });
+    expect(actionsFor('notifications', status)).toEqual([{ kind: 'connect', label: 'connect' }]);
+    expect(await connections.connect.execute('notifications')).toEqual({ state: 'connected' });
+  });
+
+  it('declining the OS prompt ends blocked, with the button to the system settings', async () => {
+    world.notifications.state = 'prompt';
+    world.notifications.requestResult = 'denied';
+    const status = await connections.connect.execute('notifications');
     expect(status).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
     expect(fixLabel('notifications', status)).toBe('open-system-settings');
-    const after = await runFix('notifications', 'open-system-settings');
-    expect(world.systemSettings.notificationsOpened).toBe(1);
-    expect(after).toMatchObject({ state: 'error', problem: 'notifications-blocked' });
   });
 
   it('cannot be disconnected', async () => {

@@ -28,19 +28,23 @@ pub fn state_from_toast_setting(raw: i32) -> &'static str {
 }
 
 #[cfg(target_os = "macos")]
+fn packaged() -> bool {
+    use objc2_foundation::NSBundle;
+
+    let bundle = NSBundle::mainBundle();
+    bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app")
+}
+
+#[cfg(target_os = "macos")]
 fn platform_state(_app: &AppHandle) -> &'static str {
     use std::ptr::NonNull;
     use std::sync::mpsc;
     use std::time::Duration;
 
     use block2::RcBlock;
-    use objc2_foundation::NSBundle;
     use objc2_user_notifications::{UNNotificationSettings, UNUserNotificationCenter};
 
-    let bundle = NSBundle::mainBundle();
-    let packaged =
-        bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app");
-    if !packaged {
+    if !packaged() {
         return UNKNOWN;
     }
     let (sender, receiver) = mpsc::channel();
@@ -54,6 +58,39 @@ fn platform_state(_app: &AppHandle) -> &'static str {
         .recv_timeout(Duration::from_secs(2))
         .map(state_from_authorization_status)
         .unwrap_or(UNKNOWN)
+}
+
+// macOS only lists an app under System Settings > Notifications after it asks once, so the
+// "prompt" state has no settings toggle to flip until this runs.
+#[cfg(target_os = "macos")]
+fn platform_request(app: &AppHandle) -> &'static str {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_foundation::NSError;
+    use objc2_user_notifications::{UNAuthorizationOptions, UNUserNotificationCenter};
+
+    if !packaged() {
+        return UNKNOWN;
+    }
+    let (sender, receiver) = mpsc::channel();
+    let handler = RcBlock::new(move |_granted: Bool, _error: *mut NSError| {
+        let _ = sender.send(());
+    });
+    UNUserNotificationCenter::currentNotificationCenter()
+        .requestAuthorizationWithOptions_completionHandler(
+            UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
+            &handler,
+        );
+    let _ = receiver.recv_timeout(Duration::from_secs(120));
+    platform_state(app)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn platform_request(app: &AppHandle) -> &'static str {
+    platform_state(app)
 }
 
 #[cfg(windows)]
@@ -97,6 +134,11 @@ fn platform_state(_app: &AppHandle) -> &'static str {
 #[tauri::command]
 pub async fn notification_permission_state(app: AppHandle) -> CommandResult<&'static str> {
     run_blocking(move || Ok(platform_state(&app))).await
+}
+
+#[tauri::command]
+pub async fn notification_permission_request(app: AppHandle) -> CommandResult<&'static str> {
+    run_blocking(move || Ok(platform_request(&app))).await
 }
 
 #[cfg(test)]

@@ -191,7 +191,7 @@ export const en = {
   'note.authorize-org': 'Authorize the token for the org and click "Check again".',
   'note.ask-invite': 'Ask for an invite to the {org} org and click "Check again".',
   'note.enable-notifications': 'Allow notifications and click "Check again".',
-  'note.notifications-not-authorized': 'The system has not allowed ClawdMeter notifications yet. Allow them in the system settings.',
+  'note.notifications-not-authorized': 'ClawdMeter has not asked for notifications yet. Click Connect and allow them in the system prompt.',
   'note.missing-scopes': 'Missing: {scopes}',
 
   'action.connect': 'Connect',

@@ -90,6 +90,7 @@
     "allow-open-url",
     "allow-open-system-settings",
     "allow-notification-permission-state",
+    "allow-notification-permission-request",
     "allow-launch-at-login-status",
     "allow-launch-at-login-enable",
     "allow-launch-at-login-disable",

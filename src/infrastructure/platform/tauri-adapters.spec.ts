@@ -208,29 +208,32 @@ describe('TauriNotifier', () => {
 });
 
 describe('TauriNotificationPermission', () => {
-  const plugin = (result: 'granted' | 'denied' | 'default' = 'granted') => ({ request: async () => result });
-
   it.each(['granted', 'denied', 'prompt', 'unknown'] as const)('forwards the %s state from the Rust command', async (state) => {
     const { commands, calls } = createFakeCommands(() => state);
-    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe(state);
+    expect(await new TauriNotificationPermission(commands).status()).toBe(state);
     expect(calls[0]?.command).toBe('notification_permission_state');
   });
 
   it('an unknown value from Rust becomes "unknown", never "granted"', async () => {
     const { commands } = createFakeCommands(() => 'qualquer-coisa');
-    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe('unknown');
+    expect(await new TauriNotificationPermission(commands).status()).toBe('unknown');
     expect(toPermissionState(undefined)).toBe('unknown');
   });
 
   it('a command failure becomes "unknown"', async () => {
     const { commands } = createFakeCommands(() => rejectWith('io', 'falhou'));
-    expect(await new TauriNotificationPermission(commands, plugin()).status()).toBe('unknown');
+    expect(await new TauriNotificationPermission(commands).status()).toBe('unknown');
   });
 
-  it('the plugin always returning granted on desktop does not hide the system block', async () => {
-    const { commands } = createFakeCommands(() => 'denied');
-    const permission = new TauriNotificationPermission(commands, plugin('granted'));
-    expect(await permission.request()).toBe('denied');
+  it('request asks the OS through the Rust command and returns its answer', async () => {
+    const { commands, calls } = createFakeCommands(() => 'granted');
+    expect(await new TauriNotificationPermission(commands).request()).toBe('granted');
+    expect(calls.map((call) => call.command)).toEqual(['notification_permission_request']);
+  });
+
+  it('a request failure becomes "unknown"', async () => {
+    const { commands } = createFakeCommands(() => rejectWith('io', 'falhou'));
+    expect(await new TauriNotificationPermission(commands).request()).toBe('unknown');
   });
 });
 

@@ -34,7 +34,7 @@ export class ConnectionsComponent {
   constructor() {
     void this.facade.refresh(false);
     effect(() => {
-      this.facade.requiredIds();
+      this.facade.listedIds();
       untracked(() => void this.facade.refresh(true));
     });
   }
