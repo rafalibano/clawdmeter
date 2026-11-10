@@ -19,6 +19,7 @@ const APP_COMMANDS: &[&str] = &[
     "open_url",
     "open_system_settings",
     "notification_permission_state",
+    "notification_permission_request",
     "launch_at_login_status",
     "launch_at_login_enable",
     "launch_at_login_disable",

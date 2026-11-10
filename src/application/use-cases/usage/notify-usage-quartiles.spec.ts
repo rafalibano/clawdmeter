@@ -104,6 +104,34 @@ describe('NotifyUsageQuartiles', () => {
     expect(notifier.sent).toEqual([]);
   });
 
+  it('asks the OS for the permission when a quartile is due and it was never requested, then notifies', async () => {
+    setAlerts([], [75]);
+    world.notifications.state = 'prompt';
+    await connections.check.execute('notifications');
+    await notify.execute(ACCOUNT, snapshot(10, 70));
+    await notify.execute(ACCOUNT, snapshot(10, 76));
+    expect(world.notifications.state).toBe('granted');
+    expect(notifier.sent.map((notice) => notice.title)).toEqual(['7d usage at 76%']);
+  });
+
+  it('does not ask for the permission while no quartile is due', async () => {
+    world.notifications.state = 'prompt';
+    world.notifications.requestResult = 'denied';
+    await connections.check.execute('notifications');
+    await notify.execute(ACCOUNT, snapshot(10, 10));
+    await notify.execute(ACCOUNT, snapshot(20, 20));
+    expect(world.notifications.state).toBe('prompt');
+  });
+
+  it('a declined OS prompt sends nothing', async () => {
+    world.notifications.state = 'prompt';
+    world.notifications.requestResult = 'denied';
+    await connections.check.execute('notifications');
+    await notify.execute(ACCOUNT, snapshot(10, 10));
+    await notify.execute(ACCOUNT, snapshot(60, 60));
+    expect(notifier.sent).toEqual([]);
+  });
+
   it('swallows a notifier failure', async () => {
     notifier.fail = true;
     await notify.execute(ACCOUNT, snapshot(10, 10));

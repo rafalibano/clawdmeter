@@ -26,6 +26,10 @@ export function normalizeQuartiles(value: unknown): Quartile[] {
   return QUARTILES.filter((quartile) => value.includes(quartile));
 }
 
+export function hasUsageAlerts(alerts: UsageAlertSettings): boolean {
+  return Object.values(alerts).some((quartiles) => quartiles.length > 0);
+}
+
 export function defaultUsageAlerts(): UsageAlertSettings {
   return { fiveHour: [50], sevenDay: [50] };
 }

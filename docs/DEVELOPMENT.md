@@ -137,11 +137,11 @@ The checkbox in Settings, the polling and the connection requirement come from t
 
 Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`) and Windows (`.msi` + NSIS `.exe`), signs the updater artifacts and publishes the release (not as a draft) with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
 
-1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`) and add the entry to `CHANGELOG.md`.
-2. Create and push the tag:
+1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`) and add the entry to `CHANGELOG.md`. Merge it before tagging: the workflow fails when the tag is not `v` + that version, because the updater compares the version inside `latest.json`, not the tag.
+2. Create and push the tag on the merged commit:
 
    ```bash
-   git tag v0.2.0 && git push origin v0.2.0
+   git tag v0.2.1 && git push origin v0.2.1
    ```
 
 3. When both jobs finish, check that the release has `latest.json`, the `.app.tar.gz`/`.sig` pair and the Windows installers with their `.sig`.

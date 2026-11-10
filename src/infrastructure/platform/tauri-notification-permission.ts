@@ -1,12 +1,5 @@
-import { requestPermission } from '@tauri-apps/plugin-notification';
 import type { NotificationPermission, NotificationPermissionState } from '../../application/ports';
 import type { TauriCommands } from './tauri-commands';
-
-export interface NotificationApi {
-  request(): Promise<'granted' | 'denied' | 'default'>;
-}
-
-const pluginApi: NotificationApi = { request: requestPermission };
 
 const KNOWN_STATES: readonly NotificationPermissionState[] = ['granted', 'denied', 'prompt', 'unknown'];
 
@@ -15,10 +8,7 @@ export function toPermissionState(raw: unknown): NotificationPermissionState {
 }
 
 export class TauriNotificationPermission implements NotificationPermission {
-  constructor(
-    private readonly commands: TauriCommands,
-    private readonly api: NotificationApi = pluginApi,
-  ) {}
+  constructor(private readonly commands: TauriCommands) {}
 
   async status(): Promise<NotificationPermissionState> {
     try {
@@ -29,7 +19,10 @@ export class TauriNotificationPermission implements NotificationPermission {
   }
 
   async request(): Promise<NotificationPermissionState> {
-    await this.api.request();
-    return this.status();
+    try {
+      return toPermissionState(await this.commands.call<string>('notification_permission_request'));
+    } catch {
+      return 'unknown';
+    }
   }
 }

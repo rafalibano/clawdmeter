@@ -21,7 +21,7 @@ export class NotifyUsageQuartiles {
 
   constructor(
     private readonly notifier: Notifier,
-    private readonly connections: Pick<Connections, 'monitor' | 'check'>,
+    private readonly connections: Pick<Connections, 'monitor' | 'check' | 'connect'>,
     private readonly translator: Translator,
     private readonly settings: SettingsStore,
     private readonly clock: Clock,
@@ -67,7 +67,8 @@ export class NotifyUsageQuartiles {
   private async notificationsConnected(): Promise<boolean> {
     const known = this.connections.monitor.get('notifications');
     const status = known.state === 'unknown' ? await this.connections.check.execute('notifications') : known;
-    return status.state === 'connected';
+    if (status.state !== 'disconnected') return status.state === 'connected';
+    return (await this.connections.connect.execute('notifications')).state === 'connected';
   }
 
   private toNotice(window: string, quartile: Quartile, utilization: number, resetsAt: number | null): Notice {

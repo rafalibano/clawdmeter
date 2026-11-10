@@ -4,6 +4,7 @@ export function underMaintenance<T>(page: PageModule<T>, component: PageComponen
   return {
     ...page,
     requiredConnections: [],
+    optionalConnections: undefined,
     pollIntervalMs: null,
     load: async () => undefined as T,
     component,

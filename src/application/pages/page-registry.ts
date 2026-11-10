@@ -31,4 +31,12 @@ export class PageRegistry {
     }
     return [...connections];
   }
+
+  listedConnections(settings: AppSettings): ConnectionId[] {
+    const connections = new Set<ConnectionId>(this.requiredConnections(settings));
+    for (const module of this.enabled(settings)) {
+      for (const connection of module.optionalConnections?.(settings) ?? []) connections.add(connection);
+    }
+    return [...connections];
+  }
 }

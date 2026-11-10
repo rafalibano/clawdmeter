@@ -1,4 +1,4 @@
-import { errorStatus, noteStatus, type ConnectionStatus } from '../../../../domain/connections';
+import { errorStatus, type ConnectionStatus } from '../../../../domain/connections';
 import type { StatusUseCase } from '../../../connections/connection-runner';
 import type { NotificationPermission, NotificationPermissionState } from '../../../ports';
 
@@ -6,7 +6,7 @@ export function statusOfPermission(state: NotificationPermissionState): Connecti
   if (state === 'granted') return { state: 'connected' };
   if (state === 'denied') return errorStatus('notifications-blocked');
   if (state === 'unknown') return errorStatus('notifications-unverifiable');
-  return noteStatus('notifications-blocked', 'notifications-not-authorized');
+  return { state: 'disconnected', note: 'notifications-not-authorized' };
 }
 
 export class CheckNotifications implements StatusUseCase {
