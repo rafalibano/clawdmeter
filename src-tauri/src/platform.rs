@@ -154,7 +154,7 @@ mod popover {
     pub fn describe(window: &NSWindow) -> String {
         let frame = window.frame();
         format!(
-            "frame=({:.0},{:.0},{:.0}x{:.0}) level={} behavior={:#x} on_active_space={} visible={} key={}",
+            "frame=({:.0},{:.0},{:.0}x{:.0}) level={} behavior={:#x} on_active_space={} visible={} key={} occlusion_visible={}",
             frame.origin.x,
             frame.origin.y,
             frame.size.width,
@@ -163,7 +163,10 @@ mod popover {
             window.collectionBehavior().0,
             window.isOnActiveSpace(),
             window.isVisible(),
-            window.isKeyWindow()
+            window.isKeyWindow(),
+            window
+                .occlusionState()
+                .contains(objc2_app_kit::NSWindowOcclusionState::Visible)
         )
     }
 }
@@ -379,9 +382,29 @@ fn on_ns_window(
     });
 }
 
+// WebKit stops painting while it thinks the window is occluded and only resumes on an occlusion
+// change, so the panel opened blank over a big window until that window moved or minimized.
+#[cfg(target_os = "macos")]
+fn keep_painting_when_occluded(window: &tauri::WebviewWindow) {
+    use objc2::runtime::{NSObject, NSObjectProtocol};
+    use objc2::{msg_send, sel};
+
+    let _ = window.with_webview(|webview| {
+        let Some(view) = (unsafe { webview.inner().cast::<NSObject>().as_ref() }) else {
+            return;
+        };
+        let supported = view.respondsToSelector(sel!(_setWindowOcclusionDetectionEnabled:));
+        if supported {
+            let _: () = unsafe { msg_send![view, _setWindowOcclusionDetectionEnabled: false] };
+        }
+        crate::popover_log::write(&format!("webview-occlusion-detection disabled={supported}"));
+    });
+}
+
 #[cfg(target_os = "macos")]
 pub fn prepare_popover(window: &tauri::WebviewWindow) {
     let _ = window.set_visible_on_all_workspaces(true);
+    keep_painting_when_occluded(window);
     on_ns_window(window, popover::apply);
 }
 
@@ -562,18 +585,16 @@ pub fn show_popover(
 
     on_ns_window(window, move |ns_window| {
         popover::show(ns_window);
-        log::debug(|| format!("show {}", popover::describe(ns_window)));
+        log::write(&format!("show {}", popover::describe(ns_window)));
         dismiss::install(ns_window, std::rc::Rc::new(on_dismiss));
     });
-    if cfg!(debug_assertions) {
-        let target = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(SHOW_PROBE_DELAY);
-            on_ns_window(&target, |ns_window| {
-                log::write(&format!("show+100ms {}", popover::describe(ns_window)));
-            });
+    let target = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(SHOW_PROBE_DELAY);
+        on_ns_window(&target, |ns_window| {
+            log::write(&format!("show+100ms {}", popover::describe(ns_window)));
         });
-    }
+    });
 }
 
 #[cfg(not(target_os = "macos"))]
