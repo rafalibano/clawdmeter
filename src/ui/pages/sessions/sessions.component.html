@@ -3,6 +3,23 @@
 }
 
 @if (view(); as sessions) {
+  <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('sessions.filter')">
+    @for (option of sessions.filters; track option.id) {
+      <button
+        type="button"
+        role="radio"
+        class="segment"
+        [attr.data-filter]="option.id"
+        [class.selected]="option.selected"
+        [attr.aria-checked]="option.selected"
+        [attr.tabindex]="option.selected ? 0 : -1"
+        (click)="selectFilter(option.id)"
+        (keydown)="filterKey($event, option.id)"
+      >
+        {{ option.label }} <span class="segment-count">{{ option.count }}</span>
+      </button>
+    }
+  </div>
   <div class="toolbar">
     <p class="summary">{{ sessions.summary }}</p>
     @if (sessions.rows.some(hasDetails)) {

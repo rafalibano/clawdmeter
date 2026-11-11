@@ -1,9 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  Injector,
+  untracked,
+} from '@angular/core';
 import { I18n } from '../../i18n';
 import { PageStateService } from '../../shell/page-state.service';
 import { allOpen, pruneKeys, toggleAllKeys, toggleKey } from './session-expansion';
 import { SESSIONS_PAGE } from './sessions-page-ref';
-import { toSessionsView, type SessionRowView } from './sessions-view';
+import { filterForKey, toSessionsView, type SessionRowView, type SessionsFilter } from './sessions-view';
+import { SessionsViewState } from './sessions-view-state';
 
 @Component({
   selector: 'cm-sessions-page',
@@ -14,11 +25,13 @@ import { toSessionsView, type SessionRowView } from './sessions-view';
 export class SessionsComponent {
   protected readonly i18n = inject(I18n);
   private readonly update = inject(PageStateService).of(SESSIONS_PAGE);
-  private readonly expanded = signal<ReadonlySet<string>>(new Set());
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
+  private readonly state = inject(SessionsViewState);
 
   protected readonly view = computed(() => {
     const update = this.update();
-    return update?.status === 'ok' ? toSessionsView(update.data, this.i18n.localizer()) : null;
+    return update?.status === 'ok' ? toSessionsView(update.data, this.i18n.localizer(), this.state.filter()) : null;
   });
 
   protected readonly error = computed(() => {
@@ -30,7 +43,7 @@ export class SessionsComponent {
     (this.view()?.rows ?? []).filter((row) => row.details !== null).map((row) => row.key),
   );
 
-  protected readonly allExpanded = computed(() => allOpen(this.expanded(), this.expandableKeys()));
+  protected readonly allExpanded = computed(() => allOpen(this.state.expanded(), this.expandableKeys()));
 
   protected readonly hasDetails = (row: SessionRowView): boolean => row.details !== null;
 
@@ -38,20 +51,34 @@ export class SessionsComponent {
     effect(() => {
       const view = this.view();
       if (view === null) return;
-      const keys = view.rows.map((row) => row.key);
-      untracked(() => this.expanded.update((open) => pruneKeys(open, keys)));
+      const keys = view.sessionKeys;
+      untracked(() => this.state.expanded.update((open) => pruneKeys(open, keys)));
     });
   }
 
   protected isExpanded(key: string): boolean {
-    return this.expanded().has(key);
+    return this.state.expanded().has(key);
   }
 
   protected toggle(key: string): void {
-    this.expanded.update((open) => toggleKey(open, key));
+    this.state.expanded.update((open) => toggleKey(open, key));
   }
 
   protected toggleAll(): void {
-    this.expanded.update((open) => toggleAllKeys(open, this.expandableKeys()));
+    this.state.expanded.update((open) => toggleAllKeys(open, this.expandableKeys()));
+  }
+
+  protected selectFilter(filter: SessionsFilter): void {
+    this.state.filter.set(filter);
+  }
+
+  protected filterKey(event: KeyboardEvent, filter: SessionsFilter): void {
+    const next = filterForKey(filter, event.key);
+    if (next === null) return;
+    event.preventDefault();
+    this.state.filter.set(next);
+    afterNextRender(() => this.host.querySelector<HTMLElement>(`[data-filter="${next}"]`)?.focus(), {
+      injector: this.injector,
+    });
   }
 }
