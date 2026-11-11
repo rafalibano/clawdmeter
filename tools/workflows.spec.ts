@@ -52,25 +52,37 @@ describe('GitHub Actions workflows', () => {
     expect(supplyChain).toContain('cargo audit');
   });
 
-  it('the release signs the updater artifacts and publishes latest.json only after every platform passed', () => {
+  it('the release uploads to one draft, builds latest.json once at publish and refuses a published tag', () => {
     const text = read('release.yml');
+    expect(text).toMatch(/^permissions: \{\}$/m);
+    expect(text).toContain('concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}');
-    expect(text).toContain('includeUpdaterJson: true');
-    expect(text).toContain('releaseDraft: true');
-    expect(text).not.toContain('releaseDraft: false');
     expect(text).toContain('--bundles app,dmg');
     expect(text).toContain('--bundles msi,nsis');
-    const release = text.slice(text.indexOf('\n  release:'), text.indexOf('\n  publish:'));
+    const job = (name: string, next?: string) => text.slice(text.indexOf(`\n  ${name}:`), next ? text.indexOf(`\n  ${next}:`) : undefined);
+    const draft = job('draft', 'release');
+    expect(draft).not.toContain('environment:');
+    expect(draft).toMatch(/permissions:\n\s+contents: write/);
+    expect(draft).toContain('$2 == "false"');
+    expect(draft).toContain('is already published');
+    expect(draft).toContain('-F draft=true');
+    expect(draft).toContain('echo "id=$id" >> "$GITHUB_OUTPUT"');
+    const release = job('release', 'publish');
     expect(release).toContain('needs: draft');
     expect(release).toContain('fail-fast: false');
-    const publish = text.slice(text.indexOf('\n  publish:'));
-    expect(publish).toContain('needs: release');
+    expect(release).toMatch(/permissions:\n\s+contents: write/);
+    expect(release).toContain('releaseId: ${{ needs.draft.outputs.id }}');
+    expect(release).toContain('includeUpdaterJson: false');
+    expect(release).not.toMatch(/tagName:|releaseDraft:/);
+    const publish = job('publish');
+    expect(publish).toContain('needs: [draft, release]');
     expect(publish).toContain('environment: release');
     expect(publish).toMatch(/permissions:\n\s+contents: write/);
-    for (const platform of ['darwin-aarch64', 'darwin-x86_64', 'windows-x86_64']) expect(publish).toContain(platform);
-    expect(publish).toContain('-F draft=false');
-    expect(publish).not.toContain('${{ github.ref_name }}"');
+    expect(publish).toContain('node tools/release/latest-json.mjs "$REPO" "$TAG" names.txt signatures > latest.json');
+    expect(publish).toContain('-F draft=false -f make_latest=legacy');
+    expect(publish.indexOf('assets?name=latest.json')).toBeLessThan(publish.indexOf('-F draft=false'));
+    expect(publish).not.toMatch(/run: \|[\s\S]*\$\{\{/);
     expect(text.indexOf('-F draft=false')).toBeGreaterThan(text.indexOf('- name: Check the macOS signature'));
   });
 

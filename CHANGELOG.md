@@ -3,7 +3,7 @@
 ## Unreleased
 
 - macOS releases are signed with a fixed certificate of their own (`ClawdMeter Self-Signed`) instead of an ad hoc signature, so macOS stops asking for the login password after every update. The first update with it still asks once per token (click **Always Allow**); later updates keep that choice. It is not an Apple signature: the `xattr` step of the installation is still needed. The release fails before building when the certificate secrets are missing; `tools/macos-signing/create-certificate.sh` creates the certificate. Local builds stay ad hoc.
-- Releases: the release is now created as a draft and published only after every platform built and the macOS signature and `latest.json` (both platforms, matching signatures) were checked, so a failed platform no longer leaves a public release that only updates the other one.
+- Releases: the release is now created as a draft and published only after every platform built and the macOS signature was checked, so a failed platform no longer leaves a public release that only updates the other one. `latest.json` is built once, at publish, from the signatures in the release (same format as before), and running the workflow again for a published version is refused.
 
 ## 0.2.2
 
