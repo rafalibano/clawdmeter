@@ -17,6 +17,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(tray::on_second_instance))
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(

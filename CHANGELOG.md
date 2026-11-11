@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- ClawdMeter now keeps a single instance per machine. Opening it again (another copy of the app, launch at login plus a manual open, the dev build) no longer starts a second process: the running app opens its panel and the new one exits. Two instances could spend the same Claude or Microsoft refresh token and force a new sign-in. The installed app and `yarn tauri dev` no longer run at the same time.
+
 ## 0.2.1
 
 - Usage alerts reach macOS again: the app never asked macOS for the notification permission (the Tauri plugin's request does nothing on desktop), so ClawdMeter did not show up under System Settings > Notifications and every alert was dropped. The Notifications connection now shows **Connect** while the permission was never asked, and the first usage alert that is due asks for it by itself.

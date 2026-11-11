@@ -27,6 +27,8 @@ Guide for those who want to run, change and package ClawdMeter. To install and u
 | `cargo deny check` | licenses, advisories and sources of the dependencies (`src-tauri/deny.toml`) |
 | `CI=true yarn tauri build --bundles app,dmg` | generates the `.dmg` in `src-tauri/target/release/bundle/dmg/` (needs the signing key, see [Local build](#local-build-with-updater-artifacts)) |
 
+ClawdMeter runs a single instance per app identifier, and the dev build uses the same identifier as the installed app: quit the installed ClawdMeter (tray icon > **Quit ClawdMeter**) before `yarn tauri dev`, and quit the dev build before opening the installed app. Otherwise the new process only opens the popover of the one already running and exits (`second-instance` in `popover.log`).
+
 Demo mode swaps `composition-root.ts` for `composition-root.demo.ts` through Angular's `fileReplacements` (the `demo` configuration). The popover has a fixed width of 380 px in both modes.
 
 ## Demo mode: connection scenarios
