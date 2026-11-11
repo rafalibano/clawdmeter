@@ -1,14 +1,27 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ATTENTION_CONFIG } from '../../../domain/sessions';
+import { DEFAULT_ATTENTION_CONFIG, type SessionUsage } from '../../../domain/sessions';
 import { MINUTE_MS } from '../../../domain/time';
 import { FakeClock } from '../../testing/fake-clock';
-import { FakeProcessProbe, FakeSessionDirectory } from '../../testing/fake-usage-adapters';
+import { FakeProcessProbe, FakeSessionDirectory, FakeSessionUsageReader } from '../../testing/fake-usage-adapters';
 import { LoadSessions } from './load-sessions';
 
 const START = 1_800_000_000_000;
 
-function file(pid: number, status: string, ageMs: number): string {
-  return JSON.stringify({ pid, status, cwd: `/work/app-${pid}`, statusUpdatedAt: START - ageMs, updatedAt: START - ageMs });
+function file(pid: number, status: string, ageMs: number, sessionId?: string): string {
+  return JSON.stringify({ pid, sessionId, status, cwd: `/work/app-${pid}`, statusUpdatedAt: START - ageMs, updatedAt: START - ageMs });
+}
+
+function usage(model: string): SessionUsage {
+  return {
+    model,
+    contextTokens: 1_000,
+    longContext: false,
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadTokens: 3,
+    cacheCreationTokens: 4,
+    subagents: [],
+  };
 }
 
 let clock: FakeClock;
@@ -60,5 +73,51 @@ describe('LoadSessions', () => {
 
   it('empty folder: no sessions', async () => {
     expect((await loadSessions.execute()).sessions).toEqual([]);
+  });
+
+  it('without a usage reader the usage map is empty', async () => {
+    directory.files = [file(1, 'busy', 0, 's-1')];
+    probe.alive = new Set([1]);
+    expect((await loadSessions.execute()).usage.size).toBe(0);
+  });
+});
+
+describe('LoadSessions with a usage reader', () => {
+  let reader: FakeSessionUsageReader;
+
+  beforeEach(() => {
+    reader = new FakeSessionUsageReader();
+    loadSessions = new LoadSessions(directory, probe, clock, DEFAULT_ATTENTION_CONFIG, reader);
+  });
+
+  it('reads the usage of each live session by session id and folder, keyed by pid', async () => {
+    directory.files = [file(1, 'busy', 0, 's-1'), file(2, 'idle', 0, 's-2'), file(3, 'idle', 0, 's-3')];
+    probe.alive = new Set([1, 2]);
+    reader.usage.set('s-1', usage('claude-opus-5-5'));
+    const data = await loadSessions.execute();
+    expect(reader.reads.sort()).toEqual([
+      ['s-1', '/work/app-1'],
+      ['s-2', '/work/app-2'],
+    ]);
+    expect([...data.usage.entries()]).toEqual([[1, usage('claude-opus-5-5')]]);
+  });
+
+  it('does not read a session without a session id or without a folder', async () => {
+    directory.files = [file(1, 'busy', 0), JSON.stringify({ pid: 2, sessionId: 's-2', status: 'idle' })];
+    probe.alive = new Set([1, 2]);
+    const data = await loadSessions.execute();
+    expect(reader.reads).toEqual([]);
+    expect(data.sessions).toHaveLength(2);
+    expect(data.usage.size).toBe(0);
+  });
+
+  it('a session whose transcript fails to read is left without usage and the others keep theirs', async () => {
+    directory.files = [file(1, 'busy', 0, 's-1'), file(2, 'idle', 0, 's-2')];
+    probe.alive = new Set([1, 2]);
+    reader.failing.add('s-1');
+    reader.usage.set('s-2', usage('claude-sonnet-5-5'));
+    const data = await loadSessions.execute();
+    expect(data.sessions).toHaveLength(2);
+    expect([...data.usage.keys()]).toEqual([2]);
   });
 });

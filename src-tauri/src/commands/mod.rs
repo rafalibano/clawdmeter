@@ -10,6 +10,7 @@ pub mod open_external;
 pub mod process;
 pub mod process_policy;
 pub mod secrets;
+pub mod session_usage;
 pub mod terminal;
 #[cfg(test)]
 mod test_support;

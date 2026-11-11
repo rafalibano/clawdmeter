@@ -3,17 +3,74 @@
 }
 
 @if (view(); as sessions) {
-  <p class="summary">{{ sessions.summary }}</p>
+  <div class="toolbar">
+    <p class="summary">{{ sessions.summary }}</p>
+    @if (sessions.rows.some(hasDetails)) {
+      <button type="button" class="link" (click)="toggleAll()">
+        {{ i18n.t(allExpanded() ? 'sessions.collapseAll' : 'sessions.expandAll') }}
+      </button>
+    }
+  </div>
   @for (row of sessions.rows; track row.key) {
     <article class="card" [attr.data-status]="row.status" [attr.data-attention]="row.attention">
       <header class="head">
         <span class="dot" aria-hidden="true"></span>
         <span class="title">{{ row.title }}</span>
         <span class="status">{{ row.statusLabel }} · {{ row.since }}</span>
+        @if (row.details) {
+          <button
+            type="button"
+            class="chevron"
+            [class.open]="isExpanded(row.key)"
+            [attr.aria-expanded]="isExpanded(row.key)"
+            [attr.aria-controls]="'session-details-' + row.key"
+            [attr.aria-label]="i18n.t(isExpanded(row.key) ? 'session.details.hide' : 'session.details.show')"
+            (click)="toggle(row.key)"
+          >
+            <span aria-hidden="true">▾</span>
+          </button>
+        }
       </header>
       <p class="cwd">{{ row.cwd }}</p>
+      @if (row.model || row.context) {
+        <p class="usage">
+          @if (row.model) {
+            <span class="model">{{ row.model }}</span>
+          }
+          @if (row.context) {
+            <span class="context" [attr.data-level]="row.contextLevel">{{ row.context }}</span>
+          }
+        </p>
+      }
       @if (row.attentionLabel; as label) {
         <p class="attention">{{ label }}</p>
+      }
+      @if (row.details) {
+        <div class="details" [id]="'session-details-' + row.key" [hidden]="!isExpanded(row.key)">
+          <h3>{{ i18n.t('session.tokens.title') }}</h3>
+          <dl class="tokens">
+            @for (token of row.details.tokens; track token.label) {
+              <div>
+                <dt>{{ token.label }}</dt>
+                <dd>{{ token.value }}</dd>
+              </div>
+            }
+          </dl>
+          <h3>{{ i18n.t('session.subagents.title') }}</h3>
+          @if (row.details.subagents.length === 0) {
+            <p class="none">{{ i18n.t('session.subagents.none') }}</p>
+          } @else {
+            <ul class="subagents">
+              @for (subagent of row.details.subagents; track subagent.key) {
+                <li>
+                  <span class="type">{{ subagent.type }}</span>
+                  <span class="sub-model">{{ subagent.model }}</span>
+                  <span class="alive">{{ subagent.alive }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
       }
     </article>
   }

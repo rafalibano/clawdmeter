@@ -4,10 +4,12 @@ import {
   type UsageHistory,
   type UsageSnapshot,
 } from '../../domain/usage';
+import type { SessionUsage } from '../../domain/sessions';
 import type {
   ExternalUsageHistorySource,
   ProcessProbe,
   SessionDirectory,
+  SessionUsageReader,
   UsageGateway,
   UsageHistoryStore,
   UsageHistoryStores,
@@ -132,6 +134,18 @@ export class FakeSessionDirectory implements SessionDirectory {
 
   async readAll(): Promise<string[]> {
     return this.files;
+  }
+}
+
+export class FakeSessionUsageReader implements SessionUsageReader {
+  usage = new Map<string, SessionUsage>();
+  failing = new Set<string>();
+  readonly reads: Array<[string, string]> = [];
+
+  async read(sessionId: string, cwd: string): Promise<SessionUsage | null> {
+    this.reads.push([sessionId, cwd]);
+    if (this.failing.has(sessionId)) throw new Error('unreadable transcript');
+    return this.usage.get(sessionId) ?? null;
   }
 }
 

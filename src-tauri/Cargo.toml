@@ -1,6 +1,6 @@
 [package]
 name = "clawdmeter"
-version = "0.2.1"
+version = "0.2.2"
 description = "Tray app with Claude usage, PRs, sessions, agenda and skills"
 edition = "2021"
 publish = false

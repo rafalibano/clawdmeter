@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.2
 
 - ClawdMeter now keeps a single instance per machine. Opening it again (another copy of the app, launch at login plus a manual open, the dev build) no longer starts a second process: the running app opens its panel and the new one exits. Two instances could spend the same Claude or Microsoft refresh token and force a new sign-in. The installed app and `yarn tauri dev` no longer run at the same time.
+- Sessions: each open Claude Code session now shows the model of its last reply and how much context it holds (`Context 412k / 1M · 41%`, in amber from 70% and red from 90%; only `412k` when the model's window is unknown). A chevron opens the session's details: input, cache read, cache write and output tokens summed over the session (no dollar values) and the running subagents with type, model and time alive. **Expand all** at the top opens or closes every session. The numbers come from the session transcript under `~/.claude/projects`, read by Rust only where it grew since the last poll; the message text never reaches the panel. A session without a readable transcript shows as before.
 
 ## 0.2.1
 
