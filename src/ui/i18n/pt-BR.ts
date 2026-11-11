@@ -282,6 +282,12 @@ export const ptBR: Record<MessageKey, string> = {
   'session.subagent.unknown': 'desconhecido',
   'sessions.expandAll': 'Expandir tudo',
   'sessions.collapseAll': 'Recolher tudo',
+  'sessions.filter': 'Filtrar sessões',
+  'sessions.filter.all': 'Todas',
+  'sessions.filter.active': 'Ativas',
+  'sessions.filter.inactive': 'Inativas',
+  'sessions.empty.active': 'Nenhuma sessão ativa.',
+  'sessions.empty.inactive': 'Nenhuma sessão inativa.',
 
   'prs.section.mine': 'Meus PRs abertos',
   'prs.section.assigned': 'Atribuídos a mim (de outros)',

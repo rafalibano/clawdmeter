@@ -282,6 +282,12 @@ export const esMX: Record<MessageKey, string> = {
   'session.subagent.unknown': 'desconocido',
   'sessions.expandAll': 'Expandir todo',
   'sessions.collapseAll': 'Contraer todo',
+  'sessions.filter': 'Filtrar sesiones',
+  'sessions.filter.all': 'Todas',
+  'sessions.filter.active': 'Activas',
+  'sessions.filter.inactive': 'Inactivas',
+  'sessions.empty.active': 'Ninguna sesión activa.',
+  'sessions.empty.inactive': 'Ninguna sesión inactiva.',
 
   'prs.section.mine': 'Mis PRs abiertos',
   'prs.section.assigned': 'Asignados a mí (de otros)',

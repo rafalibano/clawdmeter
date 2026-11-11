@@ -9,7 +9,8 @@ export function allOpen(open: ReadonlySet<string>, keys: readonly string[]): boo
 }
 
 export function toggleAllKeys(open: ReadonlySet<string>, keys: readonly string[]): ReadonlySet<string> {
-  return allOpen(open, keys) ? new Set() : new Set(keys);
+  if (!allOpen(open, keys)) return new Set([...open, ...keys]);
+  return new Set([...open].filter((key) => !keys.includes(key)));
 }
 
 export function pruneKeys(open: ReadonlySet<string>, keys: readonly string[]): ReadonlySet<string> {

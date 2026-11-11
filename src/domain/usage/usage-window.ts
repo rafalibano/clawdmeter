@@ -1,4 +1,6 @@
-import { DAY_MS, HOUR_MS } from '../time';
+import { DAY_MS, HOUR_MS, MINUTE_MS } from '../time';
+
+export const RESET_JITTER_MS = MINUTE_MS;
 
 export type UsageWindowKind = 'fiveHour' | 'sevenDay';
 
