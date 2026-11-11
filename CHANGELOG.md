@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Usage chart: while the app has no new readings (Mac asleep, app closed), the 1h and 6h ranges (and the others) no longer go blank with only a stray dash near now. Each series starts at the start of the range with the last reading taken before it and holds that level until the next reading and up to now; a 5h or 7d reset that passed in the meantime drops it to 0 at the reset time. Nothing is drawn past the last reading, and a range with no reading at all, before or inside it, stays empty. The tooltip no longer overshoots below 0% or above the readings around a step.
+- Usage chart: while the app has no new readings (Mac asleep, app closed), the 1h and 6h ranges (and the others) no longer go blank with only a stray dash near now. Each series starts at the start of the range with the last reading taken before it and holds that level until the next reading and up to now; a 5h or 7d reset that passed in the meantime drops it to 0 at the reset time (resets within a minute of the start of the range count as already passed, so the Reset view no longer starts with a vertical bar from the previous week). After a long gap the last reading is extended up to now, never into the future, and a range with no reading at all, before or inside it, stays empty. When readings fail, the chart keeps showing the last known level rather than a gap. The tooltip no longer overshoots below 0% or above the readings around a step.
 
 ## 0.2.2
 

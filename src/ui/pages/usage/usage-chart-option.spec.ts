@@ -542,6 +542,16 @@ describe('last known level across the range', () => {
     expect(points.at(-1)).toEqual([NOW, 0]);
   });
 
+  it('in Reset a weekly reset with jitter just after the start of the cycle does not carry the previous week in', () => {
+    const before: UsagePoint = { at: WEEKLY_RESET - CYCLE_MS - HOUR_MS, utilization: 92, resetsAt: WEEKLY_RESET - CYCLE_MS + 500 };
+    const current: UsagePoint = { at: NOW, utilization: 30, resetsAt: WEEKLY_RESET };
+    const model = buildChartModel([{ ...window('sevenDay', [before, current], WEEKLY_RESET), forecast: ready(60) }], usageRange('cycle'), NOW);
+    expect(model.cycle).toBe(true);
+    const points = model.windows[0]!.points;
+    expect(points[0]).toEqual([model.xMin, 0]);
+    expect(Math.max(...points.filter((point) => point[0] <= model.xMin + HOUR_MS).map((point) => point[1]))).toBe(0);
+  });
+
   it('without any reading the series stays empty', () => {
     const model = buildChartModel([window('fiveHour', []), window('sevenDay', [])], usageRange('6h'), NOW);
     expect(model.windows.map((series) => series.points)).toEqual([[], []]);

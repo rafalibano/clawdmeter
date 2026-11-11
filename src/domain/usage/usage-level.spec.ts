@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { HOUR_MS, MINUTE_MS } from '../time';
 import type { UsagePoint } from './usage-history';
 import { LEVEL_GAP_MS, levelAt, levelSteps } from './usage-level';
+import { RESET_JITTER_MS } from './usage-window';
 
 const NOW = 1_800_000_000_000;
 const FROM = NOW - 6 * HOUR_MS;
 
 describe('levelAt', () => {
-  it('keeps the reading until its reset and is zero from the reset on', () => {
-    const point: UsagePoint = { at: 0, utilization: 40, resetsAt: 100 };
-    expect(levelAt(point, 99)).toBe(40);
-    expect(levelAt(point, 100)).toBe(0);
+  it('keeps the reading until its reset and is zero from the reset on, tolerating the reset jitter', () => {
+    const point: UsagePoint = { at: 0, utilization: 40, resetsAt: HOUR_MS };
+    expect(levelAt(point, HOUR_MS - RESET_JITTER_MS - 1)).toBe(40);
+    expect(levelAt(point, HOUR_MS - RESET_JITTER_MS)).toBe(0);
+    expect(levelAt(point, HOUR_MS)).toBe(0);
     expect(levelAt({ ...point, resetsAt: null }, 1e15)).toBe(40);
   });
 });
@@ -40,6 +42,24 @@ describe('levelSteps', () => {
     ]);
   });
 
+  it('a reset a fraction of a second after the start of the range counts as already passed', () => {
+    const points: UsagePoint[] = [{ at: FROM - 3 * HOUR_MS, utilization: 92, resetsAt: FROM + 500 }];
+    expect(levelSteps(points, FROM, NOW)).toEqual([
+      [FROM, 0],
+      [NOW, 0],
+    ]);
+  });
+
+  it('a reading whose reset is a fraction of a second stale drops to zero right after it', () => {
+    const at = FROM + HOUR_MS;
+    const points: UsagePoint[] = [{ at, utilization: 30, resetsAt: at - 400 }];
+    expect(levelSteps(points, FROM, NOW)).toEqual([
+      [at, 30],
+      [at, 0],
+      [NOW, 0],
+    ]);
+  });
+
   it('a reset inside the range drops the level to zero at the reset', () => {
     const resetsAt = FROM + 2 * HOUR_MS;
     const points: UsagePoint[] = [{ at: FROM - HOUR_MS, utilization: 64, resetsAt }];
@@ -64,7 +84,7 @@ describe('levelSteps', () => {
     ]);
   });
 
-  it('holds across long gaps between readings, respecting a reset in the gap, and nothing past the last reading', () => {
+  it('holds across long gaps between readings, respecting a reset in the gap, and extends the last reading only up to the end of the range', () => {
     const points: UsagePoint[] = [
       { at: FROM, utilization: 60, resetsAt: FROM + HOUR_MS },
       { at: FROM + 4 * HOUR_MS, utilization: 9, resetsAt: NOW + 3 * HOUR_MS },

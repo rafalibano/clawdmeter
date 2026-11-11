@@ -1,5 +1,5 @@
 import type { UsageWindowReading } from './usage-snapshot';
-import type { UsageWindowKind } from './usage-window';
+import { RESET_JITTER_MS, type UsageWindowKind } from './usage-window';
 
 export type Quartile = 25 | 50 | 75 | 100;
 
@@ -16,8 +16,6 @@ export interface WindowAlertOutcome {
   alert: Quartile | null;
   state: WindowAlertState;
 }
-
-const RESET_JITTER_MS = 60_000;
 
 export const DROP_MARGIN = 5;
 
