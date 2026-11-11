@@ -134,6 +134,8 @@ To behave as a non-activating panel, `popover::apply` swaps the window's class t
 
 `popover.log` lines are written by one background thread. Every build records, on each show, the window frame, level, collection behavior, whether it is on the active Space and whether macOS sees it as visible (`occlusion_visible`), plus the `show+100ms` probe; the activated app (pid and bundle id) is recorded only in debug builds. At startup the app turns off WebKit's window occlusion detection for the popover webview (`webview-occlusion-detection disabled=…`): WebKit stopped painting while it believed the window was covered, so the panel opened blank over a large window.
 
+A second launch of the app does not start a second process: `tauri-plugin-single-instance`, the first plugin in the builder, hands it off to the running instance, which calls `tray::on_second_instance` on the main thread. It logs `second-instance visible=… action=…` and, when the popover is hidden, opens it through the same show path as a tray click, without an icon rect (`None`, as the Ctrl+Alt+D shortcut); unlike a click it never hides an open popover and ignores the reopen guard (`platform::second_instance_action`). See [Two app instances](SECURITY.md#two-app-instances).
+
 On Windows the popover is placed by `tauri-plugin-positioner` (`TrayCenter`, falling back to `BottomRight`) and then clamped to the monitor work area (`rcWork` from `MonitorFromWindow` + `GetMonitorInfoW`), so a taskbar on any edge does not cover it. A failed Ctrl+Alt+D registration (taken by another app, or AltGr on some layouts) is logged as `shortcut-register failed`.
 
 ## Sessions

@@ -22,6 +22,14 @@ pub fn click_action(visible: bool, ms_since_auto_hide: u64) -> ClickAction {
     }
 }
 
+pub fn second_instance_action(visible: bool) -> ClickAction {
+    if visible {
+        ClickAction::Ignore
+    } else {
+        ClickAction::Show
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn configure_app(app: &mut tauri::App) {
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -802,6 +810,16 @@ mod tests {
     #[test]
     fn click_on_hidden_popover_shows_it() {
         assert_eq!(click_action(false, REOPEN_GUARD_MS + 1), ClickAction::Show);
+    }
+
+    #[test]
+    fn a_second_launch_opens_a_hidden_popover_even_right_after_auto_hide() {
+        assert_eq!(second_instance_action(false), ClickAction::Show);
+    }
+
+    #[test]
+    fn a_second_launch_keeps_an_open_popover_open() {
+        assert_eq!(second_instance_action(true), ClickAction::Ignore);
     }
 
     #[test]

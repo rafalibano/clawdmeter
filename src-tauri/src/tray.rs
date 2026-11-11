@@ -70,14 +70,33 @@ fn toggle_popover(app: &AppHandle, icon: Option<Rect>) {
     ));
     match action {
         ClickAction::Hide => hide_popover(app, HideReason::Toggle),
-        ClickAction::Show => {
-            platform::prepare_popover(&window);
-            platform::position_popover(&window, icon);
-            let handle = app.clone();
-            platform::show_popover(&window, move |reason| hide_popover(&handle, reason));
-        }
+        ClickAction::Show => show_popover(app, &window, icon),
         ClickAction::Ignore => {}
     }
+}
+
+fn show_popover(app: &AppHandle, window: &tauri::WebviewWindow, icon: Option<Rect>) {
+    platform::prepare_popover(window);
+    platform::position_popover(window, icon);
+    let handle = app.clone();
+    platform::show_popover(window, move |reason| hide_popover(&handle, reason));
+}
+
+pub fn on_second_instance(app: &AppHandle, _args: Vec<String>, _cwd: String) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = handle.get_webview_window(MAIN_WINDOW) else {
+            return;
+        };
+        let visible = window.is_visible().unwrap_or(false);
+        let action = platform::second_instance_action(visible);
+        log::write(&format!(
+            "second-instance visible={visible} action={action:?}"
+        ));
+        if action == ClickAction::Show {
+            show_popover(&handle, &window, None);
+        }
+    });
 }
 
 fn popover_shortcut() -> Shortcut {
