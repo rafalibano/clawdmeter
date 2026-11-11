@@ -1,6 +1,6 @@
 {
   "name": "clawdmeter",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "scripts": {
     "start": "ng serve",
