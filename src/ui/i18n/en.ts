@@ -292,6 +292,12 @@ export const en = {
   'session.subagent.unknown': 'unknown',
   'sessions.expandAll': 'Expand all',
   'sessions.collapseAll': 'Collapse all',
+  'sessions.filter': 'Filter sessions',
+  'sessions.filter.all': 'All',
+  'sessions.filter.active': 'Active',
+  'sessions.filter.inactive': 'Inactive',
+  'sessions.empty.active': 'No active session.',
+  'sessions.empty.inactive': 'No inactive session.',
 
   'prs.section.mine': 'My open PRs',
   'prs.section.assigned': 'Assigned to me (by others)',

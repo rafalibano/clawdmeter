@@ -3,7 +3,7 @@ import { Localizer } from '../../i18n';
 import type { SessionsData } from '../../../application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG, type ClaudeSession, type SessionUsage } from '../../../domain/sessions';
 import { MINUTE_MS, SECOND_MS } from '../../../domain/time';
-import { toSessionsView as toSessionsViewWith } from './sessions-view';
+import { nextFilter, toSessionsView as toSessionsViewWith, type SessionsFilter } from './sessions-view';
 
 const NOW = 1_800_000_000_000;
 
@@ -148,5 +148,55 @@ describe('toSessionsView', () => {
         { key: 'agent-c', type: 'claude', model: 'opus', alive: 'menos de 1 min' },
       ],
     });
+  });
+});
+
+describe('sessions filter', () => {
+  const mixed = data([
+    session(1),
+    session(2, { status: 'idle', statusUpdatedAt: NOW - 18 * MINUTE_MS }),
+    session(3, { status: 'shell' }),
+    session(4, { status: null }),
+    session(5),
+  ]);
+  const filtered = (filter: SessionsFilter, input = mixed) => toSessionsViewWith(input, PT, filter);
+
+  it('defaults to all and counts each option over every session', () => {
+    const view = toSessionsView(mixed);
+    expect(view.rows.map((row) => row.key)).toEqual(['1', '2', '3', '4', '5']);
+    expect(view.filters).toEqual([
+      { id: 'all', label: 'Todas', count: 5, selected: true },
+      { id: 'active', label: 'Ativas', count: 2, selected: false },
+      { id: 'inactive', label: 'Inativas', count: 3, selected: false },
+    ]);
+  });
+
+  it('active keeps only busy sessions and the summary counts the visible rows', () => {
+    const view = filtered('active');
+    expect(view.rows.map((row) => row.key)).toEqual(['1', '5']);
+    expect(view.rows.every((row) => row.activity === 'active')).toBe(true);
+    expect(view.summary).toBe('2 sessões');
+    expect(view.filters.find((option) => option.selected)?.id).toBe('active');
+    expect(view.filters.map((option) => option.count)).toEqual([5, 2, 3]);
+  });
+
+  it('inactive keeps idle, shell and unknown status', () => {
+    const view = filtered('inactive');
+    expect(view.rows.map((row) => row.key)).toEqual(['2', '3', '4']);
+    expect(view.summary).toBe('3 sessões · 1 pede atenção');
+  });
+
+  it('a filter with no match shows its own empty message', () => {
+    const busyOnly = data([session(1)]);
+    const idleOnly = data([session(2, { status: 'idle' })]);
+    expect(filtered('inactive', busyOnly)).toMatchObject({ rows: [], summary: 'Nenhuma sessão inativa.' });
+    expect(filtered('active', idleOnly)).toMatchObject({ rows: [], summary: 'Nenhuma sessão ativa.' });
+    expect(filtered('all', data([])).summary).toBe('Nenhuma sessão do Claude Code aberta.');
+  });
+
+  it('nextFilter cycles through the options in both directions', () => {
+    expect(nextFilter('all', 1)).toBe('active');
+    expect(nextFilter('inactive', 1)).toBe('all');
+    expect(nextFilter('all', -1)).toBe('inactive');
   });
 });

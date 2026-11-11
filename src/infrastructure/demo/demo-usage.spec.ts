@@ -3,7 +3,7 @@ import { createConnections } from '../../application/connections/create-connecti
 import { FakeClock } from '../../application/testing/fake-clock';
 import { FAKE_ACCOUNT, createFakeConnectionWorld } from '../../application/testing/fake-connection-adapters';
 import { LoadSessions, LoadUsage } from '../../application/use-cases';
-import { DEFAULT_ATTENTION_CONFIG } from '../../domain/sessions';
+import { DEFAULT_ATTENTION_CONFIG, sessionActivity } from '../../domain/sessions';
 import { DAY_MS, MINUTE_MS } from '../../domain/time';
 import { TOTAL_RETENTION_MS } from '../../domain/usage';
 import { DemoProcessProbe, DemoSessionDirectory } from './demo-sessions';
@@ -114,6 +114,7 @@ describe('demo sessions', () => {
       DEFAULT_ATTENTION_CONFIG,
     ).execute();
     expect(data.sessions.map((session) => session.status).sort()).toEqual(['busy', 'busy', 'idle', 'idle', 'shell']);
+    expect(data.sessions.map(sessionActivity).sort()).toEqual(['active', 'active', 'inactive', 'inactive', 'inactive']);
     expect(data.sessions.some((session) => session.name === 'old-experiment')).toBe(false);
     expect(data.sessions[0]?.pid).toBeDefined();
   });

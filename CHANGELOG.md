@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Sessions: a filter at the top of the tab shows **All**, **Active** or **Inactive** sessions, each with its count (`Active 3`). Active means working (`busy`); idle, shell and unknown status count as inactive. The summary and **Expand all** follow the visible sessions, and an empty filter says so ("No active session"). The choice lasts while the app is open and is not saved in the settings.
+
 ## 0.2.2
 
 - ClawdMeter now keeps a single instance per machine. Opening it again (another copy of the app, launch at login plus a manual open, the dev build) no longer starts a second process: the running app opens its panel and the new one exits. Two instances could spend the same Claude or Microsoft refresh token and force a new sign-in. The installed app and `yarn tauri dev` no longer run at the same time.
