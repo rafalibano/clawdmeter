@@ -21,6 +21,13 @@ describe('session expansion', () => {
     expect([...toggleAllKeys(all, ['1', '2', '3'])].sort()).toEqual(['1', '2', '3']);
   });
 
+  it('expand and collapse all only touch the given sessions, so ones hidden by the filter keep their state', () => {
+    const open = new Set(['hidden']);
+    const expanded = toggleAllKeys(open, ['1', '2']);
+    expect([...expanded].sort()).toEqual(['1', '2', 'hidden']);
+    expect([...toggleAllKeys(expanded, ['1', '2'])]).toEqual(['hidden']);
+  });
+
   it('with no expandable session nothing counts as all open', () => {
     expect(allOpen(new Set(['1']), [])).toBe(false);
   });

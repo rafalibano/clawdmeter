@@ -2,12 +2,14 @@ import type { SessionsData } from '../../../application/use-cases';
 import {
   contextShare,
   contextWindow,
+  sessionActivity,
   sessionAttention,
   shortModel,
   sessionTitle,
   shortCwd,
   statusSince,
   type ClaudeSession,
+  type SessionActivity,
   type SessionAttention,
   type SessionStatus,
   type SessionUsage,
@@ -19,6 +21,7 @@ export interface SessionRowView {
   title: string;
   cwd: string;
   status: SessionStatus | 'unknown';
+  activity: SessionActivity;
   statusLabel: string;
   since: string;
   attention: SessionAttention | null;
@@ -48,9 +51,38 @@ export interface SessionDetailsView {
   subagents: SubagentRowView[];
 }
 
+export type SessionsFilter = 'all' | SessionActivity;
+
+export const SESSIONS_FILTERS: readonly SessionsFilter[] = ['all', 'active', 'inactive'];
+
+const FILTER_STEPS: Readonly<Record<string, 1 | -1>> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+};
+
+export function filterForKey(filter: SessionsFilter, key: string): SessionsFilter | null {
+  const count = SESSIONS_FILTERS.length;
+  if (key === 'Home') return SESSIONS_FILTERS[0] ?? null;
+  if (key === 'End') return SESSIONS_FILTERS[count - 1] ?? null;
+  const step = FILTER_STEPS[key];
+  if (step === undefined) return null;
+  return SESSIONS_FILTERS[(SESSIONS_FILTERS.indexOf(filter) + step + count) % count] ?? null;
+}
+
+export interface SessionsFilterOption {
+  id: SessionsFilter;
+  label: string;
+  count: number;
+  selected: boolean;
+}
+
 export interface SessionsView {
   rows: SessionRowView[];
+  sessionKeys: string[];
   summary: string;
+  filters: SessionsFilterOption[];
 }
 
 function attentionLabel(attention: SessionAttention | null, elapsedMs: number, l: Localizer): string | null {
@@ -118,6 +150,7 @@ function toRow(session: ClaudeSession, data: SessionsData, l: Localizer): Sessio
     title: sessionTitle(session),
     cwd: shortCwd(session.cwd),
     status,
+    activity: sessionActivity(session, data.at, data.attention),
     statusLabel: l.t(`session.status.${status}`),
     since: since === null ? '—' : l.since(elapsed),
     attention,
@@ -129,14 +162,31 @@ function toRow(session: ClaudeSession, data: SessionsData, l: Localizer): Sessio
   };
 }
 
-function summarize(rows: readonly SessionRowView[], l: Localizer): string {
-  if (rows.length === 0) return l.t('sessions.empty');
+const EMPTY_KEYS = {
+  all: 'sessions.empty',
+  active: 'sessions.empty.active',
+  inactive: 'sessions.empty.inactive',
+} as const;
+
+function matches(row: SessionRowView, filter: SessionsFilter): boolean {
+  return filter === 'all' || row.activity === filter;
+}
+
+function summarize(rows: readonly SessionRowView[], filter: SessionsFilter, l: Localizer): string {
+  if (rows.length === 0) return l.t(EMPTY_KEYS[filter]);
   const flagged = rows.filter((row) => row.attention !== null).length;
   const total = l.count('sessions.count', rows.length);
   return flagged === 0 ? total : `${total} · ${l.count('sessions.flagged', flagged)}`;
 }
 
-export function toSessionsView(data: SessionsData, l: Localizer): SessionsView {
-  const rows = data.sessions.map((session) => toRow(session, data, l));
-  return { rows, summary: summarize(rows, l) };
+export function toSessionsView(data: SessionsData, l: Localizer, filter: SessionsFilter = 'all'): SessionsView {
+  const all = data.sessions.map((session) => toRow(session, data, l));
+  const rows = all.filter((row) => matches(row, filter));
+  const filters = SESSIONS_FILTERS.map((id) => ({
+    id,
+    label: l.t(`sessions.filter.${id}`),
+    count: all.filter((row) => matches(row, id)).length,
+    selected: id === filter,
+  }));
+  return { rows, sessionKeys: all.map((row) => row.key), summary: summarize(rows, filter, l), filters };
 }
