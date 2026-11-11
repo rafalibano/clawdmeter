@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Usage chart: while the app has no new readings (Mac asleep, app closed), the 1h and 6h ranges (and the others) no longer go blank with only a stray dash near now. Each series starts at the start of the range with the last reading taken before it and holds that level until the next reading and up to now; a 5h or 7d reset that passed in the meantime drops it to 0 at the reset time. Nothing is drawn past the last reading, and a range with no reading at all, before or inside it, stays empty. The tooltip no longer overshoots below 0% or above the readings around a step.
+
 ## 0.2.2
 
 - ClawdMeter now keeps a single instance per machine. Opening it again (another copy of the app, launch at login plus a manual open, the dev build) no longer starts a second process: the running app opens its panel and the new one exits. Two instances could spend the same Claude or Microsoft refresh token and force a new sign-in. The installed app and `yarn tauri dev` no longer run at the same time.
