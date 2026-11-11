@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Sessions: each open Claude Code session now shows the model of its last reply and how much context it holds (`Context 412k / 1M · 41%`, in amber from 70% and red from 90%; only `412k` when the model's window is unknown). A chevron opens the session's details: input, cache read, cache write and output tokens summed over the session (no dollar values) and the running subagents with type, model and time alive. **Expand all** at the top opens or closes every session. The numbers come from the session transcript under `~/.claude/projects`, read by Rust only where it grew since the last poll; the message text never reaches the panel. A session without a readable transcript shows as before.
+
 ## 0.2.1
 
 - Usage alerts reach macOS again: the app never asked macOS for the notification permission (the Tauri plugin's request does nothing on desktop), so ClawdMeter did not show up under System Settings > Notifications and every alert was dropped. The Notifications connection now shows **Connect** while the permission was never asked, and the first usage alert that is due asks for it by itself.

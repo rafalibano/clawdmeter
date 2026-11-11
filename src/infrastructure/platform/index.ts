@@ -11,6 +11,7 @@ export * from './tauri-oauth-loopback';
 export * from './tauri-process-probe';
 export * from './tauri-process-runner';
 export * from './tauri-secret-store';
+export * from './tauri-session-usage-reader';
 export * from './tauri-system-actions';
 export * from './tauri-streaming-process-runner';
 export * from './tauri-usage-indicator';

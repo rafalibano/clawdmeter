@@ -2,10 +2,28 @@
   display: block;
 }
 
+.toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .summary {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--cm-muted);
   font-size: 12px;
+}
+
+.link {
+  margin-left: auto;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cm-accent-text);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .card {
@@ -74,4 +92,135 @@
   color: var(--cm-warning-text);
   font-size: 12px;
   font-weight: 600;
+}
+
+.chevron {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cm-radius-sm);
+  background: none;
+  color: var(--cm-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.chevron:hover {
+  background: var(--cm-hover);
+  color: var(--cm-fg);
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 0 16px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.model {
+  font-weight: 600;
+}
+
+.context {
+  color: var(--cm-muted);
+}
+
+.context[data-level='warning'] {
+  color: var(--cm-warning-text);
+  font-weight: 600;
+}
+
+.context[data-level='critical'] {
+  color: var(--cm-danger-text);
+  font-weight: 600;
+}
+
+.details {
+  margin: 8px 0 0 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cm-border);
+  font-size: 12px;
+}
+
+.details h3 {
+  margin: 0 0 4px;
+  color: var(--cm-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tokens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin: 0 0 10px;
+}
+
+.tokens div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tokens dt {
+  color: var(--cm-muted);
+}
+
+.tokens dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.none {
+  margin: 0;
+  color: var(--cm-muted);
+}
+
+.subagents {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subagents li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.type {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-model {
+  flex: none;
+  color: var(--cm-muted);
+}
+
+.alive {
+  margin-left: auto;
+  flex: none;
+  color: var(--cm-muted);
+  font-variant-numeric: tabular-nums;
 }

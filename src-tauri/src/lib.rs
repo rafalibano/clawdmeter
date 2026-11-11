@@ -32,6 +32,7 @@ pub fn run() {
         .manage(ClaudeLogins::default())
         .manage(AccountLocks::default())
         .manage(PendingUpdate::default())
+        .manage(commands::session_usage::TranscriptTallies::default())
         .invoke_handler(tauri::generate_handler![
             commands::secrets::secret_get,
             commands::secrets::secret_set,
@@ -54,6 +55,7 @@ pub fn run() {
             commands::open_external::open_system_settings,
             commands::notification_permission::notification_permission_state,
             commands::notification_permission::notification_permission_request,
+            commands::session_usage::session_usage,
             commands::launch_at_login::launch_at_login_status,
             commands::launch_at_login::launch_at_login_enable,
             commands::launch_at_login::launch_at_login_disable,

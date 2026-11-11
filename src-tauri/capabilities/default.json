@@ -89,6 +89,7 @@
     "allow-open-system-settings",
     "allow-notification-permission-state",
     "allow-notification-permission-request",
+    "allow-session-usage",
     "allow-launch-at-login-status",
     "allow-launch-at-login-enable",
     "allow-launch-at-login-disable",
