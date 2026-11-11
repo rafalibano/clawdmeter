@@ -52,23 +52,39 @@ describe('GitHub Actions workflows', () => {
     expect(supplyChain).toContain('cargo audit');
   });
 
-  it('the release signs the updater artifacts, publishes latest.json and is not a draft', () => {
+  it('the release signs the updater artifacts and publishes latest.json only after every platform passed', () => {
     const text = read('release.yml');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}');
     expect(text).toContain('includeUpdaterJson: true');
-    expect(text).toContain('releaseDraft: false');
+    expect(text).toContain('releaseDraft: true');
+    expect(text).not.toContain('releaseDraft: false');
     expect(text).toContain('--bundles app,dmg');
     expect(text).toContain('--bundles msi,nsis');
+    const release = text.slice(text.indexOf('\n  release:'), text.indexOf('\n  publish:'));
+    expect(release).toContain('needs: draft');
+    expect(release).toContain('fail-fast: false');
+    const publish = text.slice(text.indexOf('\n  publish:'));
+    expect(publish).toContain('needs: release');
+    expect(publish).toContain('environment: release');
+    expect(publish).toMatch(/permissions:\n\s+contents: write/);
+    for (const platform of ['darwin-aarch64', 'darwin-x86_64', 'windows-x86_64']) expect(publish).toContain(platform);
+    expect(publish).toContain('-F draft=false');
+    expect(publish).not.toContain('${{ github.ref_name }}"');
+    expect(text.indexOf('-F draft=false')).toBeGreaterThan(text.indexOf('- name: Check the macOS signature'));
   });
 
   it('the macOS release is signed by the stable certificate and fails without it', () => {
     const text = read('release.yml');
-    const importStep = text.slice(text.indexOf('- name: Import the macOS signing certificate'), text.indexOf('- run: yarn install'));
+    const importStep = text.slice(text.indexOf('- name: Import the macOS signing certificate'), text.indexOf('- uses: tauri-apps/tauri-action'));
+    expect(text.indexOf('- name: Import the macOS signing certificate')).toBeGreaterThan(text.indexOf('- run: yarn install'));
     expect(importStep).toContain("if: runner.os == 'macOS'");
-    for (const name of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY']) {
+    for (const name of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD']) {
       expect(importStep).toContain(`${name}: \${{ secrets.${name} }}`);
     }
+    expect(importStep).toContain('APPLE_SIGNING_IDENTITY: ClawdMeter Self-Signed');
+    expect(text).not.toContain('secrets.APPLE_SIGNING_IDENTITY');
+    expect(importStep).toContain(' -x -T /usr/bin/codesign');
     expect(importStep).toContain('Missing secrets in the release environment');
     expect(importStep).toContain('exit 1');
     const tauriStep = text.slice(text.indexOf('- uses: tauri-apps/tauri-action'), text.indexOf('- name: Check the macOS signature'));

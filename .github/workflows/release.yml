@@ -8,8 +8,27 @@ permissions:
   contents: write
 
 jobs:
+  draft:
+    name: Create the draft release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the draft release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          existing=$(gh api "repos/$REPO/releases" --paginate --jq '.[] | select(.tag_name == env.TAG) | .id')
+          if [ -n "$existing" ]; then
+            echo "A release for $TAG already exists: $existing"
+          else
+            gh release create "$TAG" --repo "$REPO" --draft --verify-tag --title "ClawdMeter $TAG" \
+              --notes "Installation steps and the unsigned-app notice are in the README."
+          fi
+
   release:
     name: ${{ matrix.name }}
+    needs: draft
     strategy:
       fail-fast: false
       matrix:
@@ -55,16 +74,18 @@ jobs:
             exit 1
           fi
 
+      - run: yarn install --frozen-lockfile
+
       - name: Import the macOS signing certificate
         if: runner.os == 'macOS'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ClawdMeter Self-Signed
         run: |
           missing=()
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD; do
             if [ -z "${!name}" ]; then missing+=("$name"); fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
@@ -79,19 +100,17 @@ jobs:
           echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$certificate" -k "$keychain" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -x -T /usr/bin/codesign
           rm -f "$certificate"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
           read -r -a keychains <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
           security list-keychains -d user -s "$keychain" "${keychains[@]}"
           matches=$(security find-identity -p codesigning "$keychain" | awk '/Valid identities only/ { exit } { print }' | grep -cF "\"$APPLE_SIGNING_IDENTITY\"" || true)
           if [ "$matches" != "1" ]; then
-            echo "::error::The certificate in APPLE_CERTIFICATE has $matches code signing identities named \"$APPLE_SIGNING_IDENTITY\" (APPLE_SIGNING_IDENTITY); expected exactly one."
+            echo "::error::The certificate in APPLE_CERTIFICATE has $matches code signing identities named \"$APPLE_SIGNING_IDENTITY\"; expected exactly one. Create it with tools/macos-signing/create-certificate.sh."
             exit 1
           fi
           echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
-
-      - run: yarn install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5  # v0.6.2
         env:
@@ -103,7 +122,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: ClawdMeter ${{ github.ref_name }}
           releaseBody: Installation steps and the unsigned-app notice are in the README.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -127,3 +146,53 @@ jobs:
         if: always() && runner.os == 'macOS' && env.SIGNING_KEYCHAIN != ''
         shell: bash
         run: security delete-keychain "$SIGNING_KEYCHAIN"
+
+  publish:
+    name: Publish the release
+    needs: release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check latest.json and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ids=$(gh api "repos/$REPO/releases" --paginate --jq '.[] | select(.tag_name == env.TAG and .draft) | .id')
+          if [ "$(printf '%s\n' "$ids" | grep -c .)" != "1" ]; then
+            echo "::error::Expected exactly one draft release for $TAG, found: ${ids:-none}."
+            exit 1
+          fi
+          release_id=$ids
+          gh api "repos/$REPO/releases/$release_id/assets" --paginate --jq '.[] | [.name, (.id | tostring)] | @tsv' > assets.tsv
+          asset_id() { awk -F '\t' -v name="$1" '$1 == name { print $2 }' assets.tsv; }
+          download() { gh api -H 'Accept: application/octet-stream' "repos/$REPO/releases/assets/$1"; }
+          latest=$(asset_id latest.json)
+          if [ -z "$latest" ]; then
+            echo "::error::The draft release of $TAG has no latest.json."
+            exit 1
+          fi
+          download "$latest" > latest.json
+          version=$(jq -r .version latest.json)
+          if [ "$version" != "${TAG#v}" ]; then
+            echo "::error::latest.json has version $version, expected ${TAG#v}."
+            exit 1
+          fi
+          for platform in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+            if ! jq -e --arg p "$platform" '.platforms[$p].url and .platforms[$p].signature' latest.json > /dev/null; then
+              echo "::error::latest.json has no $platform entry; installed apps on it would not update."
+              exit 1
+            fi
+          done
+          while IFS=$'\t' read -r platform url signature; do
+            sig=$(asset_id "${url##*/}.sig")
+            if [ -z "$sig" ] || [ "$(download "$sig")" != "$signature" ]; then
+              echo "::error::The $platform signature in latest.json does not match ${url##*/}.sig in the release."
+              exit 1
+            fi
+          done < <(jq -r '.platforms | to_entries[] | [.key, .value.url, .value.signature] | @tsv' latest.json)
+          gh api --method PATCH "repos/$REPO/releases/$release_id" -F draft=false -f make_latest=true > /dev/null
+          echo "Published $TAG."

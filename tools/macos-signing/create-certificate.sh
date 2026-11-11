@@ -28,16 +28,12 @@ case "$out_dir/" in
     exit 1
     ;;
 esac
-chmod 700 "$out_dir"
+if [ "$created_dir" = true ]; then chmod 700 "$out_dir"; fi
 
-p12="$out_dir/certificate.p12"
-p12_base64="$out_dir/certificate.p12.base64"
-password_file="$out_dir/certificate-password.txt"
-cert_pem="$out_dir/certificate.pem"
-
-for file in "$p12" "$p12_base64" "$password_file" "$cert_pem"; do
-  if [ -e "$file" ]; then
-    echo "error: $file already exists. A new certificate changes the app's signature and macOS asks for the Keychain password again after the next update; move the old files away first if that is really what you want." >&2
+files=(certificate.p12 certificate.p12.base64 certificate-password.txt certificate.pem)
+for file in "${files[@]}"; do
+  if [ -e "$out_dir/$file" ]; then
+    echo "error: $out_dir/$file already exists. A new certificate changes the app's signature and macOS asks for the Keychain password again after the next update; move the old files away first if that is really what you want." >&2
     exit 1
   fi
 done
@@ -62,20 +58,23 @@ subjectKeyIdentifier = hash
 EOF
 
 "$OPENSSL" req -x509 -newkey rsa:3072 -sha256 -nodes -days "$VALID_DAYS" \
-  -config "$work/openssl.cnf" -keyout "$work/key.pem" -out "$work/cert.pem" 2>/dev/null
+  -config "$work/openssl.cnf" -keyout "$work/key.pem" -out "$work/certificate.pem"
 
-"$OPENSSL" rand -base64 32 | tr -d '\n' >"$password_file"
+"$OPENSSL" rand -base64 32 | tr -d '\n' >"$work/certificate-password.txt"
 
-"$OPENSSL" pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" -name "$COMMON_NAME" \
+"$OPENSSL" pkcs12 -export -inkey "$work/key.pem" -in "$work/certificate.pem" -name "$COMMON_NAME" \
   -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
-  -passout "file:$password_file" -out "$p12"
+  -passout "file:$work/certificate-password.txt" -out "$work/certificate.p12"
 
-base64 -i "$p12" | tr -d '\n' >"$p12_base64"
-cp "$work/cert.pem" "$cert_pem"
-chmod 600 "$p12" "$p12_base64" "$password_file" "$cert_pem"
+base64 -i "$work/certificate.p12" | tr -d '\n' >"$work/certificate.p12.base64"
 
-fingerprint="$("$OPENSSL" x509 -in "$cert_pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
-expires="$("$OPENSSL" x509 -in "$cert_pem" -noout -enddate | cut -d= -f2)"
+for file in "${files[@]}"; do
+  chmod 600 "$work/$file"
+  mv "$work/$file" "$out_dir/$file"
+done
+
+fingerprint="$("$OPENSSL" x509 -in "$out_dir/certificate.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
+expires="$("$OPENSSL" x509 -in "$out_dir/certificate.pem" -noout -enddate | cut -d= -f2)"
 
 cat <<EOF
 Created the code signing certificate "$COMMON_NAME".
@@ -88,9 +87,8 @@ Losing them means a new certificate, and macOS asks for the Keychain password on
 
 From the clawdmeter checkout, save them as secrets of the "release" environment:
 
-  gh secret set APPLE_CERTIFICATE --env release < "$p12_base64"
-  gh secret set APPLE_CERTIFICATE_PASSWORD --env release < "$password_file"
-  gh secret set APPLE_SIGNING_IDENTITY --env release --body "$COMMON_NAME"
+  gh secret set APPLE_CERTIFICATE --env release < "$out_dir/certificate.p12.base64"
+  gh secret set APPLE_CERTIFICATE_PASSWORD --env release < "$out_dir/certificate-password.txt"
 
 Nothing was sent anywhere and nothing was added to your Keychain.
 EOF
