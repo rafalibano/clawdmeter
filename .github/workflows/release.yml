@@ -4,12 +4,55 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_NOTES: Installation steps and the unsigned-app notice are in the README.
 
 jobs:
+  draft:
+    name: Create the draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+    steps:
+      - name: Create the draft release, or reuse the draft of a previous run
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh api "repos/$REPO/releases" --paginate --jq '.[] | select(.tag_name == env.TAG) | [(.id | tostring), (.draft | tostring)] | @tsv' > releases.tsv
+          if awk -F '\t' '$2 == "false"' releases.tsv | grep -q .; then
+            echo "::error::$TAG is already published. Running the release again would replace its files under the latest.json installed apps read; publish a new version instead."
+            exit 1
+          fi
+          count=$(grep -c . releases.tsv || true)
+          if [ "$count" -gt 1 ]; then
+            echo "::error::There are $count draft releases for $TAG; delete the extra ones and run again."
+            exit 1
+          elif [ "$count" -eq 1 ]; then
+            id=$(cut -f1 releases.tsv)
+            echo "Reusing the draft release $id."
+          else
+            id=$(gh api --method POST "repos/$REPO/releases" -f tag_name="$TAG" -f name="ClawdMeter $TAG" \
+              -f body="$RELEASE_NOTES" -F draft=true -F prerelease=false --jq .id)
+            echo "Created the draft release $id."
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   release:
     name: ${{ matrix.name }}
+    needs: draft
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +100,42 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
+      - name: Import the macOS signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ClawdMeter Self-Signed
+        run: |
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing secrets in the release environment: ${missing[*]}. Run tools/macos-signing/create-certificate.sh and the gh secret set commands it prints (docs/DEVELOPMENT.md). Without them the app would be signed ad hoc and macOS would ask for the Keychain password after every update."
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/clawdmeter-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/clawdmeter-signing.p12"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -x -T /usr/bin/codesign
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          read -r -a keychains <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
+          matches=$(security find-identity -p codesigning "$keychain" | awk '/Valid identities only/ { exit } { print }' | grep -cF "\"$APPLE_SIGNING_IDENTITY\"" || true)
+          if [ "$matches" != "1" ]; then
+            echo "::error::The certificate in APPLE_CERTIFICATE has $matches code signing identities named \"$APPLE_SIGNING_IDENTITY\"; expected exactly one. Create it with tools/macos-signing/create-certificate.sh."
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5  # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,11 +143,72 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: yarn tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: ClawdMeter ${{ github.ref_name }}
-          releaseBody: Installation steps and the unsigned-app notice are in the README.
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: true
+          releaseId: ${{ needs.draft.outputs.id }}
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
+
+      - name: Check the macOS signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/ClawdMeter.app
+          codesign --verify --strict --verbose=2 "$app"
+          details=$(codesign -dv --verbose=4 "$app" 2>&1)
+          grep -E '^(Identifier|Authority|TeamIdentifier|CodeDirectory)' <<< "$details"
+          codesign -d -r- "$app"
+          if ! grep -qxF "Authority=$APPLE_SIGNING_IDENTITY" <<< "$details"; then
+            echo "::error::$app is not signed by \"$APPLE_SIGNING_IDENTITY\"; installed apps would ask for the Keychain password again."
+            exit 1
+          fi
+
+      - name: Delete the signing keychain
+        if: always() && runner.os == 'macOS' && env.SIGNING_KEYCHAIN != ''
+        shell: bash
+        run: security delete-keychain "$SIGNING_KEYCHAIN"
+
+  publish:
+    name: Publish the release
+    needs: [draft, release]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Build latest.json, upload it and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_ID: ${{ needs.draft.outputs.id }}
+        run: |
+          state=$(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '[.tag_name, (.draft | tostring)] | @tsv')
+          if [ "$state" != "$TAG"$'\t'"true" ]; then
+            echo "::error::Release $RELEASE_ID is not the draft of $TAG ($state)."
+            exit 1
+          fi
+          gh api "repos/$REPO/releases/$RELEASE_ID/assets" --paginate --jq '.[] | [.name, (.id | tostring)] | @tsv' > assets.tsv
+          cut -f1 assets.tsv | grep -vxF latest.json > names.txt
+          mkdir signatures
+          while IFS=$'\t' read -r name id; do
+            case "$name" in
+              *.sig) gh api -H 'Accept: application/octet-stream' "repos/$REPO/releases/assets/$id" > "signatures/$name" ;;
+            esac
+          done < assets.tsv
+          node tools/release/latest-json.mjs "$REPO" "$TAG" names.txt signatures > latest.json
+          jq '{version, notes, platforms: (.platforms | map_values(.url))}' latest.json
+          old=$(awk -F '\t' '$1 == "latest.json" { print $2 }' assets.tsv)
+          if [ -n "$old" ]; then
+            gh api --method DELETE "repos/$REPO/releases/assets/$old"
+          fi
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Content-Type: application/json' \
+            --data-binary @latest.json "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=latest.json" > /dev/null
+          gh api --method PATCH "repos/$REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=legacy > /dev/null
+          echo "Published $TAG."

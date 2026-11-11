@@ -137,7 +137,13 @@ The checkbox in Settings, the polling and the connection requirement come from t
 
 ## Publishing a version
 
-Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`) and Windows (`.msi` + NSIS `.exe`), signs the updater artifacts and publishes the release (not as a draft) with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
+Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`) and Windows (`.msi` + NSIS `.exe`), signs the updater artifacts and publishes the release with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
+
+The release goes out only when every platform passed. The workflow has no default permissions (`permissions: {}`); each job that writes gets `contents: write`, and one run per tag at a time (`concurrency`, without cancelling the running one).
+
+- **`draft`** (no environment, no secrets) refuses a tag that already has a published release: running again would replace files under the `latest.json` installed apps read. Otherwise it reuses the draft of a previous run of the same tag, or creates one, and passes its id to the next jobs.
+- **`release`** (one job per platform, `fail-fast: false`, environment `release`) builds and runs `tauri-action` with `releaseId` (so it uploads to that draft and never looks a release up by tag) and `includeUpdaterJson: false`. Each job only uploads its files and their `.sig`; no build job touches `latest.json`, so the two cannot overwrite each other's entries.
+- **`publish`** (environment `release`) runs only if both build jobs passed. It downloads the draft's `.sig` files and builds `latest.json` once with `tools/release/latest-json.mjs`: version = the tag without `v`, the same `notes` as the release, `pub_date`, and the same seven platforms as v0.2.2 (`windows-x86_64` = the NSIS `.exe`, as with `updaterJsonPreferNsis`; `windows-x86_64-nsis`; `windows-x86_64-msi`; `darwin-aarch64`, `darwin-x86_64`, `darwin-aarch64-app`, `darwin-x86_64-app` = the universal `.app.tar.gz`), each with the `/releases/download/<tag>/<asset>` URL and the `.sig` content as signature. It refuses a release without exactly one package of each kind, a Windows package of another version, or a `.sig` whose signed version (the `version:` in the minisign trusted comment) is not the tag's. It uploads `latest.json` to the draft (replacing one left by a previous run), then publishes the draft (by id, `make_latest=legacy`). Installed apps only see published releases, so nothing reaches them before that. `tools/release/latest-json.spec.ts` rebuilds the published v0.2.2 `latest.json` from its asset names and `.sig` files, with the same keys, order and values.
 
 1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`) and add the entry to `CHANGELOG.md`. Merge it before tagging: the workflow fails when the tag is not `v` + that version, because the updater compares the version inside `latest.json`, not the tag.
 2. Create and push the tag on the merged commit:
@@ -146,7 +152,9 @@ Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universa
    git tag v0.2.1 && git push origin v0.2.1
    ```
 
-3. When both jobs finish, check that the release has `latest.json`, the `.app.tar.gz`/`.sig` pair and the Windows installers with their `.sig`.
+3. When the `publish` job finishes, the release is public. Check that it has `latest.json`, the `.app.tar.gz`/`.sig` pair and the Windows installers with their `.sig`.
+
+**When the release stays a draft.** If a build job or `publish` fails, the draft stays on the Releases page, visible only to maintainers, and installed apps keep the previous version. Fix the cause (for example the missing certificate secrets, whose error names them) and re-run the failed jobs (or all of them): `draft` reuses the same draft, a rebuilt platform replaces its files and `.sig`, and `publish` builds `latest.json` again from what is in the draft. If the fix needs a new commit, delete the draft (`gh release delete v0.2.1 --yes`) and the tag (`git push origin :refs/tags/v0.2.1`) and tag again. Once a release is published, running its workflow again stops at `draft`; publish a new version instead.
 
 ### Secrets of the repository
 
@@ -154,8 +162,10 @@ Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universa
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY` | the content of the private key file (one base64 line), e.g. `~/.tauri/clawdmeter-updater.key` |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the key password; the current key has none, so the secret can stay unset (the workflow then passes an empty value) |
+| `APPLE_CERTIFICATE` | the macOS code signing certificate and its private key, as one base64 line of the `.p12` (see [macOS signing certificate](#macos-signing-certificate)) |
+| `APPLE_CERTIFICATE_PASSWORD` | the `.p12` password |
 
-`GITHUB_TOKEN` comes from Actions. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private key never goes into the repository.
+All of them are secrets of the `release` environment, the one the release job runs in. `GITHUB_TOKEN` comes from Actions. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private keys never go into the repository.
 
 ### Signing key
 
@@ -166,6 +176,42 @@ yarn tauri signer generate --ci -p "" -w ~/.tauri/clawdmeter-updater.key
 ```
 
 It writes `clawdmeter-updater.key` (private) and `clawdmeter-updater.key.pub` (public, the value of `pubkey`). Keep a backup of the private key: without it, installed apps cannot receive new versions (they only accept packages signed by the key whose public half they carry). To rotate it, publish a version with the new `pubkey` signed with the old key first; only the versions after that one can be signed with the new key.
+
+### macOS signing certificate
+
+The macOS release is signed with a self-signed certificate of our own, `ClawdMeter Self-Signed`, the same in every version. The Keychain remembers **Always Allow** by the app's designated requirement; with an ad hoc signature that requirement is the hash of the build (`cdhash H"…"`), so every update looked like another app and macOS asked for the login password again. Signed by the certificate, the requirement becomes `identifier "com.mottu.clawdmeter" and certificate leaf = H"<SHA-1 of the certificate>"`, which does not change between versions. It is not an Apple certificate: Gatekeeper still refuses the downloaded app and the `xattr` step of the README stays. A Developer ID (Apple Developer Program, US$ 99/year, plus notarization) would remove that step too; the workflow would then take the Apple certificate in the same two secrets, its name in `APPLE_SIGNING_IDENTITY`, plus the notarization variables.
+
+Create it once, on a Mac, and save it in the `release` environment:
+
+```bash
+tools/macos-signing/create-certificate.sh
+```
+
+The script builds everything in a temporary directory and only moves the files into place at the end, so a failed run leaves nothing behind. It only writes local files, in `~/.tauri/clawdmeter-macos-signing/` (or the directory given as its argument, which cannot be inside the repository), with `600` permissions (and `700` on the directory when the script creates it): `certificate.p12` (certificate and private key), `certificate.p12.base64`, `certificate-password.txt` (a random password) and `certificate.pem` (the public certificate). It uses `/usr/bin/openssl` (RSA 3072, valid for 10 years, Extended Key Usage = Code Signing, the `.p12` in the format `security import` reads), never prints the key or the password, adds nothing to your Keychain and refuses to overwrite an existing certificate. At the end it prints the commands to run from the clawdmeter checkout:
+
+```bash
+gh secret set APPLE_CERTIFICATE --env release < ~/.tauri/clawdmeter-macos-signing/certificate.p12.base64
+gh secret set APPLE_CERTIFICATE_PASSWORD --env release < ~/.tauri/clawdmeter-macos-signing/certificate-password.txt
+```
+
+Keep a backup of `certificate.p12` and `certificate-password.txt` (a password manager); the other two files can be recreated from them.
+
+**In the release job (macOS only).** Right before `tauri-action` (after `yarn install`, so dependency install scripts never run with the keychain unlocked), a step checks the two secrets and stops the job with an error naming the missing ones, so a release never goes out ad hoc again by accident (the release stays a draft, see above). It decodes the `.p12` into a keychain of its own under `$RUNNER_TEMP` (random password, added to the search list), imports the private key as non-extractable (`security import -x`), checks that it holds exactly one code signing identity named `ClawdMeter Self-Signed` and exports `APPLE_SIGNING_IDENTITY`. The name is a fixed value in the workflow, not a secret: Actions masks secret values in the logs, which would hide it in the `Authority=` line. The Tauri CLI reads `APPLE_SIGNING_IDENTITY`, which overrides `signingIdentity: "-"` from `tauri.conf.json`, and signs with `codesign --options runtime` as before (hardened runtime, no entitlements). `APPLE_CERTIFICATE` is deliberately not passed to `tauri-action`: the Tauri CLI's own import only recognizes certificates whose name starts with an Apple prefix (`Developer ID Application:`, `Apple Development:`, …) and stops with "failed to resolve signing identity" on a self-signed one, so the import is the step above, the same one in tauri-action's signing example. After the build, a step checks that the `.app` says `Authority=ClawdMeter Self-Signed` (before `publish`, so a wrong signature keeps the release a draft) and the keychain is deleted at the end, even on failure. Windows does not use any of this.
+
+**Local builds** keep the ad hoc signature (`signingIdentity: "-"`): nothing in `tauri.conf.json` needs the certificate.
+
+**The first update.** The Keychain items saved by ad hoc versions trust only the cdhash of the build that saved them, so the first version signed by the certificate still asks for the password once per item (click **Always Allow**); from then on the requirement stays the same and updates no longer ask. To check an installed app:
+
+```bash
+codesign -dv --verbose=4 /Applications/ClawdMeter.app 2>&1 | grep -E '^(Authority|Identifier|TeamIdentifier)'
+codesign -d -r- /Applications/ClawdMeter.app
+```
+
+The first shows `Authority=ClawdMeter Self-Signed` (and `TeamIdentifier=not set`); the second shows the designated requirement, which must be the same line in every version.
+
+**Renewal.** The certificate lasts 10 years. A new certificate means a new requirement, so the update that brings it asks for the password once more, like the first one. To renew, move the old files away, run the script again, run the two `gh secret set` again and say it in the `CHANGELOG.md` of that version.
+
+**If the certificate leaks.** Whoever holds the `.p12` and its password can sign an app that the Keychain treats as ClawdMeter and read its items (the Claude tokens, the GitHub token, the Microsoft refresh token) without asking, on any Mac where ClawdMeter got **Always Allow**; they still need to put that app on the Mac. The updater does not trust it: updates are accepted only with the minisign signature. What to do: generate a new certificate, replace the two secrets, publish a version right away (users will be asked for the password once), and tell users to sign in to Claude again, remove and add the GitHub token and reconnect Microsoft, so the tokens the old certificate could read stop working. Revoke the GitHub tokens you can on github.com.
 
 ### Local build with updater artifacts
 

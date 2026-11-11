@@ -1,0 +1,35 @@
+{
+  "version": "0.2.2",
+  "notes": "Installation steps and the unsigned-app notice are in the README.",
+  "pub_date": "2026-11-11T13:20:14.694Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXlVbElKL09LYmxaY3A3N3F5akxBNmhUVndyU3QrWUNxam1lSXdVd3NFRzRyZ0cwVmphaU5CTVR0NXRZMEY4Q2hLYmM5Y2JqclplM2FENTZPekN2VUFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAyOTI3CWZpbGU6Q2xhd2RNZXRlcl8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKS0xuZEZlU3F1SDdYVzZpVmVpSjZHVmlTRVFJL2pUZHpHaUdsSWdCR09acmhCL0RINTBsTXJOazhLY3pqR1djTlNXblhqV2VGYnVtUDh4ck9WaVRiRFE9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_0.2.2_x64-setup.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXlVbElKL09LYmxaY3A3N3F5akxBNmhUVndyU3QrWUNxam1lSXdVd3NFRzRyZ0cwVmphaU5CTVR0NXRZMEY4Q2hLYmM5Y2JqclplM2FENTZPekN2VUFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAyOTI3CWZpbGU6Q2xhd2RNZXRlcl8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKS0xuZEZlU3F1SDdYVzZpVmVpSjZHVmlTRVFJL2pUZHpHaUdsSWdCR09acmhCL0RINTBsTXJOazhLY3pqR1djTlNXblhqV2VGYnVtUDh4ck9WaVRiRFE9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_0.2.2_x64-setup.exe"
+    },
+    "windows-x86_64-msi": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYStFejl4Qjl3TDhyRDVZVzNMRC9jLzhaN1JSQlJpQlQzZDJJMGZ6NS9BQzRjeWNPY0VJMHdWdURmK2htWGQyT3VtdGw3SkREQ05BSXJsMG12VURueGdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAyOTI3CWZpbGU6Q2xhd2RNZXRlcl8wLjIuMl94NjRfZW4tVVMubXNpCXZlcnNpb246MC4yLjIKSnlBM01lUlZsb0wzSm9zU3pRYThHbFU0VGJqNFZWVjFoeU9jOGNralliS2FIeE0raHZ0bktvaUVQdUtMUFRDVkp2eVcvV2ppRlIxSE1VMkx1ZnZmRHc9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_0.2.2_x64_en-US.msi"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXdNaUNWYXB4MnBpakF4RDlib2ZIZGxxWGErUWFZWkVEN2FmZjVyRzBQQmN0dHhmTFNzNWkzdzZmbTJnZVlKVnZkQ1YxVEZhRDdQMk1OMy95aGJQbkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAzMjA5CWZpbGU6Q2xhd2RNZXRlci5hcHAudGFyLmd6CXZlcnNpb246MC4yLjIKenhWZER2dmpoK0lXYlVLN3J4UG1WUTc4UHdTcXE3d1A5WVpPdVlZR2haQTd3N2RxQi9JYVVEYVorTkdyQ3ZManVhN2s5Z3BpVHdlVHBRbDFZLzNaRGc9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_universal.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXdNaUNWYXB4MnBpakF4RDlib2ZIZGxxWGErUWFZWkVEN2FmZjVyRzBQQmN0dHhmTFNzNWkzdzZmbTJnZVlKVnZkQ1YxVEZhRDdQMk1OMy95aGJQbkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAzMjA5CWZpbGU6Q2xhd2RNZXRlci5hcHAudGFyLmd6CXZlcnNpb246MC4yLjIKenhWZER2dmpoK0lXYlVLN3J4UG1WUTc4UHdTcXE3d1A5WVpPdVlZR2haQTd3N2RxQi9JYVVEYVorTkdyQ3ZManVhN2s5Z3BpVHdlVHBRbDFZLzNaRGc9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_universal.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXdNaUNWYXB4MnBpakF4RDlib2ZIZGxxWGErUWFZWkVEN2FmZjVyRzBQQmN0dHhmTFNzNWkzdzZmbTJnZVlKVnZkQ1YxVEZhRDdQMk1OMy95aGJQbkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAzMjA5CWZpbGU6Q2xhd2RNZXRlci5hcHAudGFyLmd6CXZlcnNpb246MC4yLjIKenhWZER2dmpoK0lXYlVLN3J4UG1WUTc4UHdTcXE3d1A5WVpPdVlZR2haQTd3N2RxQi9JYVVEYVorTkdyQ3ZManVhN2s5Z3BpVHdlVHBRbDFZLzNaRGc9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_universal.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZm1oOUtmRXIxYXdNaUNWYXB4MnBpakF4RDlib2ZIZGxxWGErUWFZWkVEN2FmZjVyRzBQQmN0dHhmTFNzNWkzdzZmbTJnZVlKVnZkQ1YxVEZhRDdQMk1OMy95aGJQbkF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDAzMjA5CWZpbGU6Q2xhd2RNZXRlci5hcHAudGFyLmd6CXZlcnNpb246MC4yLjIKenhWZER2dmpoK0lXYlVLN3J4UG1WUTc4UHdTcXE3d1A5WVpPdVlZR2haQTd3N2RxQi9JYVVEYVorTkdyQ3ZManVhN2s5Z3BpVHdlVHBRbDFZLzNaRGc9PQo=",
+      "url": "https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/ClawdMeter_universal.app.tar.gz"
+    }
+  }
+}

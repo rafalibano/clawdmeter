@@ -52,14 +52,58 @@ describe('GitHub Actions workflows', () => {
     expect(supplyChain).toContain('cargo audit');
   });
 
-  it('the release signs the updater artifacts, publishes latest.json and is not a draft', () => {
+  it('the release uploads to one draft, builds latest.json once at publish and refuses a published tag', () => {
     const text = read('release.yml');
+    expect(text).toMatch(/^permissions: \{\}$/m);
+    expect(text).toContain('concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}');
     expect(text).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}');
-    expect(text).toContain('includeUpdaterJson: true');
-    expect(text).toContain('releaseDraft: false');
     expect(text).toContain('--bundles app,dmg');
     expect(text).toContain('--bundles msi,nsis');
+    const job = (name: string, next?: string) => text.slice(text.indexOf(`\n  ${name}:`), next ? text.indexOf(`\n  ${next}:`) : undefined);
+    const draft = job('draft', 'release');
+    expect(draft).not.toContain('environment:');
+    expect(draft).toMatch(/permissions:\n\s+contents: write/);
+    expect(draft).toContain('$2 == "false"');
+    expect(draft).toContain('is already published');
+    expect(draft).toContain('-F draft=true');
+    expect(draft).toContain('echo "id=$id" >> "$GITHUB_OUTPUT"');
+    const release = job('release', 'publish');
+    expect(release).toContain('needs: draft');
+    expect(release).toContain('fail-fast: false');
+    expect(release).toMatch(/permissions:\n\s+contents: write/);
+    expect(release).toContain('releaseId: ${{ needs.draft.outputs.id }}');
+    expect(release).toContain('includeUpdaterJson: false');
+    expect(release).not.toMatch(/tagName:|releaseDraft:/);
+    const publish = job('publish');
+    expect(publish).toContain('needs: [draft, release]');
+    expect(publish).toContain('environment: release');
+    expect(publish).toMatch(/permissions:\n\s+contents: write/);
+    expect(publish).toContain('node tools/release/latest-json.mjs "$REPO" "$TAG" names.txt signatures > latest.json');
+    expect(publish).toContain('-F draft=false -f make_latest=legacy');
+    expect(publish.indexOf('assets?name=latest.json')).toBeLessThan(publish.indexOf('-F draft=false'));
+    expect(publish).not.toMatch(/run: \|[\s\S]*\$\{\{/);
+    expect(text.indexOf('-F draft=false')).toBeGreaterThan(text.indexOf('- name: Check the macOS signature'));
+  });
+
+  it('the macOS release is signed by the stable certificate and fails without it', () => {
+    const text = read('release.yml');
+    const importStep = text.slice(text.indexOf('- name: Import the macOS signing certificate'), text.indexOf('- uses: tauri-apps/tauri-action'));
+    expect(text.indexOf('- name: Import the macOS signing certificate')).toBeGreaterThan(text.indexOf('- run: yarn install'));
+    expect(importStep).toContain("if: runner.os == 'macOS'");
+    for (const name of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD']) {
+      expect(importStep).toContain(`${name}: \${{ secrets.${name} }}`);
+    }
+    expect(importStep).toContain('APPLE_SIGNING_IDENTITY: ClawdMeter Self-Signed');
+    expect(text).not.toContain('secrets.APPLE_SIGNING_IDENTITY');
+    expect(importStep).toContain(' -x -T /usr/bin/codesign');
+    expect(importStep).toContain('Missing secrets in the release environment');
+    expect(importStep).toContain('exit 1');
+    const tauriStep = text.slice(text.indexOf('- uses: tauri-apps/tauri-action'), text.indexOf('- name: Check the macOS signature'));
+    expect(tauriStep).not.toContain('APPLE_CERTIFICATE');
+    expect(text).toContain('Authority=$APPLE_SIGNING_IDENTITY');
+    expect(text).toContain('security delete-keychain "$SIGNING_KEYCHAIN"');
+    expect(readFileSync(join(ROOT, 'src-tauri/tauri.conf.json'), 'utf8')).toContain('"signingIdentity": "-"');
   });
 
   it('dependabot covers actions, cargo and npm every week', () => {
