@@ -55,9 +55,20 @@ export type SessionsFilter = 'all' | SessionActivity;
 
 export const SESSIONS_FILTERS: readonly SessionsFilter[] = ['all', 'active', 'inactive'];
 
-export function nextFilter(filter: SessionsFilter, step: 1 | -1): SessionsFilter {
+const FILTER_STEPS: Readonly<Record<string, 1 | -1>> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+};
+
+export function filterForKey(filter: SessionsFilter, key: string): SessionsFilter | null {
   const count = SESSIONS_FILTERS.length;
-  return SESSIONS_FILTERS[(SESSIONS_FILTERS.indexOf(filter) + step + count) % count] ?? 'all';
+  if (key === 'Home') return SESSIONS_FILTERS[0] ?? null;
+  if (key === 'End') return SESSIONS_FILTERS[count - 1] ?? null;
+  const step = FILTER_STEPS[key];
+  if (step === undefined) return null;
+  return SESSIONS_FILTERS[(SESSIONS_FILTERS.indexOf(filter) + step + count) % count] ?? null;
 }
 
 export interface SessionsFilterOption {
@@ -69,6 +80,7 @@ export interface SessionsFilterOption {
 
 export interface SessionsView {
   rows: SessionRowView[];
+  sessionKeys: string[];
   summary: string;
   filters: SessionsFilterOption[];
 }
@@ -138,7 +150,7 @@ function toRow(session: ClaudeSession, data: SessionsData, l: Localizer): Sessio
     title: sessionTitle(session),
     cwd: shortCwd(session.cwd),
     status,
-    activity: sessionActivity(session),
+    activity: sessionActivity(session, data.at, data.attention),
     statusLabel: l.t(`session.status.${status}`),
     since: since === null ? '—' : l.since(elapsed),
     attention,
@@ -176,5 +188,5 @@ export function toSessionsView(data: SessionsData, l: Localizer, filter: Session
     count: all.filter((row) => matches(row, id)).length,
     selected: id === filter,
   }));
-  return { rows, summary: summarize(rows, filter, l), filters };
+  return { rows, sessionKeys: all.map((row) => row.key), summary: summarize(rows, filter, l), filters };
 }

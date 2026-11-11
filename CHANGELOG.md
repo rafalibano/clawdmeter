@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Sessions: a filter at the top of the tab shows **All**, **Active** or **Inactive** sessions, each with its count (`Active 3`). Active means working (`busy`); idle, shell and unknown status count as inactive. The summary and **Expand all** follow the visible sessions, and an empty filter says so ("No active session"). The choice lasts while the app is open and is not saved in the settings.
+- Sessions: a filter at the top of the tab shows **All**, **Active** or **Inactive** sessions, each with its count (`Active 3`). Active means working (`busy`) or idle for less than the 5 min "waiting for input" threshold, so a session does not flip between turns; idle for longer, shell and unknown status count as inactive. The summary and **Expand all** follow the visible sessions, and an empty filter says so ("No active session"). The choice survives switching tabs while the app is open and is not saved in the settings; hiding a session with the filter keeps its dropdown open or closed as it was.
 
 ## 0.2.2
 

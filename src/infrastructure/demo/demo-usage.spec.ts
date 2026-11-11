@@ -114,7 +114,8 @@ describe('demo sessions', () => {
       DEFAULT_ATTENTION_CONFIG,
     ).execute();
     expect(data.sessions.map((session) => session.status).sort()).toEqual(['busy', 'busy', 'idle', 'idle', 'shell']);
-    expect(data.sessions.map(sessionActivity).sort()).toEqual(['active', 'active', 'inactive', 'inactive', 'inactive']);
+    const activity = data.sessions.map((session) => sessionActivity(session, data.at, DEFAULT_ATTENTION_CONFIG));
+    expect(activity.sort()).toEqual(['active', 'active', 'active', 'inactive', 'inactive']);
     expect(data.sessions.some((session) => session.name === 'old-experiment')).toBe(false);
     expect(data.sessions[0]?.pid).toBeDefined();
   });

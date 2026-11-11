@@ -3,7 +3,7 @@ import { Localizer } from '../../i18n';
 import type { SessionsData } from '../../../application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG, type ClaudeSession, type SessionUsage } from '../../../domain/sessions';
 import { MINUTE_MS, SECOND_MS } from '../../../domain/time';
-import { nextFilter, toSessionsView as toSessionsViewWith, type SessionsFilter } from './sessions-view';
+import { filterForKey, toSessionsView as toSessionsViewWith, type SessionsFilter } from './sessions-view';
 
 const NOW = 1_800_000_000_000;
 
@@ -158,29 +158,34 @@ describe('sessions filter', () => {
     session(3, { status: 'shell' }),
     session(4, { status: null }),
     session(5),
+    session(6, { status: 'idle', statusUpdatedAt: NOW - MINUTE_MS }),
   ]);
   const filtered = (filter: SessionsFilter, input = mixed) => toSessionsViewWith(input, PT, filter);
 
   it('defaults to all and counts each option over every session', () => {
     const view = toSessionsView(mixed);
-    expect(view.rows.map((row) => row.key)).toEqual(['1', '2', '3', '4', '5']);
+    expect(view.rows.map((row) => row.key)).toEqual(['1', '2', '3', '4', '5', '6']);
     expect(view.filters).toEqual([
-      { id: 'all', label: 'Todas', count: 5, selected: true },
-      { id: 'active', label: 'Ativas', count: 2, selected: false },
+      { id: 'all', label: 'Todas', count: 6, selected: true },
+      { id: 'active', label: 'Ativas', count: 3, selected: false },
       { id: 'inactive', label: 'Inativas', count: 3, selected: false },
     ]);
   });
 
-  it('active keeps only busy sessions and the summary counts the visible rows', () => {
+  it('active keeps busy and recently idle sessions and the summary counts the visible rows', () => {
     const view = filtered('active');
-    expect(view.rows.map((row) => row.key)).toEqual(['1', '5']);
+    expect(view.rows.map((row) => row.key)).toEqual(['1', '5', '6']);
     expect(view.rows.every((row) => row.activity === 'active')).toBe(true);
-    expect(view.summary).toBe('2 sessões');
+    expect(view.summary).toBe('3 sessões');
     expect(view.filters.find((option) => option.selected)?.id).toBe('active');
-    expect(view.filters.map((option) => option.count)).toEqual([5, 2, 3]);
+    expect(view.filters.map((option) => option.count)).toEqual([6, 3, 3]);
   });
 
-  it('inactive keeps idle, shell and unknown status', () => {
+  it('sessionKeys lists every session, not only the visible ones', () => {
+    expect(filtered('active').sessionKeys).toEqual(['1', '2', '3', '4', '5', '6']);
+  });
+
+  it('inactive keeps long idle, shell and unknown status', () => {
     const view = filtered('inactive');
     expect(view.rows.map((row) => row.key)).toEqual(['2', '3', '4']);
     expect(view.summary).toBe('3 sessões · 1 pede atenção');
@@ -188,15 +193,19 @@ describe('sessions filter', () => {
 
   it('a filter with no match shows its own empty message', () => {
     const busyOnly = data([session(1)]);
-    const idleOnly = data([session(2, { status: 'idle' })]);
+    const idleOnly = data([session(2, { status: 'idle', statusUpdatedAt: NOW - 18 * MINUTE_MS })]);
     expect(filtered('inactive', busyOnly)).toMatchObject({ rows: [], summary: 'Nenhuma sessão inativa.' });
     expect(filtered('active', idleOnly)).toMatchObject({ rows: [], summary: 'Nenhuma sessão ativa.' });
     expect(filtered('all', data([])).summary).toBe('Nenhuma sessão do Claude Code aberta.');
   });
 
-  it('nextFilter cycles through the options in both directions', () => {
-    expect(nextFilter('all', 1)).toBe('active');
-    expect(nextFilter('inactive', 1)).toBe('all');
-    expect(nextFilter('all', -1)).toBe('inactive');
+  it('filterForKey: arrows cycle both ways, Home and End jump to the ends, other keys do nothing', () => {
+    expect(filterForKey('all', 'ArrowRight')).toBe('active');
+    expect(filterForKey('inactive', 'ArrowDown')).toBe('all');
+    expect(filterForKey('all', 'ArrowLeft')).toBe('inactive');
+    expect(filterForKey('inactive', 'ArrowUp')).toBe('active');
+    expect(filterForKey('active', 'Home')).toBe('all');
+    expect(filterForKey('active', 'End')).toBe('inactive');
+    expect(filterForKey('active', 'Enter')).toBeNull();
   });
 });
