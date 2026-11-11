@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- macOS releases are signed with a fixed certificate of their own (`ClawdMeter Self-Signed`) instead of an ad hoc signature, so macOS stops asking for the login password after every update. The first update with it still asks once per token (click **Always Allow**); later updates keep that choice. It is not an Apple signature: the `xattr` step of the installation is still needed. The release fails before building when the certificate secrets are missing; `tools/macos-signing/create-certificate.sh` creates the certificate. Local builds stay ad hoc.
+
 ## 0.2.2
 
 - ClawdMeter now keeps a single instance per machine. Opening it again (another copy of the app, launch at login plus a manual open, the dev build) no longer starts a second process: the running app opens its panel and the new one exits. Two instances could spend the same Claude or Microsoft refresh token and force a new sign-in. The installed app and `yarn tauri dev` no longer run at the same time.

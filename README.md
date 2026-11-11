@@ -41,7 +41,7 @@ Ignore the other files (`.sig`, `.tar.gz`, `latest.json`): they are for the auto
 ### macOS (14 or later)
 
 1. Double-click the downloaded `.dmg`. A window opens with the ClawdMeter icon and the **Applications** folder: drag **ClawdMeter** onto **Applications**, then eject the disk image.
-2. The app is not signed by Apple, so macOS refuses to open it ("ClawdMeter cannot be opened" or "is damaged"). Open **Terminal** (Applications > Utilities) and run:
+2. The app is not signed by Apple (it has its own signature, which macOS does not trust), so macOS refuses to open it ("ClawdMeter cannot be opened" or "is damaged"). Open **Terminal** (Applications > Utilities) and run:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/ClawdMeter.app"
@@ -49,7 +49,7 @@ Ignore the other files (`.sig`, `.tar.gz`, `latest.json`): they are for the auto
 
 3. Open **ClawdMeter** from the Applications folder (always from there, not from the disk image). Nothing opens in the Dock: the mascot icon shows up in the menu bar, at the top right of the screen.
 4. Click the mascot icon. A panel opens under it with the tabs; until you add a Claude account (step 3), the Usage tab says there is no account yet.
-5. When the app saves or reads a token for the first time (your Claude account, a GitHub token), macOS may ask "ClawdMeter wants to use your confidential information stored in … in your keychain". Type your Mac password and click **Always Allow** (or **Allow**). Because the app has no Apple signature, macOS asks again once after each update.
+5. When the app saves or reads a token for the first time (your Claude account, a GitHub token), macOS may ask "ClawdMeter wants to use your confidential information stored in … in your keychain". Type your Mac password and click **Always Allow** (or **Allow**). The app's signature stays the same between versions, so updates keep **Always Allow**. The one exception is updating from 0.2.2 or earlier, which asks once more per token because those versions had a signature that changed with every build.
 
 > **Upgrading from 0.1.x:** the old versions read the Claude Code login from the Keychain. That reading was removed, so after the upgrade add your account once in **Settings > Claude accounts**. Your usage history is kept and moves to the first account you add.
 

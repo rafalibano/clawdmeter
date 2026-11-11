@@ -55,6 +55,42 @@ jobs:
             exit 1
           fi
 
+      - name: Import the macOS signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing secrets in the release environment: ${missing[*]}. Run tools/macos-signing/create-certificate.sh and the gh secret set commands it prints (docs/DEVELOPMENT.md). Without them the app would be signed ad hoc and macOS would ask for the Keychain password after every update."
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/clawdmeter-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/clawdmeter-signing.p12"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          read -r -a keychains <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
+          matches=$(security find-identity -p codesigning "$keychain" | awk '/Valid identities only/ { exit } { print }' | grep -cF "\"$APPLE_SIGNING_IDENTITY\"" || true)
+          if [ "$matches" != "1" ]; then
+            echo "::error::The certificate in APPLE_CERTIFICATE has $matches code signing identities named \"$APPLE_SIGNING_IDENTITY\" (APPLE_SIGNING_IDENTITY); expected exactly one."
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
       - run: yarn install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5  # v0.6.2
@@ -72,3 +108,22 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      - name: Check the macOS signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/ClawdMeter.app
+          codesign --verify --strict --verbose=2 "$app"
+          details=$(codesign -dv --verbose=4 "$app" 2>&1)
+          grep -E '^(Identifier|Authority|TeamIdentifier|CodeDirectory)' <<< "$details"
+          codesign -d -r- "$app"
+          if ! grep -qxF "Authority=$APPLE_SIGNING_IDENTITY" <<< "$details"; then
+            echo "::error::$app is not signed by \"$APPLE_SIGNING_IDENTITY\"; installed apps would ask for the Keychain password again."
+            exit 1
+          fi
+
+      - name: Delete the signing keychain
+        if: always() && runner.os == 'macOS' && env.SIGNING_KEYCHAIN != ''
+        shell: bash
+        run: security delete-keychain "$SIGNING_KEYCHAIN"

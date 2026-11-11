@@ -62,6 +62,22 @@ describe('GitHub Actions workflows', () => {
     expect(text).toContain('--bundles msi,nsis');
   });
 
+  it('the macOS release is signed by the stable certificate and fails without it', () => {
+    const text = read('release.yml');
+    const importStep = text.slice(text.indexOf('- name: Import the macOS signing certificate'), text.indexOf('- run: yarn install'));
+    expect(importStep).toContain("if: runner.os == 'macOS'");
+    for (const name of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY']) {
+      expect(importStep).toContain(`${name}: \${{ secrets.${name} }}`);
+    }
+    expect(importStep).toContain('Missing secrets in the release environment');
+    expect(importStep).toContain('exit 1');
+    const tauriStep = text.slice(text.indexOf('- uses: tauri-apps/tauri-action'), text.indexOf('- name: Check the macOS signature'));
+    expect(tauriStep).not.toContain('APPLE_CERTIFICATE');
+    expect(text).toContain('Authority=$APPLE_SIGNING_IDENTITY');
+    expect(text).toContain('security delete-keychain "$SIGNING_KEYCHAIN"');
+    expect(readFileSync(join(ROOT, 'src-tauri/tauri.conf.json'), 'utf8')).toContain('"signingIdentity": "-"');
+  });
+
   it('dependabot covers actions, cargo and npm every week', () => {
     const text = readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8').replace(/\r\n/g, '\n');
     for (const ecosystem of ['github-actions', 'cargo', 'npm']) {
