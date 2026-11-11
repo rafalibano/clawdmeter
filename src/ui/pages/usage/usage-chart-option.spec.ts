@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../../../domain/time';
-import { forecastWindow, usageRange, type Forecast, type ProjectionMethod, type UsagePoint } from '../../../domain/usage';
+import { forecastWindow, parseHistory, usageRange, type Forecast, type ProjectionMethod, type UsagePoint } from '../../../domain/usage';
 import { chartPalette } from '../../theme/chart-palette';
 import { Localizer } from '../../i18n';
 import { axisMaxFor, buildChartModel as buildModel, CYCLE_MS, CHART_BUCKETS, curveValueAt, downsample, FUTURE_SHARE, type WindowInput } from './usage-chart-model';
@@ -401,9 +401,13 @@ describe('Reset period (weekly cycle)', () => {
     it('each bucket becomes a point with the average of the value and of the instant; empty buckets disappear', () => {
       const bucket = (7 * DAY_MS) / CHART_BUCKETS;
       expect(weekly('7d').windows[0]!.points).toEqual([
+        [NOW - 7 * DAY_MS, 10],
+        [NOW - 6 * DAY_MS - 30 * MINUTE_MS - 1, 10],
         [NOW - 6 * DAY_MS - 30 * MINUTE_MS, 12],
         [NOW - 6 * DAY_MS, 15],
+        [NOW - 5 * DAY_MS - 1, 15],
         [NOW - 5 * DAY_MS + 5 * MINUTE_MS, 16.5],
+        [NOW - HOUR_MS - 1, 17],
         [NOW - 55 * MINUTE_MS, 30.5],
       ]);
       expect(bucket).toBeGreaterThan(80 * MINUTE_MS);
@@ -441,9 +445,10 @@ describe('Reset period (weekly cycle)', () => {
       const model = weekly('7d');
       const format = tooltipFormatter(model, palette, PT);
       const points = model.windows[0]!.points;
-      const mid = (points[2]![0] + points[3]![0]) / 2;
+      const start = points.findIndex((point) => point[1] === 17);
+      const mid = (points[start]![0] + points[start + 1]![0]) / 2;
       const value = curveValueAt(points, mid)!;
-      expect(value).toBeGreaterThan(16.5);
+      expect(value).toBeGreaterThan(17);
       expect(value).toBeLessThan(30.5);
       const text = format([{ axisValue: mid }]);
       expect(text).toContain(`7d ${Math.round(value)}%`);
@@ -473,6 +478,7 @@ describe('Reset period (weekly cycle)', () => {
       );
       expect(model.windows[0]!.points).toEqual([
         [NOW - 40 * MINUTE_MS, 90],
+        [NOW - 10 * MINUTE_MS - 1, 90],
         [NOW - 10 * MINUTE_MS, 4],
       ]);
     });
@@ -502,5 +508,87 @@ describe('Reset period (weekly cycle)', () => {
 
   it('regular periods do not turn on cycle mode', () => {
     expect(buildChartModel(cycleInputs(), usageRange('7d'), NOW)).toMatchObject({ cycle: false, fiveHourResets: [] });
+  });
+});
+
+describe('last known level across the range', () => {
+  const SIX_HOURS_FROM = NOW - 6 * HOUR_MS;
+  const window = (kind: 'fiveHour' | 'sevenDay', points: UsagePoint[], resetsAt: number | null = null): WindowInput => ({
+    kind,
+    label: kind === 'fiveHour' ? '5h' : '7d',
+    points,
+    forecast: { status: 'collecting' },
+    resetsAt,
+  });
+
+  it('a range without inside readings draws the previous reading from the start of the range up to now', () => {
+    const before: UsagePoint = { at: SIX_HOURS_FROM - 2 * HOUR_MS, utilization: 35, resetsAt: NOW + 2 * DAY_MS };
+    for (const id of ['1h', '6h']) {
+      const model = buildChartModel([window('sevenDay', [before])], usageRange(id), NOW);
+      const points = model.windows[0]!.points;
+      expect(points[0]).toEqual([model.xMin, 35]);
+      expect(points.at(-1)).toEqual([NOW, 35]);
+      expect(curveValueAt(points, (model.xMin + NOW) / 2)).toBe(35);
+    }
+  });
+
+  it('a reset inside the range drops the series to the post-reset level', () => {
+    const resetsAt = NOW - 2 * HOUR_MS;
+    const model = buildChartModel([window('fiveHour', [{ at: SIX_HOURS_FROM - HOUR_MS, utilization: 64, resetsAt }])], usageRange('6h'), NOW);
+    const points = model.windows[0]!.points;
+    expect(curveValueAt(points, SIX_HOURS_FROM)).toBe(64);
+    expect(curveValueAt(points, resetsAt - MINUTE_MS)).toBeCloseTo(64, 6);
+    expect(curveValueAt(points, resetsAt + MINUTE_MS)).toBeCloseTo(0, 6);
+    expect(points.at(-1)).toEqual([NOW, 0]);
+  });
+
+  it('in Reset a weekly reset with jitter just after the start of the cycle does not carry the previous week in', () => {
+    const before: UsagePoint = { at: WEEKLY_RESET - CYCLE_MS - HOUR_MS, utilization: 92, resetsAt: WEEKLY_RESET - CYCLE_MS + 500 };
+    const current: UsagePoint = { at: NOW, utilization: 30, resetsAt: WEEKLY_RESET };
+    const model = buildChartModel([{ ...window('sevenDay', [before, current], WEEKLY_RESET), forecast: ready(60) }], usageRange('cycle'), NOW);
+    expect(model.cycle).toBe(true);
+    const points = model.windows[0]!.points;
+    expect(points[0]).toEqual([model.xMin, 0]);
+    expect(Math.max(...points.filter((point) => point[0] <= model.xMin + HOUR_MS).map((point) => point[1]))).toBe(0);
+  });
+
+  it('without any reading the series stays empty', () => {
+    const model = buildChartModel([window('fiveHour', []), window('sevenDay', [])], usageRange('6h'), NOW);
+    expect(model.windows.map((series) => series.points)).toEqual([[], []]);
+  });
+
+  it('the screenshot case: idle since last night, two readings near now, 7d at 35% with a projection', () => {
+    const at = (hours: number) => NOW - hours * HOUR_MS;
+    const stored = {
+      schemaVersion: 1,
+      fiveHour: [
+        [at(14), 30, at(11)],
+        [at(13), 32, at(11)],
+        [at(0.25), 5, at(-4.75)],
+        [NOW, 5, at(-4.75)],
+      ],
+      sevenDay: [
+        [at(14), 34, at(-50)],
+        [at(13), 35, at(-50)],
+        [at(0.25), 35, at(-50)],
+        [NOW, 35, at(-50)],
+      ],
+    };
+    const history = parseHistory(stored);
+    const weekly = forecastWindow('sevenDay', 'since-reset', history.sevenDay, NOW, 35, at(-50));
+    const model = buildChartModel(
+      [
+        { ...window('fiveHour', history.fiveHour, at(-4.75)), forecast: forecastWindow('fiveHour', 'since-reset', history.fiveHour, NOW, 5, at(-4.75)) },
+        { ...window('sevenDay', history.sevenDay, at(-50)), forecast: weekly },
+      ],
+      usageRange('6h'),
+      NOW,
+    );
+    const [fiveHour, sevenDay] = model.windows;
+    for (const probe of [model.xMin, at(5), at(3), at(1), NOW]) expect(curveValueAt(sevenDay!.points, probe)).toBeCloseTo(35, 6);
+    for (const probe of [model.xMin, at(3), at(0.5)]) expect(curveValueAt(fiveHour!.points, probe)).toBeCloseTo(0, 6);
+    expect(curveValueAt(fiveHour!.points, NOW)).toBe(5);
+    expect(sevenDay!.trend?.[0]).toEqual([NOW, 35]);
+    expect(weekly.status).toBe('ready');
   });
 });

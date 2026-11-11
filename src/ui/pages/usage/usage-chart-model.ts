@@ -1,6 +1,7 @@
 import {
   DEFAULT_USAGE_RANGE,
   isCycleAvailable,
+  levelSteps,
   pointsInRange,
   trendValueAt,
   usageRange,
@@ -92,6 +93,10 @@ export function downsample(points: readonly UsagePoint[], from: number, to: numb
     .map(([, sum]) => [sum.at / sum.count, sum.value / sum.count]);
 }
 
+function withLevels(points: readonly ChartPoint[], levels: readonly ChartPoint[]): ChartPoint[] {
+  return [...points, ...levels].sort((a, b) => a[0] - b[0]);
+}
+
 export function curveValueAt(points: readonly ChartPoint[], at: number): number | null {
   const first = points[0];
   const last = points[points.length - 1];
@@ -104,7 +109,8 @@ export function curveValueAt(points: readonly ChartPoint[], at: number): number 
   const p3 = points[index + 2] ?? p2;
   const t = p2[0] === p1[0] ? 0 : (at - p1[0]) / (p2[0] - p1[0]);
   const [y0, y1, y2, y3] = [p0[1], p1[1], p2[1], p3[1]];
-  return 0.5 * (2 * y1 + (y2 - y0) * t + (2 * y0 - 5 * y1 + 4 * y2 - y3) * t * t + (3 * y1 - y0 - 3 * y2 + y3) * t * t * t);
+  const value = 0.5 * (2 * y1 + (y2 - y0) * t + (2 * y0 - 5 * y1 + 4 * y2 - y3) * t * t + (3 * y1 - y0 - 3 * y2 + y3) * t * t * t);
+  return Math.min(Math.max(value, Math.min(y1, y2)), Math.max(y1, y2));
 }
 
 function pastFiveHourResets(points: readonly UsagePoint[], xMin: number, xMax: number): number[] {
@@ -141,7 +147,7 @@ export function buildChartModel(
     return {
       kind: input.kind,
       label: input.label,
-      points: downsample(visible, xMin, now),
+      points: withLevels(downsample(visible, xMin, now), levelSteps(input.points, xMin, now, (2 * (now - xMin)) / CHART_BUCKETS)),
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast) : null,
       resetsAt: input.resetsAt,
