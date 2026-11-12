@@ -186,4 +186,4 @@ Mottu internal use. The repository has no public license and must not be distrib
 
 - The usage chart behavior is based on ClaudeUsageBar (BSD-2-Clause license).
 - The mascot belongs to Anthropic and is used internally only.
-- Built with Tauri 2, Angular 19 and Apache ECharts; the remaining dependencies are listed in `package.json` and `src-tauri/Cargo.toml`.
+- Built with Tauri 2, Angular 21 and Apache ECharts; the remaining dependencies are listed in `package.json` and `src-tauri/Cargo.toml`.
