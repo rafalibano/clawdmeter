@@ -1,5 +1,5 @@
 import '@angular/compiler';
-import { ApplicationRef, provideExperimentalZonelessChangeDetection, signal } from '@angular/core';
+import { ApplicationRef, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,7 +54,7 @@ describe('ThemeService', () => {
     vi.stubGlobal('window', { matchMedia: () => media });
     vi.stubGlobal('document', { documentElement: rootElement });
     settings = signal(createDefaultSettings());
-    TestBed.configureTestingModule({ providers: [provideExperimentalZonelessChangeDetection(), { provide: SettingsFacade, useValue: { settings } }] });
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), { provide: SettingsFacade, useValue: { settings } }] });
   });
 
   afterEach(() => {
