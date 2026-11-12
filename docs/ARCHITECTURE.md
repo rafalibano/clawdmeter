@@ -4,7 +4,7 @@ Technical document for whoever maintains the app. To install and use it, see the
 
 Tray app for macOS and Windows. On macOS it lives in the menu bar; on Windows, in the notification area. One click on the icon opens a popover with the enabled pages (Usage, Sessions, Pull Requests, Reviews, Agenda and Skills).
 
-Stack: Tauri 2 (Rust only in the platform layer), TypeScript, Angular 19 (standalone + signals).
+Stack: Tauri 2 (Rust only in the platform layer), TypeScript, Angular 21 (standalone + signals).
 
 ## Pages
 

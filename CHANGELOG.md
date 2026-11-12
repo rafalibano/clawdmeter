@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Angular goes from 19 (no longer supported, with open security advisories in `@angular/core`, `@angular/common` and `@angular/compiler` that have no fix on 19) to 21.2 (LTS until June 2027), through `ng update` 19 → 20 → 21. TypeScript goes to 5.9 and `ngx-echarts` to 21. The build moves from `@angular-devkit/build-angular` to `@angular/build` (same `application` builder, without the webpack toolchain), which also drops the vulnerable `webpack-dev-server`, `webpack-dev-middleware`, `http-proxy-middleware`, `serialize-javascript` and `uuid` and brings `vite`, `piscina`, `tar`, `sigstore`, `postcss`, `esbuild` and `@babel/core` to fixed versions. The app keeps zone.js change detection (now declared with `provideZoneChangeDetection()` in `main.ts`, since Angular 21 defaults to zoneless). The initial bundle warning budget goes from 500 kB to 520 kB (Angular 21 adds about 7.5 kB). No visible change in the app.
+
 ## 0.2.3
 
 - Sessions: a filter at the top of the tab shows **All**, **Active** or **Inactive** sessions, each with its count (`Active 3`). Active means working (`busy`) or idle for less than the 5 min "waiting for input" threshold, so a session does not flip between turns; idle for longer, shell and unknown status count as inactive. The summary and **Expand all** follow the visible sessions, and an empty filter says so ("No active session"). The choice survives switching tabs while the app is open and is not saved in the settings; hiding a session with the filter keeps its dropdown open or closed as it was.
