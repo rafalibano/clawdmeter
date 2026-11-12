@@ -126,7 +126,21 @@ fn platform_state(app: &AppHandle) -> &'static str {
         .unwrap_or(UNKNOWN)
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn state_from_notification_server(found: bool) -> &'static str {
+    if found {
+        GRANTED
+    } else {
+        UNKNOWN
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn platform_state(_app: &AppHandle) -> &'static str {
+    state_from_notification_server(notify_rust::get_server_information().is_ok())
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 fn platform_state(_app: &AppHandle) -> &'static str {
     UNKNOWN
 }
@@ -163,5 +177,11 @@ mod tests {
             assert_eq!(state_from_toast_setting(disabled), "denied");
         }
         assert_eq!(state_from_toast_setting(7), "unknown");
+    }
+
+    #[test]
+    fn linux_notifications_are_granted_when_a_notification_server_answers() {
+        assert_eq!(state_from_notification_server(true), "granted");
+        assert_eq!(state_from_notification_server(false), "unknown");
     }
 }

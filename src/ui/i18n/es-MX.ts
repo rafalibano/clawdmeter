@@ -230,6 +230,7 @@ export const esMX: Record<MessageKey, string> = {
   'error.claude-login-code-invalid': 'El código no es válido. Pega el código completo que aparece en el navegador.',
   'error.claude-login-busy': 'Otro inicio de sesión sigue abierto. Termínalo o cancélalo e intenta de nuevo.',
   'error.keychain-unavailable': 'No se pudo acceder al llavero del sistema.',
+  'error.keyring-unavailable': 'No hay ningún Secret Service en ejecución (GNOME Keyring o KWallet). ClawdMeter necesita uno para guardar tokens y no guardó nada.',
   'error.claude-login-timeout': 'El navegador no regresó a tiempo. Intenta de nuevo o pega el código.',
   'error.claude-login-cancelled': 'Inicio de sesión cancelado.',
   'error.claude-login-rate-limited': 'Claude limitó los intentos de inicio de sesión. Intenta de nuevo en unos minutos.',
