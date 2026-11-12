@@ -232,7 +232,7 @@ Where the app keeps its files:
 | Launch at login entry | `~/.config/autostart/ClawdMeter.desktop` |
 
 1. Turn off **Settings > System > Launch at login**, or delete the entry by hand: `rm -f ~/.config/autostart/ClawdMeter.desktop`.
-2. Quit the app (click the tray icon > **Quit ClawdMeter**). Delete the `.AppImage` file, or remove the package with `sudo apt remove clawdmeter`.
+2. Quit the app (click the tray icon > **Quit ClawdMeter**). Delete the `.AppImage` file, or remove the package with `sudo apt remove clawd-meter` (the package name Tauri derives from `ClawdMeter`).
 3. Delete the app folders:
 
    ```bash
