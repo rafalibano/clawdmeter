@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 const PACKAGES = [
   { suffix: '-setup.exe', platforms: ['windows-x86_64', 'windows-x86_64-nsis'], versioned: true },
   { suffix: '.msi', platforms: ['windows-x86_64-msi'], versioned: true },
+  // No plain linux-x86_64: a .deb install falls back to it and the updater would dpkg the AppImage.
+  { suffix: '.AppImage', platforms:['linux-x86_64-appimage'], versioned: true },
   {
     suffix: '.app.tar.gz',
     platforms: ['darwin-aarch64', 'darwin-x86_64', 'darwin-aarch64-app', 'darwin-x86_64-app'],
@@ -22,6 +24,7 @@ const PLATFORM_ORDER = [
   'darwin-x86_64',
   'darwin-aarch64-app',
   'darwin-x86_64-app',
+  'linux-x86_64-appimage',
 ];
 
 function signedVersion(signature) {

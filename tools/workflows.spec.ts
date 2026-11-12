@@ -86,6 +86,33 @@ describe('GitHub Actions workflows', () => {
     expect(text.indexOf('-F draft=false')).toBeGreaterThan(text.indexOf('- name: Check the macOS signature'));
   });
 
+  it('Linux is built on ubuntu-22.04 in CI and in the release, with its system libraries installed first', () => {
+    const ci = read('ci.yml');
+    const release = read('release.yml');
+    expect(ci).toContain('os: [macos-latest, windows-latest, ubuntu-22.04]');
+    expect(release).toContain('os: ubuntu-22.04');
+    expect(release).toContain('--bundles appimage,deb');
+    for (const text of [ci, release]) {
+      const install = text.indexOf('- name: Install the Linux build dependencies');
+      expect(install).toBeGreaterThan(0);
+      expect(text.slice(install, text.indexOf('- uses: actions/setup-node'))).toMatch(
+        /if: runner.os == 'Linux'[\s\S]*libwebkit2gtk-4.1-dev[\s\S]*libayatana-appindicator3-dev[\s\S]*libdbus-1-dev/,
+      );
+    }
+    expect(release.indexOf('- name: Install the Linux build dependencies')).toBeLessThan(release.indexOf('- uses: tauri-apps/tauri-action'));
+  });
+
+  it('the CI Linux beta packages are built without updater signatures and uploaded as an artifact', () => {
+    const ci = read('ci.yml');
+    const build = ci.slice(ci.indexOf('- name: Build the Linux beta packages'));
+    expect(build).toContain("if: runner.os == 'Linux'");
+    expect(build).toContain('--bundles appimage,deb');
+    expect(build).toContain('"createUpdaterArtifacts":false');
+    expect(build).not.toContain('TAURI_SIGNING_PRIVATE_KEY');
+    expect(build).toContain('uses: actions/upload-artifact@');
+    expect(build).toContain('if-no-files-found: error');
+  });
+
   it('the macOS release is signed by the stable certificate and fails without it', () => {
     const text = read('release.yml');
     const importStep = text.slice(text.indexOf('- name: Import the macOS signing certificate'), text.indexOf('- uses: tauri-apps/tauri-action'));
