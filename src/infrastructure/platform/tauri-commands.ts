@@ -31,6 +31,8 @@ export function toDomainError(raw: unknown): Error {
       return new ConnectionProblemError('claude-signin-required', raw.message);
     case 'keychain':
       return new ConnectionProblemError('unexpected', raw.message, 'keychain-unavailable');
+    case 'keyring_unavailable':
+      return new ConnectionProblemError('unexpected', raw.message, 'keyring-unavailable');
     case 'rate_limited':
       return new RateLimitedError(
         typeof raw.retryAfterSecs === 'number' && raw.retryAfterSecs > 0 ? raw.retryAfterSecs * 1_000 : null,

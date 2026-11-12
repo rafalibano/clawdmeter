@@ -230,6 +230,7 @@ export const ptBR: Record<MessageKey, string> = {
   'error.claude-login-code-invalid': 'Código inválido. Cole o código inteiro mostrado no navegador.',
   'error.claude-login-busy': 'Outro login ainda está aberto. Conclua ou cancele e tente de novo.',
   'error.keychain-unavailable': 'Não foi possível acessar o cofre do sistema.',
+  'error.keyring-unavailable': 'Nenhum Secret Service está rodando (GNOME Keyring ou KWallet). O ClawdMeter precisa de um para guardar tokens e não salvou nada.',
   'error.claude-login-timeout': 'O navegador não voltou a tempo. Tente de novo ou cole o código.',
   'error.claude-login-cancelled': 'Login cancelado.',
   'error.claude-login-rate-limited': 'O Claude limitou as tentativas de login. Tente de novo em alguns minutos.',

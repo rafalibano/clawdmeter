@@ -240,6 +240,7 @@ export const en = {
   'error.claude-login-code-invalid': 'The code is not valid. Paste the whole code shown in the browser.',
   'error.claude-login-busy': 'Another sign-in is still open. Finish or cancel it and try again.',
   'error.keychain-unavailable': 'Could not access the system keychain.',
+  'error.keyring-unavailable': 'No Secret Service is running (GNOME Keyring or KWallet). ClawdMeter needs one to store tokens and did not save anything.',
   'error.claude-login-timeout': 'The browser did not return in time. Try again or paste the code.',
   'error.claude-login-cancelled': 'Sign-in cancelled.',
   'error.claude-login-rate-limited': 'Claude limited the sign-in attempts. Try again in a few minutes.',

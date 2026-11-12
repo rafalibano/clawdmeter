@@ -34,6 +34,14 @@ const WINDOWS_CHILD_ENV: &[&str] = &[
     "TEMP",
     "TMP",
 ];
+const LINUX_CHILD_ENV: &[&str] = &[
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "XDG_RUNTIME_DIR",
+    "DBUS_SESSION_BUS_ADDRESS",
+];
 const MAX_CAPTURE_BYTES: usize = 1_048_576;
 const MAX_STDOUT_LINE_BYTES: usize = 4_194_304;
 const MAX_STDERR_LINE_BYTES: usize = 65_536;
@@ -191,6 +199,11 @@ fn is_inherited_env(name: &str, windows: bool) -> bool {
     CHILD_ENV.iter().any(same)
         || name.starts_with("LC_")
         || (windows && WINDOWS_CHILD_ENV.iter().any(same))
+        || is_linux_session_env(name, cfg!(target_os = "linux"))
+}
+
+fn is_linux_session_env(name: &str, linux: bool) -> bool {
+    linux && LINUX_CHILD_ENV.contains(&name)
 }
 
 pub fn child_env(
@@ -1317,6 +1330,24 @@ mod tests {
         let windows_case = [(OsString::from("Path"), OsString::from("C:\\bin"))];
         assert_eq!(child_env(windows_case.clone(), true).len(), 1);
         assert!(child_env(windows_case, false).is_empty());
+    }
+
+    #[test]
+    fn linux_children_keep_the_session_bus_and_xdg_dirs_so_gh_reaches_the_keyring() {
+        for name in [
+            "DBUS_SESSION_BUS_ADDRESS",
+            "XDG_RUNTIME_DIR",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_STATE_HOME",
+        ] {
+            assert!(is_linux_session_env(name, true), "{name}");
+            assert!(!is_linux_session_env(name, false), "{name}");
+        }
+        for name in ["DISPLAY", "XDG_SESSION_ID", "ANTHROPIC_API_KEY", "GH_TOKEN"] {
+            assert!(!is_linux_session_env(name, true), "{name}");
+        }
     }
 
     #[test]

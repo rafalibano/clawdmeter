@@ -1,6 +1,6 @@
 [package]
 name = "clawdmeter"
-version = "0.2.4"
+version = "0.2.5"
 description = "Tray app with Claude usage, PRs, sessions, agenda and skills"
 edition = "2021"
 publish = false
@@ -32,7 +32,7 @@ getrandom = "0.3"
 sha2 = "0.10"
 tauri-plugin-single-instance = "2"
 
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 auto-launch = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -43,6 +43,11 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "libc", "objc2-core-foundation", "NSEvent", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSWindow", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSBundle", "NSError", "NSGeometry", "NSNotification", "NSOperation", "NSString"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationSettings"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+dbus-secret-service = "4"
+notify-rust = "4.18"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }

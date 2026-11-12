@@ -34,6 +34,28 @@ pub fn agent_points_to(plist: &str, executable: &str, identifier: &str) -> bool 
         && plist.contains(&format!("<array><string>{identifier}</string></array>"))
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn autostart_exec(appimage: Option<&str>, executable: &str) -> CommandResult<String> {
+    let appimage = appimage.filter(|path| !path.is_empty());
+    let target = appimage.unwrap_or(executable);
+    if appimage.is_none() && executable.starts_with("/tmp/.mount_") {
+        return Err(CommandError::new(
+            ErrorKind::Policy,
+            "ClawdMeter is running from a mounted AppImage without $APPIMAGE; open the .AppImage file directly before turning on launch at login",
+        ));
+    }
+    if target
+        .chars()
+        .any(|c| c.is_control() || matches!(c, '"' | '`' | '$' | '\\' | '%'))
+    {
+        return Err(CommandError::new(
+            ErrorKind::Policy,
+            "the path of ClawdMeter has characters an autostart entry cannot hold; move it to a plain folder before turning on launch at login",
+        ));
+    }
+    Ok(format!("\"{target}\""))
+}
+
 pub fn refresh(system: &impl LaunchAtLogin) -> CommandResult<bool> {
     if !system.status()?.enabled {
         return Ok(false);
@@ -45,7 +67,7 @@ pub fn system(app: &AppHandle) -> platform::System {
     platform::System::new(app)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 fn from_auto_launch(error: auto_launch::Error) -> CommandError {
     match error {
         auto_launch::Error::Io(error) => error.into(),
@@ -181,7 +203,65 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
+mod platform {
+    use auto_launch::{AutoLaunch, AutoLaunchBuilder, LinuxLaunchMode};
+    use tauri::AppHandle;
+
+    use super::{autostart_exec, from_auto_launch, LaunchAtLogin, LaunchAtLoginStatus};
+    use crate::commands::error::CommandResult;
+
+    pub struct System {
+        name: String,
+    }
+
+    impl System {
+        pub fn new(app: &AppHandle) -> Self {
+            Self {
+                name: app.package_info().name.clone(),
+            }
+        }
+
+        fn entry(&self, exec: &str) -> CommandResult<AutoLaunch> {
+            AutoLaunchBuilder::new()
+                .set_app_name(&self.name)
+                .set_app_path(exec)
+                .set_linux_launch_mode(LinuxLaunchMode::XdgAutostart)
+                .build()
+                .map_err(from_auto_launch)
+        }
+
+        fn current_entry(&self) -> CommandResult<AutoLaunch> {
+            self.entry(&std::env::current_exe()?.to_string_lossy())
+        }
+    }
+
+    impl LaunchAtLogin for System {
+        fn status(&self) -> CommandResult<LaunchAtLoginStatus> {
+            let enabled = self
+                .current_entry()?
+                .is_enabled()
+                .map_err(from_auto_launch)?;
+            Ok(LaunchAtLoginStatus {
+                supported: true,
+                enabled,
+            })
+        }
+
+        fn enable(&self) -> CommandResult<()> {
+            let executable = std::env::current_exe()?;
+            let appimage = std::env::var("APPIMAGE").ok();
+            let exec = autostart_exec(appimage.as_deref(), &executable.to_string_lossy())?;
+            self.entry(&exec)?.enable().map_err(from_auto_launch)
+        }
+
+        fn disable(&self) -> CommandResult<()> {
+            self.current_entry()?.disable().map_err(from_auto_launch)
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod platform {
     use tauri::AppHandle;
 
@@ -214,7 +294,7 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn unsupported() -> CommandError {
     CommandError::new(
         ErrorKind::Policy,
@@ -336,6 +416,47 @@ mod tests {
             executable,
             "com.mottu.clawdmeter"
         ));
+    }
+
+    #[test]
+    fn the_autostart_entry_starts_the_appimage_file_not_its_temporary_mount() {
+        assert_eq!(
+            autostart_exec(
+                Some("/home/dev/Apps/ClawdMeter_0.2.4_amd64.AppImage"),
+                "/tmp/.mount_ClawdMaBcDe/usr/bin/clawdmeter"
+            ),
+            Ok("\"/home/dev/Apps/ClawdMeter_0.2.4_amd64.AppImage\"".to_owned())
+        );
+        assert_eq!(
+            autostart_exec(None, "/usr/bin/clawdmeter"),
+            Ok("\"/usr/bin/clawdmeter\"".to_owned())
+        );
+        assert_eq!(
+            autostart_exec(Some("/home/dev/My Apps/ClawdMeter.AppImage"), "/x"),
+            Ok("\"/home/dev/My Apps/ClawdMeter.AppImage\"".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_autostart_entry_refuses_a_mount_without_appimage_or_an_unquotable_path() {
+        let mounted =
+            autostart_exec(None, "/tmp/.mount_ClawdMaBcDe/usr/bin/clawdmeter").unwrap_err();
+        assert_eq!(mounted.kind, ErrorKind::Policy);
+        assert!(mounted.message.contains(".AppImage"));
+        for path in [
+            "/home/dev/$HOME/ClawdMeter.AppImage",
+            "/home/dev/a\"b/ClawdMeter.AppImage",
+            "/home/dev/100%/ClawdMeter.AppImage",
+            "/home/dev/a\\b/ClawdMeter.AppImage",
+            "/home/dev/a`id`/ClawdMeter.AppImage",
+            "/home/dev/a\nExec=evil/ClawdMeter.AppImage",
+        ] {
+            assert_eq!(
+                autostart_exec(Some(path), "/x").unwrap_err().kind,
+                ErrorKind::Policy,
+                "{path:?}"
+            );
+        }
     }
 
     #[test]

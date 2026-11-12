@@ -5,6 +5,9 @@ pub const REOPEN_GUARD_MS: u64 = 250;
 
 pub const HIDE_ON_BLUR: bool = cfg!(not(target_os = "macos"));
 
+// Linux trays (AppIndicator / StatusNotifierItem) never report clicks, only menu activations.
+pub const TRAY_MENU_OPENS_POPOVER: bool = cfg!(target_os = "linux");
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClickAction {
     Show,
@@ -503,7 +506,7 @@ pub fn position_popover(window: &tauri::WebviewWindow, icon: Option<tauri::Rect>
     });
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkArea {
     pub left: i32,
@@ -512,7 +515,7 @@ pub struct WorkArea {
     pub bottom: i32,
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 pub fn clamp_to_work_area(x: i32, y: i32, width: i32, height: i32, area: WorkArea) -> (i32, i32) {
     let fit = |position: i32, size: i32, start: i32, end: i32| {
         let last = end.saturating_sub(size);
@@ -569,7 +572,7 @@ fn keep_in_work_area(window: &tauri::WebviewWindow) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
 pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
     use tauri_plugin_positioner::{Position, WindowExt};
 
@@ -579,8 +582,53 @@ pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect
     {
         let _ = window.move_window_constrained(Position::BottomRight);
     }
-    #[cfg(windows)]
     keep_in_work_area(window);
+}
+
+#[cfg(target_os = "linux")]
+const POPOVER_MARGIN: f64 = 8.0;
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn top_right_of_work_area(width: i32, height: i32, margin: i32, area: WorkArea) -> (i32, i32) {
+    clamp_to_work_area(
+        area.right.saturating_sub(width).saturating_sub(margin),
+        area.top.saturating_add(margin),
+        width,
+        height,
+        area,
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn popover_monitor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    window
+        .cursor_position()
+        .ok()
+        .and_then(|cursor| window.monitor_from_point(cursor.x, cursor.y).ok().flatten())
+        .or_else(|| window.current_monitor().ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten())
+}
+
+#[cfg(target_os = "linux")]
+pub fn position_popover(window: &tauri::WebviewWindow, _icon: Option<tauri::Rect>) {
+    let (Some(monitor), Ok(size)) = (popover_monitor(window), window.outer_size()) else {
+        return;
+    };
+    let work = monitor.work_area();
+    let to_i32 = |value: u32| i32::try_from(value).unwrap_or(i32::MAX);
+    let area = WorkArea {
+        left: work.position.x,
+        top: work.position.y,
+        right: work.position.x.saturating_add(to_i32(work.size.width)),
+        bottom: work.position.y.saturating_add(to_i32(work.size.height)),
+    };
+    let margin = (POPOVER_MARGIN * monitor.scale_factor()).round() as i32;
+    let (x, y) = top_right_of_work_area(to_i32(size.width), to_i32(size.height), margin, area);
+    crate::popover_log::write(&format!(
+        "position work=({},{},{}x{}) at=({x},{y})",
+        work.position.x, work.position.y, work.size.width, work.size.height
+    ));
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
 #[cfg(target_os = "macos")]
@@ -794,6 +842,40 @@ mod tests {
             bottom: 400,
         };
         assert_eq!(clamp_to_work_area(-900, 300, 380, 520, tiny), (-1280, 0));
+    }
+
+    #[test]
+    fn the_linux_popover_opens_at_the_top_right_of_the_work_area_below_a_top_panel() {
+        let below_panel = WorkArea { top: 32, ..WORK };
+        assert_eq!(
+            top_right_of_work_area(380, 520, 8, below_panel),
+            (1920 - 380 - 8, 32 + 8)
+        );
+    }
+
+    #[test]
+    fn the_linux_popover_follows_a_secondary_monitor_and_scaled_margins() {
+        let right_monitor = WorkArea {
+            left: 1920,
+            top: 0,
+            right: 1920 + 2560,
+            bottom: 1440,
+        };
+        assert_eq!(
+            top_right_of_work_area(760, 1040, 16, right_monitor),
+            (1920 + 2560 - 760 - 16, 16)
+        );
+    }
+
+    #[test]
+    fn the_linux_popover_never_leaves_a_work_area_smaller_than_itself() {
+        let tiny = WorkArea {
+            left: 0,
+            top: 24,
+            right: 300,
+            bottom: 400,
+        };
+        assert_eq!(top_right_of_work_area(380, 520, 8, tiny), (0, 24));
     }
 
     #[test]

@@ -8,6 +8,7 @@ pub enum ErrorKind {
     #[serde(rename = "keychain")]
     KeychainDenied,
     Keychain,
+    KeyringUnavailable,
     ClaudeSigninRequired,
     ProgramNotAllowed,
     ProgramNotFound,
@@ -89,6 +90,9 @@ impl From<tauri_plugin_http::reqwest::Error> for CommandError {
 
 impl From<keyring::Error> for CommandError {
     fn from(error: keyring::Error) -> Self {
+        if is_unavailable(&error) {
+            return Self::new(ErrorKind::KeyringUnavailable, KEYRING_UNAVAILABLE);
+        }
         let kind = if is_denial(&error) {
             ErrorKind::KeychainDenied
         } else {
@@ -96,6 +100,76 @@ impl From<keyring::Error> for CommandError {
         };
         Self::new(kind, error.to_string())
     }
+}
+
+const KEYRING_UNAVAILABLE: &str =
+    "no Secret Service (GNOME Keyring or KWallet) answered on the session bus, so nothing was stored";
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SecretServiceFailure<'a> {
+    Dbus(Option<&'a str>),
+    PromptDismissed,
+    NoDefaultCollection,
+    Unavailable,
+    Other,
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+const MISSING_SERVICE_ERRORS: [&str; 5] = [
+    "org.freedesktop.DBus.Error.ServiceUnknown",
+    "org.freedesktop.DBus.Error.NameHasNoOwner",
+    "org.freedesktop.DBus.Error.NoServer",
+    "org.freedesktop.DBus.Error.NotSupported",
+    "org.freedesktop.DBus.Error.FileNotFound",
+];
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn secret_service_missing(failure: SecretServiceFailure) -> bool {
+    match failure {
+        SecretServiceFailure::Unavailable | SecretServiceFailure::NoDefaultCollection => true,
+        SecretServiceFailure::Dbus(Some(name)) => {
+            MISSING_SERVICE_ERRORS.contains(&name)
+                || name.starts_with("org.freedesktop.DBus.Error.Spawn.")
+        }
+        _ => false,
+    }
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn secret_service_denied(failure: SecretServiceFailure) -> bool {
+    matches!(
+        failure,
+        SecretServiceFailure::PromptDismissed
+            | SecretServiceFailure::Dbus(Some("org.freedesktop.DBus.Error.AccessDenied"))
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn secret_service_failure(error: &keyring::Error) -> Option<SecretServiceFailure<'_>> {
+    use dbus_secret_service::Error;
+
+    let (keyring::Error::PlatformFailure(inner) | keyring::Error::NoStorageAccess(inner)) = error
+    else {
+        return None;
+    };
+    inner.downcast_ref::<Error>().map(|failure| match failure {
+        Error::Dbus(dbus) => SecretServiceFailure::Dbus(dbus.name()),
+        Error::Prompt => SecretServiceFailure::PromptDismissed,
+        Error::NoResult => SecretServiceFailure::NoDefaultCollection,
+        Error::Unavailable => SecretServiceFailure::Unavailable,
+        _ => SecretServiceFailure::Other,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn is_unavailable(error: &keyring::Error) -> bool {
+    secret_service_failure(error).is_some_and(secret_service_missing)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_unavailable(_error: &keyring::Error) -> bool {
+    false
 }
 
 pub fn keychain_write_error(error: keyring::Error) -> CommandError {
@@ -132,7 +206,12 @@ fn is_refused_write(error: &keyring::Error) -> bool {
     platform_status(error) == Some(DUPLICATE_ITEM_STATUS)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+fn is_denial(error: &keyring::Error) -> bool {
+    secret_service_failure(error).is_some_and(secret_service_denied)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn is_denial(error: &keyring::Error) -> bool {
     matches!(error, keyring::Error::PlatformFailure(inner) if is_denial_text(&inner.to_string()))
 }
@@ -142,7 +221,7 @@ fn is_refused_write(_error: &keyring::Error) -> bool {
     false
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn is_denial_text(text: &str) -> bool {
     let text = text.to_lowercase();
     [
@@ -232,7 +311,97 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_missing_secret_service_or_session_bus_is_keyring_unavailable() {
+        for name in [
+            "org.freedesktop.DBus.Error.ServiceUnknown",
+            "org.freedesktop.DBus.Error.NameHasNoOwner",
+            "org.freedesktop.DBus.Error.NoServer",
+            "org.freedesktop.DBus.Error.NotSupported",
+            "org.freedesktop.DBus.Error.FileNotFound",
+            "org.freedesktop.DBus.Error.Spawn.ChildExited",
+        ] {
+            assert!(
+                secret_service_missing(SecretServiceFailure::Dbus(Some(name))),
+                "{name}"
+            );
+        }
+        assert!(secret_service_missing(SecretServiceFailure::Unavailable));
+        assert!(secret_service_missing(
+            SecretServiceFailure::NoDefaultCollection
+        ));
+        for other in [
+            SecretServiceFailure::Dbus(Some("org.freedesktop.DBus.Error.AccessDenied")),
+            SecretServiceFailure::Dbus(Some("org.freedesktop.Secret.Error.IsLocked")),
+            SecretServiceFailure::Dbus(None),
+            SecretServiceFailure::PromptDismissed,
+            SecretServiceFailure::Other,
+        ] {
+            assert!(!secret_service_missing(other), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn a_dismissed_unlock_prompt_or_refused_bus_call_is_a_denial() {
+        assert!(secret_service_denied(SecretServiceFailure::PromptDismissed));
+        assert!(secret_service_denied(SecretServiceFailure::Dbus(Some(
+            "org.freedesktop.DBus.Error.AccessDenied"
+        ))));
+        for other in [
+            SecretServiceFailure::Dbus(Some("org.freedesktop.DBus.Error.ServiceUnknown")),
+            SecretServiceFailure::Unavailable,
+            SecretServiceFailure::Other,
+        ] {
+            assert!(!secret_service_denied(other), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn keyring_unavailable_keeps_the_snake_case_name_the_frontend_reads() {
+        assert_eq!(
+            serde_json::to_string(&ErrorKind::KeyringUnavailable).unwrap(),
+            r#""keyring_unavailable""#
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn on_linux_secret_service_errors_are_classified_by_their_variant() {
+        use dbus_secret_service::Error;
+
+        let no_access = |error: Error| keyring::Error::NoStorageAccess(Box::new(error));
+        let unavailable = CommandError::from(no_access(Error::NoResult));
+        assert_eq!(unavailable.kind, ErrorKind::KeyringUnavailable);
+        assert!(unavailable.message.contains("Secret Service"));
+        assert_eq!(
+            CommandError::from(keyring::Error::PlatformFailure(Box::new(
+                Error::Unavailable
+            )))
+            .kind,
+            ErrorKind::KeyringUnavailable
+        );
+        assert_eq!(
+            CommandError::from(no_access(Error::Prompt)).kind,
+            ErrorKind::KeychainDenied
+        );
+        assert_eq!(
+            CommandError::from(no_access(Error::Locked)).kind,
+            ErrorKind::Keychain
+        );
+        assert_eq!(
+            CommandError::from(keyring::Error::PlatformFailure("Access denied".into())).kind,
+            ErrorKind::Keychain
+        );
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn outside_linux_no_keyring_error_is_reported_as_unavailable() {
+        let error = keyring::Error::PlatformFailure("No DBus session or Secret Service".into());
+        assert_eq!(CommandError::from(error).kind, ErrorKind::Keychain);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     #[test]
     fn outside_macos_a_denial_is_recognized_by_its_text() {
         let kind =

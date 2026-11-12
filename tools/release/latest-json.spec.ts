@@ -6,6 +6,12 @@ import { buildLatestJson, type LatestJson } from './latest-json.mjs';
 const published: LatestJson = JSON.parse(readFileSync(join(__dirname, 'fixtures/latest-0.2.2.json'), 'utf8'));
 const signatureOf = (platform: string) => published.platforms[platform].signature;
 
+const APPIMAGE = 'ClawdMeter_0.2.2_amd64.AppImage';
+const signedFor = (file: string, version: string) =>
+  Buffer.from(
+    `untrusted comment: signature from tauri secret key\nRUQ=\ntrusted comment: timestamp:1794403000\tfile:${file}\tversion:${version}\nAA==\n`,
+  ).toString('base64');
+
 const ASSETS = [
   'ClawdMeter_0.2.2_universal.dmg',
   'ClawdMeter_0.2.2_x64-setup.exe',
@@ -14,11 +20,15 @@ const ASSETS = [
   'ClawdMeter_0.2.2_x64_en-US.msi.sig',
   'ClawdMeter_universal.app.tar.gz',
   'ClawdMeter_universal.app.tar.gz.sig',
+  APPIMAGE,
+  `${APPIMAGE}.sig`,
+  'ClawdMeter_0.2.2_amd64.deb',
 ];
 const SIGNATURES = {
   'ClawdMeter_0.2.2_x64-setup.exe.sig': signatureOf('windows-x86_64-nsis'),
   'ClawdMeter_0.2.2_x64_en-US.msi.sig': signatureOf('windows-x86_64-msi'),
   'ClawdMeter_universal.app.tar.gz.sig': signatureOf('darwin-aarch64-app'),
+  [`${APPIMAGE}.sig`]: signedFor(APPIMAGE, '0.2.2'),
 };
 
 const build = (overrides: Partial<Parameters<typeof buildLatestJson>[0]> = {}) =>
@@ -33,17 +43,30 @@ const build = (overrides: Partial<Parameters<typeof buildLatestJson>[0]> = {}) =
   });
 
 describe('latest.json built at publish', () => {
-  it('rebuilds the published v0.2.2 latest.json exactly, with the same keys in the same order', () => {
+  it('keeps the published v0.2.2 macOS and Windows entries exactly, with the same keys in the same order', () => {
     const latest = build();
-    expect(latest).toEqual(published);
+    const { 'linux-x86_64-appimage': linux, ...withoutLinux } = latest.platforms;
+    expect(linux).toBeDefined();
+    expect({ ...latest, platforms: withoutLinux }).toEqual(published);
     expect(Object.keys(latest)).toEqual(Object.keys(published));
-    expect(Object.keys(latest.platforms)).toEqual(Object.keys(published.platforms));
+    expect(Object.keys(latest.platforms)).toEqual([...Object.keys(published.platforms), 'linux-x86_64-appimage']);
     expect(latest.platforms['windows-x86_64']).toEqual(latest.platforms['windows-x86_64-nsis']);
+  });
+
+  it('offers the AppImage only to AppImage installs, never as the linux-x86_64 fallback a .deb install would read', () => {
+    const latest = build();
+    expect(latest.platforms['linux-x86_64-appimage']).toEqual({
+      signature: SIGNATURES[`${APPIMAGE}.sig`],
+      url: `https://github.com/rafalibano/clawdmeter/releases/download/v0.2.2/${APPIMAGE}`,
+    });
+    expect(Object.keys(latest.platforms).filter((platform) => platform.startsWith('linux'))).toEqual(['linux-x86_64-appimage']);
   });
 
   it('refuses a package missing from the release or its signature', () => {
     expect(() => build({ assetNames: ASSETS.filter((name) => !name.endsWith('.msi')) })).toThrow('*.msi');
+    expect(() => build({ assetNames: ASSETS.filter((name) => !name.endsWith('.AppImage')) })).toThrow('*.AppImage');
     expect(() => build({ signatures: { ...SIGNATURES, 'ClawdMeter_universal.app.tar.gz.sig': '' } })).toThrow('ClawdMeter_universal.app.tar.gz.sig is missing');
+    expect(() => build({ signatures: { ...SIGNATURES, [`${APPIMAGE}.sig`]: '' } })).toThrow(`${APPIMAGE}.sig is missing`);
   });
 
   it('refuses packages or signatures of another version', () => {

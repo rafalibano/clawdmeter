@@ -9,6 +9,15 @@ Guide for those who want to run, change and package ClawdMeter. To install and u
 - Rust 1.99.1 via [rustup](https://rustup.rs): the `rust-toolchain.toml` at the root pins the version, and rustup installs it on its own the first time `cargo` runs
 - Xcode Command Line Tools: `xcode-select --install`
 
+On Linux (x86_64, Ubuntu 22.04 or later, or an equivalent distribution) instead of macOS and Xcode, install the Tauri 2 system libraries plus D-Bus (for the Secret Service keyring) and xdo (for the global shortcut), the same list CI installs:
+
+```bash
+sudo apt-get install -y build-essential pkg-config file patchelf libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev
+```
+
+Running it needs a Secret Service (GNOME Keyring or KWallet) on the session bus and a tray with AppIndicator support (on GNOME, the AppIndicator extension); see the Linux section of the README. The tray only opens a menu there: use **Open panel** or Ctrl+Alt+D (X11).
+
 ## Commands
 
 | Command | What it does |
@@ -137,13 +146,13 @@ The checkbox in Settings, the polling and the connection requirement come from t
 
 ## Publishing a version
 
-Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`) and Windows (`.msi` + NSIS `.exe`), signs the updater artifacts and publishes the release with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
+Each tag `v*` runs `.github/workflows/release.yml`, which builds macOS (universal `.app` + `.dmg`), Windows (`.msi` + NSIS `.exe`) and Linux (`.AppImage` + `.deb` on `ubuntu-22.04`), signs the updater artifacts and publishes the release with `latest.json`. Installed apps find it on the next check (at most 6 h, or **Check now**).
 
 The release goes out only when every platform passed. The workflow has no default permissions (`permissions: {}`); each job that writes gets `contents: write`, and one run per tag at a time (`concurrency`, without cancelling the running one).
 
 - **`draft`** (no environment, no secrets) refuses a tag that already has a published release: running again would replace files under the `latest.json` installed apps read. Otherwise it reuses the draft of a previous run of the same tag, or creates one, and passes its id to the next jobs.
 - **`release`** (one job per platform, `fail-fast: false`, environment `release`) builds and runs `tauri-action` with `releaseId` (so it uploads to that draft and never looks a release up by tag) and `includeUpdaterJson: false`. Each job only uploads its files and their `.sig`; no build job touches `latest.json`, so the two cannot overwrite each other's entries.
-- **`publish`** (environment `release`) runs only if both build jobs passed. It downloads the draft's `.sig` files and builds `latest.json` once with `tools/release/latest-json.mjs`: version = the tag without `v`, the same `notes` as the release, `pub_date`, and the same seven platforms as v0.2.2 (`windows-x86_64` = the NSIS `.exe`, as with `updaterJsonPreferNsis`; `windows-x86_64-nsis`; `windows-x86_64-msi`; `darwin-aarch64`, `darwin-x86_64`, `darwin-aarch64-app`, `darwin-x86_64-app` = the universal `.app.tar.gz`), each with the `/releases/download/<tag>/<asset>` URL and the `.sig` content as signature. It refuses a release without exactly one package of each kind, a Windows package of another version, or a `.sig` whose signed version (the `version:` in the minisign trusted comment) is not the tag's. It uploads `latest.json` to the draft (replacing one left by a previous run), then publishes the draft (by id, `make_latest=legacy`). Installed apps only see published releases, so nothing reaches them before that. `tools/release/latest-json.spec.ts` rebuilds the published v0.2.2 `latest.json` from its asset names and `.sig` files, with the same keys, order and values.
+- **`publish`** (environment `release`) runs only if every build job passed. It downloads the draft's `.sig` files and builds `latest.json` once with `tools/release/latest-json.mjs`: version = the tag without `v`, the same `notes` as the release, `pub_date`, and the same seven platforms as v0.2.2 (`windows-x86_64` = the NSIS `.exe`, as with `updaterJsonPreferNsis`; `windows-x86_64-nsis`; `windows-x86_64-msi`; `darwin-aarch64`, `darwin-x86_64`, `darwin-aarch64-app`, `darwin-x86_64-app` = the universal `.app.tar.gz`) plus `linux-x86_64-appimage` = the `.AppImage`, each with the `/releases/download/<tag>/<asset>` URL and the `.sig` content as signature. It refuses a release without exactly one package of each kind, a Windows or Linux package of another version, or a `.sig` whose signed version (the `version:` in the minisign trusted comment) is not the tag's. It uploads `latest.json` to the draft (replacing one left by a previous run), then publishes the draft (by id, `make_latest=legacy`). Installed apps only see published releases, so nothing reaches them before that. `tools/release/latest-json.spec.ts` rebuilds the published v0.2.2 `latest.json` from its asset names and `.sig` files, with the same keys, order and values, plus the Linux entry. There is deliberately no plain `linux-x86_64` key: `tauri-plugin-updater` falls back to it for a `.deb` install (after `linux-x86_64-deb`), which would download the AppImage and hand it to `dpkg`; without it the `.deb` reads as up to date and is updated by hand.
 
 1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads the version from `package.json`) and add the entry to `CHANGELOG.md`. Merge it before tagging: the workflow fails when the tag is not `v` + that version, because the updater compares the version inside `latest.json`, not the tag.
 2. Create and push the tag on the merged commit:
@@ -152,7 +161,7 @@ The release goes out only when every platform passed. The workflow has no defaul
    git tag v0.2.1 && git push origin v0.2.1
    ```
 
-3. When the `publish` job finishes, the release is public. Check that it has `latest.json`, the `.app.tar.gz`/`.sig` pair and the Windows installers with their `.sig`.
+3. When the `publish` job finishes, the release is public. Check that it has `latest.json`, the `.app.tar.gz`/`.sig` pair, the Windows installers with their `.sig` and the `.AppImage`/`.sig` pair plus the `.deb`.
 
 **When the release stays a draft.** If a build job or `publish` fails, the draft stays on the Releases page, visible only to maintainers, and installed apps keep the previous version. Fix the cause (for example the missing certificate secrets, whose error names them) and re-run the failed jobs (or all of them): `draft` reuses the same draft, a rebuilt platform replaces its files and `.sig`, and `publish` builds `latest.json` again from what is in the draft. If the fix needs a new commit, delete the draft (`gh release delete v0.2.1 --yes`) and the tag (`git push origin :refs/tags/v0.2.1`) and tag again. Once a release is published, running its workflow again stops at `draft`; publish a new version instead.
 
@@ -222,7 +231,11 @@ export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/clawdmeter-updater.key)" TAURI_
 CI=true yarn tauri build --bundles app,dmg
 ```
 
-Without the key, skip the updater artifacts: `CI=true yarn tauri build --bundles dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+Without the key, skip the updater artifacts: `CI=true yarn tauri build --bundles dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'` (on Linux, `--bundles appimage,deb`).
+
+### Linux beta packages from a PR
+
+The `ubuntu-22.04` job of `ci.yml` builds the `.AppImage` and `.deb` of every PR without updater signatures (PRs have no access to the `release` environment) and uploads them as the `clawdmeter-linux-x86_64` artifact, kept 30 days. Download it from the run's **Summary** page, or with `gh run download <run-id> -n clawdmeter-linux-x86_64`. They carry the version in `package.json` and the same updater public key, so an AppImage from a PR updates itself to the next signed release like a released one.
 
 ### Repository of the releases
 

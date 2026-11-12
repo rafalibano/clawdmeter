@@ -28,6 +28,14 @@ describe('toDomainError', () => {
     });
   });
 
+  it('keyring_unavailable becomes the storage error that names the missing Secret Service', () => {
+    expect(toDomainError({ kind: 'keyring_unavailable', message: 'no Secret Service' })).toMatchObject({
+      problem: 'unexpected',
+      code: 'keyring-unavailable',
+      message: 'no Secret Service',
+    });
+  });
+
   it('the kinds of the old Claude Code credential reading are no longer special', () => {
     for (const kind of ['keychain_denied', 'claude_code_missing', 'claude_expired']) {
       expect(toDomainError({ kind, message: 'x' })).toBeInstanceOf(PlatformCommandError);

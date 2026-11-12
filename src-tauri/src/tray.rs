@@ -15,6 +15,7 @@ use crate::usage_icon;
 
 const MAIN_WINDOW: &str = "main";
 const QUIT_ID: &str = "quit";
+const OPEN_ID: &str = "open";
 const TRAY_ID: &str = "main";
 
 static LAST_AUTO_HIDE_MS: AtomicU64 = AtomicU64::new(NEVER);
@@ -122,9 +123,22 @@ pub fn prepare_popover(app: &AppHandle) {
     }
 }
 
+fn open_popover(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        return;
+    };
+    log::write("tray-menu open");
+    show_popover(app, &window, None);
+}
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, QUIT_ID, "Quit ClawdMeter", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit])?;
+    let menu = if platform::TRAY_MENU_OPENS_POPOVER {
+        let open = MenuItem::with_id(app, OPEN_ID, "Open panel", true, None::<&str>)?;
+        Menu::with_items(app, &[&open, &quit])?
+    } else {
+        Menu::with_items(app, &[&quit])?
+    };
 
     let icon = if platform::TRAY_ICON_IS_TEMPLATE {
         Image::from_bytes(include_bytes!("../icons/tray-template.png"))?
@@ -140,10 +154,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("ClawdMeter")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            if event.id().as_ref() == QUIT_ID {
-                app.exit(0);
-            }
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            QUIT_ID => app.exit(0),
+            OPEN_ID => open_popover(app),
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);

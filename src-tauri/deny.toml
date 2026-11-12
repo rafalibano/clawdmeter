@@ -3,12 +3,18 @@ targets = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
     "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
 ]
 
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+ignore = [
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is a build-time macro of gtk-rs 0.18, reached only on Linux through tauri; no update path until tauri leaves GTK3" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained after its merge into zbus 6; reached only on Linux through notify-rust (tauri-plugin-notification)" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained after its merge into zbus 6; reached only on Linux through notify-rust (tauri-plugin-notification)" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained after its merge into zbus 6; reached only on Linux through notify-rust (tauri-plugin-notification)" },
+]
 
 [licenses]
 version = 2
@@ -16,6 +22,7 @@ confidence-threshold = 0.8
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
