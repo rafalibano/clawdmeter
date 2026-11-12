@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4
 
 - Angular goes from 19 (no longer supported, with open security advisories in `@angular/core`, `@angular/common` and `@angular/compiler` that have no fix on 19) to 21.2 (LTS until June 2027), through `ng update` 19 → 20 → 21. TypeScript goes to 5.9 and `ngx-echarts` to 21. The build moves from `@angular-devkit/build-angular` to `@angular/build` (same `application` builder, without the webpack toolchain), which also drops the vulnerable `webpack-dev-server`, `webpack-dev-middleware`, `http-proxy-middleware`, `serialize-javascript` and `uuid` and brings `vite`, `piscina`, `tar`, `sigstore`, `postcss`, `esbuild` and `@babel/core` to fixed versions. The app keeps zone.js change detection (now declared with `provideZoneChangeDetection()` in `main.ts`, since Angular 21 defaults to zoneless). The initial bundle warning budget goes from 500 kB to 520 kB (Angular 21 adds about 7.5 kB). No visible change in the app.
 
