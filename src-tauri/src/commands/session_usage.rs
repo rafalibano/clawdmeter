@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -11,12 +9,10 @@ use tauri::State;
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::home::home_dir;
+use super::transcript::{assistant_reply, non_empty, read_lines, regular_file_len, Entry, Message};
 
 const MAX_TRACKED_FILES: usize = 256;
 const MAX_SUBAGENTS: usize = 50;
-const SYNTHETIC_MODEL: &str = "<synthetic>";
-const READ_BUFFER: usize = 64 * 1024;
-const MAX_LINE: usize = 1024 * 1024;
 const SUBAGENT_IDLE_LIMIT: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Default, Clone)]
@@ -42,39 +38,6 @@ struct Store {
 
 #[derive(Default, Clone)]
 pub struct TranscriptTallies(Arc<Mutex<Store>>);
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Entry {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    timestamp: Option<String>,
-    message: Option<Message>,
-    params: Option<Params>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Message {
-    id: Option<String>,
-    model: Option<String>,
-    usage: Option<Usage>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Usage {
-    input_tokens: Option<u64>,
-    cache_read_input_tokens: Option<u64>,
-    cache_creation_input_tokens: Option<u64>,
-    output_tokens: Option<u64>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Params {
-    betas: Option<Vec<String>>,
-}
 
 #[derive(Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
@@ -121,10 +84,6 @@ pub fn project_dir_name(cwd: &str) -> String {
         .collect()
 }
 
-fn non_empty(value: Option<String>) -> Option<String> {
-    value.filter(|s| !s.is_empty())
-}
-
 fn apply_line(tally: &mut Tally, line: &str) {
     if !line.contains("\"usage\"")
         && !line.contains("\"api-request\"")
@@ -154,100 +113,34 @@ fn apply_line(tally: &mut Tally, line: &str) {
 }
 
 fn apply_assistant(tally: &mut Tally, message: Message) {
-    let Some(usage) = message.usage else {
+    let Some(reply) = assistant_reply(message) else {
         return;
     };
-    let Some(model) = non_empty(message.model) else {
-        return;
-    };
-    // Written on API errors and interrupts with every counter at zero; it says nothing about the context.
-    if model == SYNTHETIC_MODEL {
-        return;
-    }
-    tally.model = Some(model);
-    let input = usage.input_tokens.unwrap_or(0);
-    let cache_read = usage.cache_read_input_tokens.unwrap_or(0);
-    let cache_creation = usage.cache_creation_input_tokens.unwrap_or(0);
-    tally.context_tokens = Some(input + cache_read + cache_creation);
+    tally.model = Some(reply.model.clone());
+    tally.context_tokens = Some(reply.context());
     // One API response is written as one line per content block, all carrying the same usage.
-    let id = non_empty(message.id);
-    if id.is_some() && id == tally.last_message_id {
+    if reply.id.is_some() && reply.id == tally.last_message_id {
         return;
     }
-    tally.last_message_id = id;
-    tally.input_tokens += input;
-    tally.cache_read_tokens += cache_read;
-    tally.cache_creation_tokens += cache_creation;
-    tally.output_tokens += usage.output_tokens.unwrap_or(0);
-}
-
-struct LineRead {
-    consumed: u64,
-    complete: bool,
-    oversized: bool,
-}
-
-fn next_line(reader: &mut impl BufRead, line: &mut Vec<u8>) -> std::io::Result<LineRead> {
-    line.clear();
-    let mut read = LineRead {
-        consumed: 0,
-        complete: false,
-        oversized: false,
-    };
-    loop {
-        let buf = match reader.fill_buf() {
-            Ok(buf) => buf,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(error),
-        };
-        if buf.is_empty() {
-            return Ok(read);
-        }
-        let newline = buf.iter().position(|&b| b == b'\n');
-        let body = &buf[..newline.unwrap_or(buf.len())];
-        if read.oversized || line.len() + body.len() > MAX_LINE {
-            read.oversized = true;
-            line.clear();
-        } else {
-            line.extend_from_slice(body);
-        }
-        let used = newline.map_or(buf.len(), |at| at + 1);
-        reader.consume(used);
-        read.consumed += used as u64;
-        if newline.is_some() {
-            read.complete = true;
-            return Ok(read);
-        }
-    }
+    tally.last_message_id = reply.id;
+    tally.input_tokens += reply.input;
+    tally.cache_read_tokens += reply.cache_read;
+    tally.cache_creation_tokens += reply.cache_creation;
+    tally.output_tokens += reply.output;
 }
 
 fn advance(tally: &mut Tally, path: &Path) -> std::io::Result<()> {
-    if !std::fs::metadata(path)?.is_file() {
-        return Err(std::io::Error::other("not a regular file"));
-    }
-    let mut file = File::open(path)?;
-    let len = file.metadata()?.len();
+    let len = regular_file_len(path)?;
     if len < tally.offset {
         *tally = Tally::default();
     }
     if len == tally.offset {
         return Ok(());
     }
-    file.seek(SeekFrom::Start(tally.offset))?;
-    let mut reader = BufReader::with_capacity(READ_BUFFER, file.take(len - tally.offset));
-    let mut line = Vec::new();
-    loop {
-        let read = next_line(&mut reader, &mut line)?;
-        if !read.complete {
-            return Ok(());
-        }
-        if !read.oversized {
-            if let Ok(text) = std::str::from_utf8(&line) {
-                apply_line(tally, text);
-            }
-        }
-        tally.offset += read.consumed;
-    }
+    let from = tally.offset;
+    let consumed = read_lines(path, from, len, |line| apply_line(tally, line))?;
+    tally.offset += consumed;
+    Ok(())
 }
 
 impl TranscriptTallies {
@@ -411,6 +304,7 @@ pub async fn session_usage(
 
 #[cfg(test)]
 mod tests {
+    use super::super::transcript::{MAX_LINE, READ_BUFFER};
     use super::*;
     use std::io::Write;
 
