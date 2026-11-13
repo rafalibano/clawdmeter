@@ -67,3 +67,7 @@
 } @else if (!error()) {
   <section class="card">{{ i18n.t('common.loading') }}</section>
 }
+
+@if (dailyView(); as daily) {
+  <cm-usage-daily [view]="daily" />
+}
