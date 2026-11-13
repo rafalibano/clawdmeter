@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DAY_MS, HOUR_MS } from '../../../domain/time';
 import type { ExtraUsage, ResetGrant, UsageResets, UsageSnapshot } from '../../../domain/usage';
 import { Localizer } from '../../i18n';
-import { toExtraUsageView, toModelLimitViews, toResetsView, toUsageBlocksView } from './usage-blocks-view';
+import { scopedWindowLabel, toExtraUsageView, toModelLimitViews, toResetsView, toUsageBlocksView } from './usage-blocks-view';
 
 const EN = new Localizer('en');
 const PT = new Localizer('pt-BR');
@@ -29,7 +29,7 @@ const grant = (overrides: Partial<ResetGrant> = {}): ResetGrant => ({
   ...overrides,
 });
 
-const resets = (grants: ResetGrant[], overrides: Partial<UsageResets> = {}): UsageResets => ({ atLimit: false, exhausted: [], grants, ...overrides });
+const resets = (grants: ResetGrant[], overrides: Partial<UsageResets> = {}): UsageResets => ({ atLimit: false, exhausted: [], exhaustedScoped: [], grants, ...overrides });
 
 const data = (value: UsageResets | null) => ({ accountId: 'account-1', at: NOW, resets: value });
 
@@ -206,7 +206,7 @@ describe('toResetsView', () => {
     const scoped = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'] });
     const both = grant({ id: 'both', type: 'weekly', clears: ['sevenDay'], clearsScoped: ['seven_day_sonnet'] });
     const view = toResetsView(data(resets([scoped, both])), snapshot(), NOW, EN);
-    expect(view?.grants.map((item) => item.clears)).toEqual(['Clears seven_day_opus', 'Clears 7d + seven_day_sonnet']);
+    expect(view?.grants.map((item) => item.clears)).toEqual(['Clears Opus 7d', 'Clears 7d + Sonnet 7d']);
   });
 
   it('does not recommend a model-scoped grant when the main 7d is blocked', () => {
@@ -250,6 +250,25 @@ describe('toResetsView', () => {
       expires: 'expira em 2d',
       availability: 'dá para usar agora',
     });
+  });
+});
+
+describe('scopedWindowLabel', () => {
+  it('turns the window prefix into the 5h or 7d label and capitalizes the model name', () => {
+    expect(scopedWindowLabel('seven_day_opus')).toBe('Opus 7d');
+    expect(scopedWindowLabel('seven_day_sonnet')).toBe('Sonnet 7d');
+    expect(scopedWindowLabel('weekly_fable')).toBe('Fable 7d');
+    expect(scopedWindowLabel('five_hour_opus')).toBe('Opus 5h');
+  });
+
+  it('humanizes anything longer, replacing underscores with spaces', () => {
+    expect(scopedWindowLabel('seven_day_overage_included')).toBe('Overage included 7d');
+    expect(scopedWindowLabel('weekly_scoped')).toBe('Scoped 7d');
+  });
+
+  it('falls back to a humanized token when the prefix is unknown', () => {
+    expect(scopedWindowLabel('monthly_opus')).toBe('Monthly opus');
+    expect(scopedWindowLabel('x')).toBe('X');
   });
 });
 

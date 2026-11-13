@@ -183,6 +183,7 @@ export class DemoUsageResetsGateway implements UsageResetsGateway {
     return {
       atLimit: false,
       exhausted: [],
+      exhaustedScoped: [],
       grants: [
         {
           id: 'demo-session',

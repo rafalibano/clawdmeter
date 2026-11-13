@@ -61,6 +61,7 @@ const grant = (overrides: Partial<ResetGrant> = {}): ResetGrant => ({
 const resets = (grants: ResetGrant[], overrides: Partial<UsageResets> = {}): UsageResets => ({
   atLimit: false,
   exhausted: [],
+  exhaustedScoped: [],
   grants,
   ...overrides,
 });
@@ -76,6 +77,7 @@ describe('parseUsageResets', () => {
     expect(parsed).toEqual({
       atLimit: true,
       exhausted: ['fiveHour'],
+      exhaustedScoped: [],
       grants: [
         {
           id: 'g1',
@@ -115,7 +117,7 @@ describe('parseUsageResets', () => {
         7,
         [],
         rawGrant({ id: 'no-type-no-clears', type: undefined, clears: undefined }),
-        rawGrant({ id: 'scoped-only', type: undefined, clears: 'seven_day_opus' }),
+        rawGrant({ id: 'scoped-only', type: undefined, clears: 'five_hour_opus' }),
         rawGrant({ id: 'new-type', type: 'monthly' }),
         rawGrant({ id: '', type: 'weekly' }),
         rawGrant({ id: undefined, type: 'weekly' }),
@@ -185,9 +187,15 @@ describe('parseUsageResets', () => {
     expect(parseUsageResets(rawBlock([rawGrant({ type: null, clears: 'session' })]))?.grants[0]?.type).toBe('session');
   });
 
-  it('a grant without type and without usable clears is dropped, and so is one with only model-scoped windows', () => {
-    for (const clears of [undefined, null, 'whatever', [], 'seven_day_opus']) {
+  it('a grant without type and without usable clears is dropped', () => {
+    for (const clears of [undefined, null, 'whatever', [], 'five_hour_opus']) {
       expect(parseUsageResets(rawBlock([rawGrant({ type: undefined, clears })]))).toBeNull();
+    }
+  });
+
+  it('a grant without type and with only weekly model-scoped windows is kept as a weekly grant that clears no main window', () => {
+    for (const clears of ['seven_day_opus', ['weekly_scoped'], ['seven_day_sonnet', 'five_hour_opus']]) {
+      expect(parseUsageResets(rawBlock([rawGrant({ type: undefined, clears })]))?.grants[0]).toMatchObject({ type: 'weekly', clears: [] });
     }
   });
 
@@ -210,9 +218,10 @@ describe('parseUsageResets', () => {
     expect(parseUsageResets(rawBlock([rawGrant()], { exhausted: 'x' }))?.exhausted).toEqual([]);
   });
 
-  it('a model-scoped exhausted window does not mark the main 7d as blocked', () => {
+  it('a model-scoped exhausted window is kept by name and does not mark the main 7d as blocked', () => {
     const parsed = parseUsageResets(rawBlock([rawGrant()], { exhausted: ['seven_day_opus'] }));
     expect(parsed?.exhausted).toEqual([]);
+    expect(parsed?.exhaustedScoped).toEqual(['seven_day_opus']);
     expect(blockedWindows(snapshot(10, 10), parsed!).size).toBe(0);
   });
 });
@@ -320,6 +329,35 @@ describe('recommendedGrant', () => {
     const all = [session('session', NOW + 2 * DAY_MS), weekly('weekly', NOW + DAY_MS)];
     expect(recommendedGrant(resets(all, { exhausted: ['fiveHour'] }), snapshot(50, 50), NOW)?.id).toBe('session');
     expect(recommendedGrant(resets(all, { atLimit: true }), snapshot(50, 50), NOW)?.id).toBe('weekly');
+  });
+
+  it('at_limit with only a model-scoped exhaustion recommends no main-window grant', () => {
+    const all = resets([session('session', NOW + HOUR_MS), weekly('weekly', NOW + HOUR_MS), full('full', NOW + HOUR_MS)], {
+      atLimit: true,
+      exhaustedScoped: ['seven_day_opus'],
+    });
+    expect([...blockedWindows(snapshot(20, 30), all)]).toEqual([]);
+    expect(recommendedGrant(all, snapshot(20, 30), NOW)).toBeNull();
+  });
+
+  it('a grant with a matching model-scoped clears is recommended for that scoped exhaustion, never a full one', () => {
+    const opus = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'], endsAt: NOW + 3 * DAY_MS });
+    const sonnet = grant({ id: 'sonnet', type: 'weekly', clears: [], clearsScoped: ['seven_day_sonnet'], endsAt: NOW + HOUR_MS });
+    const all = resets([sonnet, full('full', NOW + HOUR_MS), opus], { atLimit: true, exhaustedScoped: ['seven_day_opus'] });
+    expect(recommendedGrant(all, snapshot(20, 30), NOW)?.id).toBe('opus');
+  });
+
+  it('with a main window and a scoped one blocked, the grant that covers both comes first', () => {
+    const opus = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'], endsAt: NOW + HOUR_MS });
+    const both = grant({ id: 'both', type: 'weekly', clears: ['sevenDay'], clearsScoped: ['seven_day_opus'], endsAt: NOW + 5 * DAY_MS });
+    const all = resets([opus, weekly('weekly', NOW + 2 * HOUR_MS), both], { exhaustedScoped: ['seven_day_opus'] });
+    expect(recommendedGrant(all, snapshot(20, 100), NOW)?.id).toBe('both');
+  });
+
+  it('the "both windows" fallback of at_limit applies only when exhausted is empty', () => {
+    expect([...blockedWindows(snapshot(10, 10), resets([grant()], { atLimit: true }))].sort()).toEqual(['fiveHour', 'sevenDay']);
+    expect(blockedWindows(snapshot(10, 10), resets([grant()], { atLimit: true, exhaustedScoped: ['seven_day_opus'] })).size).toBe(0);
+    expect([...blockedWindows(snapshot(10, 10), resets([grant()], { atLimit: true, exhausted: ['fiveHour'] }))]).toEqual(['fiveHour']);
   });
 
   it('with both windows blocked, a grant that clears both beats an earlier one that clears only one', () => {

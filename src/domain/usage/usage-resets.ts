@@ -24,6 +24,7 @@ export interface ResetGrant {
 export interface UsageResets {
   atLimit: boolean;
   exhausted: readonly UsageWindowKind[];
+  exhaustedScoped: readonly string[];
   grants: readonly ResetGrant[];
 }
 
@@ -70,8 +71,13 @@ function readId(value: unknown): string | null {
   return asText(value);
 }
 
-function readType(raw: unknown, declared: readonly UsageWindowKind[]): ResetGrantType | undefined {
-  if (raw === undefined || raw === null) return typeOfWindows(declared);
+function typeOfDeclared(declared: ReadWindows): ResetGrantType | undefined {
+  if (declared.windows.length > 0) return typeOfWindows(declared.windows);
+  return declared.scoped.some((token) => !token.startsWith('five_hour_')) ? 'weekly' : undefined;
+}
+
+function readType(raw: unknown, declared: ReadWindows): ResetGrantType | undefined {
+  if (raw === undefined || raw === null) return typeOfDeclared(declared);
   return RESET_GRANT_TYPES.find((candidate) => candidate === raw);
 }
 
@@ -79,7 +85,7 @@ function readGrant(raw: unknown): ResetGrant | null {
   if (!isRecord(raw)) return null;
   const id = readId(raw['id']);
   const declared = readWindows(raw['clears']);
-  const type = readType(raw['type'], declared.windows);
+  const type = readType(raw['type'], declared);
   if (id === null || type === undefined) return null;
   const total = asNumber(raw['resets_total']);
   const derived = declared.windows.length === 0 && declared.scoped.length === 0;
@@ -106,7 +112,8 @@ export function parseUsageResets(raw: unknown): UsageResets | null {
     return grant === null ? [] : [grant];
   });
   if (grants.length === 0) return null;
-  return { atLimit: raw['at_limit'] === true, exhausted: readWindows(raw['exhausted']).windows, grants };
+  const exhausted = readWindows(raw['exhausted']);
+  return { atLimit: raw['at_limit'] === true, exhausted: exhausted.windows, exhaustedScoped: exhausted.scoped, grants };
 }
 
 export function isGrantExpired(grant: ResetGrant, now: number): boolean {
@@ -130,16 +137,21 @@ export function blockedWindows(snapshot: UsageSnapshot, resets: UsageResets): Se
   for (const kind of ALL_WINDOWS) {
     if ((snapshot[kind]?.utilization ?? 0) >= EXHAUSTION_LEVEL) blocked.add(kind);
   }
-  if (blocked.size === 0 && resets.atLimit) ALL_WINDOWS.forEach((kind) => blocked.add(kind));
+  const listed = resets.exhausted.length > 0 || resets.exhaustedScoped.length > 0;
+  if (blocked.size === 0 && resets.atLimit && !listed) ALL_WINDOWS.forEach((kind) => blocked.add(kind));
   return blocked;
 }
 
-function clearsAll(grant: ResetGrant, blocked: ReadonlySet<UsageWindowKind>): boolean {
-  return [...blocked].every((kind) => grant.clears.includes(kind));
+function clearsAll(grant: ResetGrant, blocked: ReadonlySet<UsageWindowKind>, scoped: readonly string[]): boolean {
+  return [...blocked].every((kind) => grant.clears.includes(kind)) && scoped.every((token) => grant.clearsScoped.includes(token));
+}
+
+function clearsCount(grant: ResetGrant): number {
+  return grant.clears.length + grant.clearsScoped.length;
 }
 
 function expiresBefore(a: ResetGrant, b: ResetGrant): number {
-  if (a.endsAt === b.endsAt) return a.clears.length - b.clears.length;
+  if (a.endsAt === b.endsAt) return clearsCount(a) - clearsCount(b);
   if (a.endsAt === null) return 1;
   if (b.endsAt === null) return -1;
   return a.endsAt - b.endsAt;
@@ -147,11 +159,14 @@ function expiresBefore(a: ResetGrant, b: ResetGrant): number {
 
 export function recommendedGrant(resets: UsageResets, snapshot: UsageSnapshot, now: number): ResetGrant | null {
   const blocked = blockedWindows(snapshot, resets);
-  if (blocked.size === 0) return null;
+  const scoped = resets.exhaustedScoped;
+  if (blocked.size === 0 && scoped.length === 0) return null;
   const candidates = resets.grants.filter(
-    (grant) => isGrantUsable(grant, now) && grant.clears.some((kind) => blocked.has(kind)),
+    (grant) =>
+      isGrantUsable(grant, now) &&
+      (grant.clears.some((kind) => blocked.has(kind)) || grant.clearsScoped.some((token) => scoped.includes(token))),
   );
   const rank = (a: ResetGrant, b: ResetGrant) =>
-    Number(clearsAll(b, blocked)) - Number(clearsAll(a, blocked)) || expiresBefore(a, b);
+    Number(clearsAll(b, blocked, scoped)) - Number(clearsAll(a, blocked, scoped)) || expiresBefore(a, b);
   return [...candidates].sort(rank)[0] ?? null;
 }

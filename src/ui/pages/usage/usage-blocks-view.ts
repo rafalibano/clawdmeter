@@ -73,9 +73,24 @@ export function toExtraUsageView(extra: ExtraUsage | null | undefined, l: Locali
   };
 }
 
+const SCOPED_WINDOW = /^(five_hour|seven_day|weekly)_(.+)$/;
+
+function humanize(token: string): string {
+  const words = token.replace(/_+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export function scopedWindowLabel(token: string): string {
+  const match = SCOPED_WINDOW.exec(token);
+  if (match === null) return humanize(token);
+  const kind = match[1] === 'five_hour' ? 'fiveHour' : 'sevenDay';
+  const window = USAGE_WINDOWS.find((candidate) => candidate.kind === kind)?.label ?? '';
+  return `${humanize(match[2]!)} ${window}`.trim();
+}
+
 function clearsText(grant: ResetGrant, l: Localizer): string {
   const main = USAGE_WINDOWS.filter(({ kind }) => grant.clears.includes(kind)).map(({ label }) => label);
-  return l.t('usage.resets.clears', { windows: [...main, ...grant.clearsScoped].join(' + ') });
+  return l.t('usage.resets.clears', { windows: [...main, ...grant.clearsScoped.map(scopedWindowLabel)].join(' + ') });
 }
 
 function availabilityText(grant: ResetGrant, now: number, l: Localizer): string {

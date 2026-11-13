@@ -9,6 +9,11 @@ export const USAGE_RESETS_POLL_INTERVAL_MS = 15 * MINUTE_MS;
 
 type ResetsListener = (data: UsageResetsData | null) => void;
 
+interface Backoff {
+  failures: number;
+  blockedUntil: number;
+}
+
 export interface ConnectionStatusSource {
   subscribe(listener: (id: ConnectionId, status: ConnectionStatus) => void): Unsubscribe;
 }
@@ -22,10 +27,8 @@ export class UsageResetsMonitor {
   private key: string | null = null;
   private generation = 0;
   private inflight: number | null = null;
-  private claudeDisconnected = false;
-  private backoffAccount: string | null = null;
-  private failures = 0;
-  private blockedUntil = 0;
+  private claudeState: ConnectionStatus['state'] | null = null;
+  private readonly backoffs = new Map<string, Backoff>();
 
   constructor(
     private readonly loader: LoadUsageResets | null,
@@ -54,11 +57,6 @@ export class UsageResetsMonitor {
     this.key = key;
     this.target = target;
     if (target === null) return;
-    if (this.backoffAccount !== target.accountId) {
-      this.backoffAccount = target.accountId;
-      this.failures = 0;
-      this.blockedUntil = 0;
-    }
     this.stopTimer = this.clock.every(USAGE_RESETS_POLL_INTERVAL_MS, () => void this.refresh());
     void this.refresh();
   }
@@ -74,6 +72,10 @@ export class UsageResetsMonitor {
   private stopWatching(): void {
     this.stopTimer?.();
     this.stopTimer = null;
+    this.hide();
+  }
+
+  private hide(): void {
     this.generation += 1;
     this.publish(null);
   }
@@ -85,32 +87,32 @@ export class UsageResetsMonitor {
 
   private onConnection(id: ConnectionId, status: ConnectionStatus): void {
     if (id !== 'claude') return;
-    const disconnected = status.state === 'disconnected';
-    const reconnected = this.claudeDisconnected && !disconnected;
-    this.claudeDisconnected = disconnected;
-    if (disconnected) this.publish(null);
-    else if (reconnected && this.target !== null) void this.refresh();
+    const previous = this.claudeState;
+    this.claudeState = status.state;
+    if (status.state === 'disconnected' || status.state === 'error') this.hide();
+    else if (status.state === 'connected' && previous !== 'connected' && this.target !== null && this.data === null) void this.refresh();
   }
 
   private async refresh(): Promise<void> {
     const { generation, target } = this;
-    if (this.loader === null || target === null || this.inflight === generation || this.clock.now() < this.blockedUntil) return;
+    if (this.loader === null || target === null || this.inflight === generation) return;
+    if (this.clock.now() < (this.backoffs.get(target.accountId)?.blockedUntil ?? 0)) return;
     this.inflight = generation;
     try {
       const data = await this.loader.execute(target);
-      if (generation !== this.generation) return;
-      this.failures = 0;
-      this.publish(data?.resets ? data : null);
+      this.backoffs.delete(target.accountId);
+      if (generation === this.generation) this.publish(data?.resets ? data : null);
     } catch (error) {
-      if (generation !== this.generation) return;
-      if (error instanceof RateLimitedError) {
-        this.failures += 1;
-        this.blockedUntil = this.clock.now() + rateLimitDelay(this.failures, error.retryAfterMs);
-      }
-      this.publish(null);
+      if (error instanceof RateLimitedError) this.backOff(target.accountId, error.retryAfterMs);
+      if (generation === this.generation) this.publish(null);
     } finally {
       if (this.inflight === generation) this.inflight = null;
     }
+  }
+
+  private backOff(accountId: string, retryAfterMs: number | null): void {
+    const failures = (this.backoffs.get(accountId)?.failures ?? 0) + 1;
+    this.backoffs.set(accountId, { failures, blockedUntil: this.clock.now() + rateLimitDelay(failures, retryAfterMs) });
   }
 
   private publish(data: UsageResetsData | null): void {

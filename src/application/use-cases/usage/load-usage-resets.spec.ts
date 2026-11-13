@@ -12,6 +12,7 @@ const TARGET = { accountId: 'account-1', clientId: CLIENT_ID };
 const RESETS: UsageResets = {
   atLimit: false,
   exhausted: [],
+  exhaustedScoped: [],
   grants: [
     {
       id: 'g1',
