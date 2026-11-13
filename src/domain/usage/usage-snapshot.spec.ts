@@ -17,7 +17,28 @@ describe('parseUsageResponse', () => {
       seven_day_opus: { utilization: 9, resets_at: null },
       extra_usage: { is_enabled: false },
     });
-    expect(snapshot).toEqual({ fiveHour: { utilization: 1, resetsAt: null }, sevenDay: null });
+    expect(snapshot).toEqual({
+      fiveHour: { utilization: 1, resetsAt: null },
+      sevenDay: null,
+      modelLimits: [{ name: 'Opus', utilization: 9, resetsAt: null }],
+      extraUsage: null,
+    });
+  });
+
+  it('keeps the windows and gives empty model limits and no extra usage when the account sends neither', () => {
+    const snapshot = parseUsageResponse({ five_hour: { utilization: 5, resets_at: null }, seven_day: null });
+    expect(snapshot.modelLimits).toEqual([]);
+    expect(snapshot.extraUsage).toBeNull();
+  });
+
+  it('reads model limits and extra usage next to the windows', () => {
+    const snapshot = parseUsageResponse({
+      five_hour: { utilization: 1, resets_at: null },
+      limits: [{ kind: 'weekly_scoped', group: 'weekly', percent: 30, resets_at: '2026-11-09T10:00:00+00:00', scope: { model: { display_name: 'Fable' } } }],
+      extra_usage: { is_enabled: true, currency: 'USD', monthly_limit: 10_000, used_credits: 2_500, utilization: null },
+    });
+    expect(snapshot.modelLimits).toEqual([{ name: 'Fable', utilization: 30, resetsAt: Date.parse('2026-11-09T10:00:00+00:00') }]);
+    expect(snapshot.extraUsage).toMatchObject({ enabled: true, percent: 25 });
   });
 
   it('accepts textual utilization and resets_at in epoch (s or ms)', () => {

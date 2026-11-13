@@ -10,6 +10,7 @@ import { SettingsFacade } from '../../shell/settings.facade';
 import { chartPalette } from '../../theme/chart-palette';
 import { ThemeService } from '../../theme/theme.service';
 import { buildChartOption } from './usage-chart-option';
+import { toUsageBlocksView } from './usage-blocks-view';
 import { USAGE_PAGE } from './usage-page-ref';
 import { UsageViewState } from './usage-view-state';
 import { activeUsageData, toUsageErrorView, toUsageView } from './usage-view';
@@ -35,6 +36,7 @@ export class UsageComponent {
   private readonly settings = inject(SettingsFacade);
   private readonly theme = inject(ThemeService);
   private readonly now = signal(this.application.clock.now());
+  private readonly resetsData = signal(this.application.usageResets.current);
   protected readonly i18n = inject(I18n);
 
   protected readonly ranges = USAGE_RANGES;
@@ -45,8 +47,29 @@ export class UsageComponent {
     return chartPalette(appearance.accentColor, appearance.popoverBackground, this.theme.resolved(), seriesColors);
   });
 
+  private readonly activeData = computed(() =>
+    activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId),
+  );
+
+  protected readonly blocks = computed(() => {
+    const data = this.activeData();
+    if (data === undefined) return null;
+    const { usageBlocks, claude } = this.settings.settings();
+    return toUsageBlocksView(
+      {
+        snapshot: data.snapshot,
+        at: data.at,
+        now: this.now(),
+        blocks: usageBlocks,
+        resets: this.resetsData(),
+        activeAccountId: claude.activeAccountId,
+      },
+      this.i18n.localizer(),
+    );
+  });
+
   protected readonly view = computed(() => {
-    const data = activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId);
+    const data = this.activeData();
     if (data === undefined) return null;
     const l = this.i18n.localizer();
     const usage = toUsageView(data, this.rangeId(), l, this.settings.settings().projectionMethod);
@@ -73,7 +96,11 @@ export class UsageComponent {
 
   constructor() {
     const stop = this.application.clock.every(CLOCK_TICK_MS, () => this.now.set(this.application.clock.now()));
-    inject(DestroyRef).onDestroy(stop);
+    const unsubscribe = this.application.usageResets.subscribe((data) => this.resetsData.set(data));
+    inject(DestroyRef).onDestroy(() => {
+      stop();
+      unsubscribe();
+    });
   }
 
   protected rangeLabel(range: UsageRange): string {

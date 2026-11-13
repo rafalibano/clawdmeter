@@ -2,6 +2,7 @@ import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings 
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import { normalizeUsageBlocks, type UsageBlockSettings } from '../usage/usage-blocks';
 import {
   isUuid,
   normalizeActiveAccountId,
@@ -20,6 +21,7 @@ export interface SettingsPatch {
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
+  usageBlocks?: Partial<UsageBlockSettings>;
   claude?: Partial<ClaudeSettings>;
 }
 
@@ -37,6 +39,9 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   }
   if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
     merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
+  }
+  if (first.usageBlocks !== undefined || second.usageBlocks !== undefined) {
+    merged.usageBlocks = { ...first.usageBlocks, ...second.usageBlocks };
   }
   if (first.claude !== undefined || second.claude !== undefined) {
     merged.claude = { ...first.claude, ...second.claude };
@@ -101,6 +106,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
+    usageBlocks: normalizeUsageBlocks(patch.usageBlocks, current.usageBlocks),
     claude: applyClaude(current.claude, patch.claude ?? {}),
   };
 }

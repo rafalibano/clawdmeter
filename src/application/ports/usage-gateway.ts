@@ -1,7 +1,11 @@
-import type { ExternalUsagePoint, UsageHistory, UsageSnapshot } from '../../domain/usage';
+import type { ExternalUsagePoint, UsageHistory, UsageResets, UsageSnapshot } from '../../domain/usage';
 
 export interface UsageGateway {
   fetch(accountId: string, clientId: string): Promise<UsageSnapshot>;
+}
+
+export interface UsageResetsGateway {
+  fetch(accountId: string, clientId: string): Promise<UsageResets | null>;
 }
 
 export interface UsageHistoryStore {

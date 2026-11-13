@@ -47,6 +47,7 @@ describe('migrateSettings', () => {
       projectionMethod: 'since-reset',
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
       usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
+      usageBlocks: { modelLimits: false, extraUsage: true, resets: false },
       claude: {
         useDefaultClientId: false,
         clientId: '11111111-2222-4333-8444-555555555555',
@@ -257,7 +258,7 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
   it('a file from version 9 without claude uses the default client id, with no custom id and zero accounts, keeping the rest', () => {
     const migrated = migrateSettings({ schemaVersion: 9, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(10);
+    expect(migrated.schemaVersion).toBeGreaterThanOrEqual(10);
     expect(migrated.claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null });
     expect(migrated.language).toBe('pt-BR');
     expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
@@ -362,3 +363,37 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
   });
 });
 
+
+describe('migration 10 -> 11 (usage blocks)', () => {
+  it('a file from version 10 gets the three blocks on and keeps the rest', () => {
+    const migrated = migrateSettings({ schemaVersion: 10, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(11);
+    expect(migrated.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    expect(migrated.language).toBe('pt-BR');
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
+  });
+
+  it('createDefaultSettings turns the three blocks on and does not share the object between calls', () => {
+    const defaults = createDefaultSettings();
+    expect(defaults.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    defaults.usageBlocks.resets = false;
+    expect(createDefaultSettings().usageBlocks.resets).toBe(true);
+  });
+
+  it('valid flags are kept; invalid or missing ones fall back to on', () => {
+    expect(migrateSettings({ schemaVersion: 11, usageBlocks: { modelLimits: false, extraUsage: 'no', resets: false } }).usageBlocks).toEqual({
+      modelLimits: false,
+      extraUsage: true,
+      resets: false,
+    });
+    for (const usageBlocks of ['x', null, 3, [], undefined]) {
+      expect(migrateSettings({ schemaVersion: 10, usageBlocks }).usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    }
+  });
+
+  it('unknown block ids are dropped', () => {
+    const migrated = migrateSettings({ schemaVersion: 11, usageBlocks: { resets: false, lastDays: true } });
+    expect(migrated.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: false });
+  });
+});

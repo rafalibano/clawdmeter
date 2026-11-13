@@ -55,6 +55,15 @@ export class Localizer implements Translator {
     return `US$ ${this.number(usd)}`;
   }
 
+  money(minorUnits: number, currency: string, exponent = 2): string {
+    return new Intl.NumberFormat(this.locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent,
+    }).format(minorUnits / 10 ** exponent);
+  }
+
   clock(at: number, timeZone?: string): string {
     return new Intl.DateTimeFormat(this.locale, {
       hour: '2-digit',
