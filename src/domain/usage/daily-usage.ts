@@ -14,6 +14,7 @@ export interface RawDailyUsageDay {
 
 export interface RawDailyUsage {
   complete: boolean;
+  truncated: boolean;
   days: RawDailyUsageDay[];
 }
 
@@ -35,6 +36,7 @@ export interface DailyUsage {
   days: DailyUsageDay[];
   modelShare: ModelShare[];
   totalTokens: number;
+  partial: boolean;
 }
 
 export function localDayStarts(now: number, days: number): number[] {
@@ -79,7 +81,12 @@ export function buildDailyUsage(raw: RawDailyUsage): DailyUsage {
       };
     })
     .sort((a, b) => b.start - a.start);
-  return { days, modelShare: modelShare(days), totalTokens: sum(days.map((day) => day.totalTokens)) };
+  return {
+    days,
+    modelShare: modelShare(days),
+    totalTokens: sum(days.map((day) => day.totalTokens)),
+    partial: !raw.complete || raw.truncated,
+  };
 }
 
 export function hasDailyActivity(usage: DailyUsage): boolean {

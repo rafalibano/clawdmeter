@@ -34,7 +34,7 @@ export function toRawDailyUsage(raw: unknown): RawDailyUsage | null {
   const record = raw as Record<string, unknown>;
   if (!Array.isArray(record['days'])) return null;
   const days = record['days'].map(toDay).filter((day): day is RawDailyUsageDay => day !== null);
-  return { complete: record['complete'] !== false, days };
+  return { complete: record['complete'] === true, truncated: record['truncated'] === true, days };
 }
 
 export class TauriDailyUsageReader implements DailyUsageReader {

@@ -1,42 +1,49 @@
 <section class="card daily" data-block="daily">
   <h2 class="daily-title">{{ i18n.t('usage.daily.title') }}</h2>
-  @if (view().empty) {
-    <p class="daily-none">{{ i18n.t('usage.daily.empty') }}</p>
+  @if (view(); as daily) {
+    @if (daily.empty) {
+      <p class="daily-none">{{ i18n.t('usage.daily.empty') }}</p>
+    } @else {
+      <h3 class="daily-heading">{{ i18n.t('usage.daily.share') }}</h3>
+      <ul class="shares">
+        @for (share of daily.shares; track share.title) {
+          <li class="share">
+            <span class="share-model" [attr.title]="share.title">{{ share.model }}</span>
+            <span class="share-track"><span class="share-fill" [style.width.%]="share.fill"></span></span>
+            <span class="share-percent">{{ share.percent }}</span>
+          </li>
+        }
+      </ul>
+      <ul class="days">
+        @for (day of daily.days; track day.key) {
+          <li class="day" [attr.data-idle]="day.idle">
+            <div class="day-head">
+              <span class="day-label">{{ day.label }}</span>
+              <span class="day-total">{{ day.total }}</span>
+            </div>
+            @if (day.idle) {
+              <p class="day-meta">{{ i18n.t('usage.daily.idle') }}</p>
+            } @else {
+              <p class="day-meta">
+                <span>{{ day.sessions }}</span>
+                @if (day.context) {
+                  <span>{{ day.context }}</span>
+                }
+              </p>
+              <div class="day-models" role="group" [attr.aria-label]="i18n.t('usage.daily.tokensByModel')">
+                @for (model of day.models; track model.title) {
+                  <span class="day-model" [attr.title]="model.title"><span class="day-model-name">{{ model.model }}</span> {{ model.tokens }}</span>
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+    @if (daily.partial) {
+      <p class="daily-partial" data-partial>{{ i18n.t('usage.daily.partial') }}</p>
+    }
   } @else {
-    <h3 class="daily-heading">{{ i18n.t('usage.daily.share') }}</h3>
-    <ul class="shares">
-      @for (share of view().shares; track share.model) {
-        <li class="share">
-          <span class="share-model">{{ share.model }}</span>
-          <span class="share-track"><span class="share-fill" [style.width.%]="share.fill"></span></span>
-          <span class="share-percent">{{ share.percent }}</span>
-        </li>
-      }
-    </ul>
-    <ul class="days">
-      @for (day of view().days; track day.key) {
-        <li class="day" [attr.data-idle]="day.idle">
-          <div class="day-head">
-            <span class="day-label">{{ day.label }}</span>
-            <span class="day-total">{{ day.total }}</span>
-          </div>
-          @if (day.idle) {
-            <p class="day-meta">{{ i18n.t('usage.daily.idle') }}</p>
-          } @else {
-            <p class="day-meta">
-              <span>{{ day.sessions }}</span>
-              @if (day.context) {
-                <span>{{ day.context }}</span>
-              }
-            </p>
-            <p class="day-models">
-              @for (model of day.models; track model.model) {
-                <span class="day-model"><span class="day-model-name">{{ model.model }}</span> {{ model.tokens }}</span>
-              }
-            </p>
-          }
-        </li>
-      }
-    </ul>
+    <p class="daily-none" data-loading>{{ i18n.t('common.loading') }}</p>
   }
 </section>

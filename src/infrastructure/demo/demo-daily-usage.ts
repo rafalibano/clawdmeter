@@ -26,6 +26,6 @@ export class DemoDailyUsageReader implements DailyUsageReader {
         contextPeaks: [...pattern.peaks],
       };
     });
-    return { complete: true, days };
+    return { complete: true, truncated: false, days };
   }
 }

@@ -103,7 +103,7 @@ export function createComposition(): Application {
     settingsStore,
     connectionAdapters,
     usageHistories,
-    loadDailyUsage: new LoadDailyUsage(settingsStore, new TauriDailyUsageReader(commands), clock),
+    loadDailyUsage: new LoadDailyUsage(new TauriDailyUsageReader(commands), clock),
     updateChecker: new TauriUpdateChecker(commands),
     launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>

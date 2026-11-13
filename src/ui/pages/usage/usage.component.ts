@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import type { ConnectionAction } from '../../../domain/connections';
-import { USAGE_RANGES, type DailyUsage, type UsageRange } from '../../../domain/usage';
+import { USAGE_RANGES, type UsageRange } from '../../../domain/usage';
+import type { DailyUsageState } from '../../../application/daily-usage';
 import { I18n } from '../../i18n';
 import { APPLICATION } from '../../shell/application.token';
 import { ConnectionsFacade } from '../../shell/connections.facade';
@@ -59,11 +60,12 @@ export class UsageComponent {
     };
   });
 
-  private readonly daily = signal<DailyUsage | null>(this.application.dailyUsage.current);
+  private readonly daily = signal<DailyUsageState | null>(this.application.dailyUsage.current);
 
-  protected readonly dailyView = computed(() => {
-    const usage = this.daily();
-    return usage === null ? null : toDailyView(usage, this.now(), this.i18n.localizer());
+  protected readonly dailyBlock = computed(() => {
+    const state = this.daily();
+    if (state === null) return null;
+    return { view: state.status === 'ready' ? toDailyView(state.usage, this.now(), this.i18n.localizer()) : null };
   });
 
   protected readonly error = computed(() => {
@@ -82,7 +84,7 @@ export class UsageComponent {
 
   constructor() {
     const stop = this.application.clock.every(CLOCK_TICK_MS, () => this.now.set(this.application.clock.now()));
-    const stopDaily = this.application.dailyUsage.subscribe((usage) => this.daily.set(usage));
+    const stopDaily = this.application.dailyUsage.subscribe((state) => this.daily.set(state));
     inject(DestroyRef).onDestroy(() => {
       stop();
       stopDaily();

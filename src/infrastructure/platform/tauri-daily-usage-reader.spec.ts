@@ -4,7 +4,7 @@ import { PlatformCommandError } from './tauri-commands';
 import { TauriDailyUsageReader, toRawDailyUsage } from './tauri-daily-usage-reader';
 
 const REPLY = {
-  complete: true,
+  complete: true, truncated: false,
   days: [
     { start: 1_800_000_000, models: [{ model: 'claude-opus-5-5', tokens: 1_200 }], sessions: 2, contextPeaks: [400_000, 100_000] },
     { start: 1_800_086_400, models: [], sessions: 0, contextPeaks: [] },
@@ -14,7 +14,7 @@ const REPLY = {
 describe('toRawDailyUsage', () => {
   it('reads the days with the start as epoch ms', () => {
     expect(toRawDailyUsage(REPLY)).toEqual({
-      complete: true,
+      complete: true, truncated: false,
       days: [
         { start: 1_800_000_000_000, models: [{ model: 'claude-opus-5-5', tokens: 1_200 }], sessions: 2, contextPeaks: [400_000, 100_000] },
         { start: 1_800_086_400_000, models: [], sessions: 0, contextPeaks: [] },
@@ -31,7 +31,7 @@ describe('toRawDailyUsage', () => {
   it('malformed fields fall back to empty values and days without a start are dropped', () => {
     expect(
       toRawDailyUsage({
-        complete: false,
+        complete: false, truncated: false,
         days: [
           null,
           { models: [] },
@@ -39,7 +39,7 @@ describe('toRawDailyUsage', () => {
         ],
       }),
     ).toEqual({
-      complete: false,
+      complete: false, truncated: false,
       days: [{ start: 5_000, models: [{ model: 'm', tokens: 0 }, { model: 'n', tokens: 0 }], sessions: 0, contextPeaks: [7] }],
     });
   });
@@ -57,5 +57,13 @@ describe('TauriDailyUsageReader', () => {
     expect(await new TauriDailyUsageReader(createFakeCommands(() => null).commands).read([1_000, 2_000])).toBeNull();
     const failing = new TauriDailyUsageReader(createFakeCommands(() => rejectWith('invalid_argument', 'invalid day range')).commands);
     await expect(failing.read([1])).rejects.toBeInstanceOf(PlatformCommandError);
+  });
+});
+
+describe('toRawDailyUsage completeness', () => {
+  it('only an explicit true counts as complete or truncated', () => {
+    expect(toRawDailyUsage({ days: [] })).toEqual({ complete: false, truncated: false, days: [] });
+    expect(toRawDailyUsage({ complete: 'yes', truncated: 1, days: [] })).toEqual({ complete: false, truncated: false, days: [] });
+    expect(toRawDailyUsage({ complete: true, truncated: true, days: [] })).toEqual({ complete: true, truncated: true, days: [] });
   });
 });

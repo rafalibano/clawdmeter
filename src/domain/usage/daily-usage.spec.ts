@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { averageContext, buildDailyUsage, hasDailyActivity, localDayStarts, modelShare, type RawDailyUsage } from './daily-usage';
 
 const day = (start: number, models: Record<string, number>, sessions: number, contextPeaks: number[]) => ({
@@ -47,7 +47,7 @@ describe('modelShare', () => {
 
 describe('buildDailyUsage', () => {
   const raw: RawDailyUsage = {
-    complete: true,
+    complete: true, truncated: false,
     days: [day(1_000, { opus: 10, haiku: 30 }, 2, [100, 300]), day(2_000, {}, 0, []), day(3_000, { opus: 60 }, 1, [500])],
   };
 
@@ -87,12 +87,12 @@ describe('buildDailyUsage', () => {
 
 describe('hasDailyActivity', () => {
   it('is false when every day is empty', () => {
-    expect(hasDailyActivity(buildDailyUsage({ complete: true, days: [day(1, {}, 0, []), day(2, {}, 0, [])] }))).toBe(false);
+    expect(hasDailyActivity(buildDailyUsage({ complete: true, truncated: false, days: [day(1, {}, 0, []), day(2, {}, 0, [])] }))).toBe(false);
   });
 
   it('is true when there are tokens or sessions', () => {
-    expect(hasDailyActivity(buildDailyUsage({ complete: true, days: [day(1, { a: 1 }, 1, [1])] }))).toBe(true);
-    expect(hasDailyActivity(buildDailyUsage({ complete: true, days: [day(1, {}, 1, [])] }))).toBe(true);
+    expect(hasDailyActivity(buildDailyUsage({ complete: true, truncated: false, days: [day(1, { a: 1 }, 1, [1])] }))).toBe(true);
+    expect(hasDailyActivity(buildDailyUsage({ complete: true, truncated: false, days: [day(1, {}, 1, [])] }))).toBe(true);
   });
 });
 
@@ -118,5 +118,42 @@ describe('localDayStarts', () => {
     const starts = localDayStarts(now, 3);
     expect(starts[2]).toBeLessThanOrEqual(now);
     expect(starts[3]).toBeGreaterThan(now);
+  });
+});
+
+describe('localDayStarts across daylight saving time', () => {
+  const original = process.env['TZ'];
+
+  beforeAll(() => {
+    process.env['TZ'] = 'America/New_York';
+  });
+
+  afterAll(() => {
+    if (original === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = original;
+  });
+
+  const hoursBetween = (starts: number[]) => starts.slice(1).map((start, index) => (start - (starts[index] ?? 0)) / 3_600_000);
+
+  it('has a 23 hour day when the clocks go forward and keeps every boundary at local midnight', () => {
+    const starts = localDayStarts(new Date(2026, 2, 9, 12, 0).getTime(), 3);
+    expect(hoursBetween(starts)).toEqual([24, 23, 24]);
+    expect(starts.every((start) => new Date(start).getHours() === 0)).toBe(true);
+  });
+
+  it('has a 25 hour day when the clocks go back', () => {
+    const starts = localDayStarts(new Date(2026, 10, 2, 12, 0).getTime(), 3);
+    expect(hoursBetween(starts)).toEqual([24, 25, 24]);
+    expect(starts.every((start) => new Date(start).getHours() === 0)).toBe(true);
+  });
+});
+
+describe('partial usage', () => {
+  const days = [day(1, { a: 1 }, 1, [1])];
+
+  it('is partial when the scan is incomplete or left files out, and complete otherwise', () => {
+    expect(buildDailyUsage({ complete: true, truncated: false, days }).partial).toBe(false);
+    expect(buildDailyUsage({ complete: false, truncated: false, days }).partial).toBe(true);
+    expect(buildDailyUsage({ complete: true, truncated: true, days }).partial).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, MAX_CLAUDE_ACCOUNTS } from './claude-accounts';
 import { createDefaultSettings } from './defaults';
-import { migrateSettings, type Migration } from './migrate-settings';
+import { migrateSettings, type Migration, MIGRATIONS } from './migrate-settings';
 import { isPageEnabled } from './page-enabled';
 import { SCHEMA_VERSION } from './schema-version';
 
@@ -367,7 +367,8 @@ describe('migration 10 -> 11 (last days block)', () => {
   it('a file from version 10 gets the block switched off and keeps the rest', () => {
     const migrated = migrateSettings({ schemaVersion: 10, language: 'es-MX', usageAlerts: { fiveHour: [75], sevenDay: [] } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(11);
+    expect(SCHEMA_VERSION).toBe(11);
+    expect(MIGRATIONS).toHaveLength(SCHEMA_VERSION);
     expect(migrated.usageDailyHistory).toBe(false);
     expect(migrated.language).toBe('es-MX');
     expect(migrated.usageAlerts).toEqual({ fiveHour: [75], sevenDay: [] });

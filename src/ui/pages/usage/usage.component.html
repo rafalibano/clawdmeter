@@ -68,6 +68,6 @@
   <section class="card">{{ i18n.t('common.loading') }}</section>
 }
 
-@if (dailyView(); as daily) {
-  <cm-usage-daily [view]="daily" />
+@if (dailyBlock(); as block) {
+  <cm-usage-daily [view]="block.view" />
 }

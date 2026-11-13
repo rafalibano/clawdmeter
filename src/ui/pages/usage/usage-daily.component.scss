@@ -121,6 +121,17 @@
   font-weight: 500;
 }
 
+.day-model {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.daily-partial {
+  margin: 10px 0 0;
+  color: var(--cm-muted);
+  font-size: 11px;
+}
+
 .day-model-name {
   color: var(--cm-fg);
 }

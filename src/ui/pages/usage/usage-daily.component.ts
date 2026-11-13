@@ -9,6 +9,6 @@ import type { DailyView } from './usage-daily-view';
   styleUrl: './usage-daily.component.scss',
 })
 export class UsageDailyComponent {
-  readonly view = input.required<DailyView>();
+  readonly view = input.required<DailyView | null>();
   protected readonly i18n = inject(I18n);
 }

@@ -69,7 +69,7 @@ export function createComposition(): Application {
     settingsStore,
     connectionAdapters,
     usageHistories,
-    loadDailyUsage: new LoadDailyUsage(settingsStore, new DemoDailyUsageReader(), clock),
+    loadDailyUsage: new LoadDailyUsage(new DemoDailyUsageReader(), clock),
     updateChecker: new DemoUpdateChecker(world.update),
     launchAtLogin: new DemoLaunchAtLogin(),
     skills: ({ connections }) =>
