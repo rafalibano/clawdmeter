@@ -3,6 +3,7 @@ import type {
   UsageGateway,
   UsageHistoryStore,
   UsageHistoryStores,
+  UsageResetsGateway,
 } from '../../application/ports';
 import { ConnectionProblemError } from '../../domain/connections';
 import { RateLimitedError } from '../../domain/rate-limit';
@@ -12,6 +13,7 @@ import {
   retainHistory,
   type ExternalUsagePoint,
   type UsageHistory,
+  type UsageResets,
   type UsageSnapshot,
 } from '../../domain/usage';
 
@@ -27,6 +29,10 @@ const IDLE_BELOW = 8;
 const SAMPLE_STEP_MS = MINUTE_MS;
 const GAP_START_AGO_MS = 4 * DAY_MS;
 const GAP_END_AGO_MS = 2.5 * DAY_MS;
+const FABLE_WEEKLY_SHARE = 0.55;
+const SONNET_WEEKLY_SHARE = 0.3;
+const EXTRA_USED_MINOR = 4_250;
+const EXTRA_LIMIT_MINOR = 10_000;
 
 function hash(index: number, salt: number): number {
   let value = Math.imul(index + 100_000, 0x9e3779b1) ^ Math.imul(salt + 1, 0x85ebca6b);
@@ -65,9 +71,24 @@ export class DemoUsageModel {
     const windowIndex = this.windowIndexAt(at);
     const windowStart = this.windowStart(windowIndex);
     const weekStart = this.weekAnchor + Math.floor((at - this.weekAnchor) / WEEK_MS) * WEEK_MS;
+    const weekly = this.weekValue(weekStart, at);
+    const weekResetsAt = weekStart + WEEK_MS;
     return {
       fiveHour: { utilization: this.windowValue(windowIndex, at), resetsAt: windowStart + FIVE_HOUR_MS },
-      sevenDay: { utilization: this.weekValue(weekStart, at), resetsAt: weekStart + WEEK_MS },
+      sevenDay: { utilization: weekly, resetsAt: weekResetsAt },
+      modelLimits: [
+        { name: 'Fable', utilization: weekly * FABLE_WEEKLY_SHARE, resetsAt: weekResetsAt },
+        { name: 'Sonnet', utilization: weekly * SONNET_WEEKLY_SHARE, resetsAt: weekResetsAt },
+      ],
+      extraUsage: {
+        enabled: true,
+        limitReached: false,
+        usedMinor: EXTRA_USED_MINOR,
+        limitMinor: EXTRA_LIMIT_MINOR,
+        percent: (EXTRA_USED_MINOR / EXTRA_LIMIT_MINOR) * 100,
+        currency: 'USD',
+        exponent: 2,
+      },
     };
   }
 
@@ -151,6 +172,60 @@ export class DemoUsageGateway implements UsageGateway {
     if (this.rateLimitedAfterFirst && this.calls > 1) throw new RateLimitedError(12 * MINUTE_MS);
     if (this.accounts?.requiresSignIn(accountId)) throw new ConnectionProblemError('claude-signin-required');
     return this.models.forAccount(accountId).snapshotAt(this.now());
+  }
+}
+
+export class DemoUsageResetsGateway implements UsageResetsGateway {
+  constructor(private readonly now: () => number = Date.now) {}
+
+  async fetch(): Promise<UsageResets | null> {
+    const now = this.now();
+    return {
+      atLimit: false,
+      exhausted: [],
+      exhaustedScoped: [],
+      grants: [
+        {
+          id: 'demo-session',
+          label: null,
+          type: 'session',
+          resetsLeft: 2,
+          resetsTotal: 3,
+          startsAt: now - DAY_MS,
+          endsAt: now + 2 * DAY_MS,
+          clears: ['fiveHour'],
+          clearsScoped: [],
+          paused: false,
+          usableNow: true,
+        },
+        {
+          id: 'demo-weekly',
+          label: null,
+          type: 'weekly',
+          resetsLeft: 1,
+          resetsTotal: 1,
+          startsAt: now - 2 * DAY_MS,
+          endsAt: now + 5 * DAY_MS,
+          clears: ['sevenDay'],
+          clearsScoped: [],
+          paused: false,
+          usableNow: true,
+        },
+        {
+          id: 'demo-full',
+          label: null,
+          type: 'full',
+          resetsLeft: 1,
+          resetsTotal: 1,
+          startsAt: now + DAY_MS,
+          endsAt: now + 9 * DAY_MS,
+          clears: ['fiveHour', 'sevenDay'],
+          clearsScoped: [],
+          paused: false,
+          usableNow: false,
+        },
+      ],
+    };
   }
 }
 

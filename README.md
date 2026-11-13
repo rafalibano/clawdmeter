@@ -19,7 +19,7 @@ ClawdMeter is a menu bar app for macOS, Windows and Linux that shows, in one cli
 
 | Tab | What it shows |
 |---|---|
-| Usage | bars for the 5h and 7d consumption of the selected Claude account, with a mark at the projected % at the reset, and a history chart (1h, 6h, 1d, 7d, 30d or the weekly cycle) |
+| Usage | bars for the 5h and 7d consumption of the selected Claude account, with a mark at the projected % at the reset, optional blocks with the weekly limit per model, the extra usage and the resets left (each can be turned off in Settings > Usage tab), and a history chart (1h, 6h, 1d, 7d, 30d or the weekly cycle) |
 | Sessions | the open Claude Code sessions and the ones waiting for you |
 | Pull Requests | your open PRs, grouped by repository, with CI, review, conflict and age |
 | Reviews | PRs for you to review and the ones you already reviewed |

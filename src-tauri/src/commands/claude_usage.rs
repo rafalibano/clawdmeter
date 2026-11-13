@@ -14,6 +14,7 @@ use super::secrets::{app_store, SecretStore};
 
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 pub const OAUTH_BETA: &str = "oauth-2025-04-20";
+const RESETS_QUERY: &str = "cedar_ember=1&skip_spend=1";
 const USER_AGENT: &str = concat!("ClawdMeter/", env!("CARGO_PKG_VERSION"));
 const USAGE_TIMEOUT_SECS: u64 = 15;
 const MAX_USAGE_BYTES: usize = 256 * 1024;
@@ -218,6 +219,43 @@ pub async fn fetch_usage(
     account_id: &str,
     client_id: &str,
 ) -> CommandResult<serde_json::Value> {
+    fetch_authorized(
+        locks,
+        store,
+        endpoints,
+        endpoints.usage,
+        account_id,
+        client_id,
+    )
+    .await
+}
+
+fn resets_url(usage_url: &str) -> String {
+    format!("{usage_url}?{RESETS_QUERY}")
+}
+
+pub async fn fetch_resets(
+    locks: &AccountLocks,
+    store: TokenStore,
+    endpoints: &Endpoints<'_>,
+    account_id: &str,
+    client_id: &str,
+) -> CommandResult<serde_json::Value> {
+    let url = resets_url(endpoints.usage);
+    let mut body = fetch_authorized(locks, store, endpoints, &url, account_id, client_id).await?;
+    Ok(body
+        .get_mut("cedar_ember")
+        .map_or(serde_json::Value::Null, serde_json::Value::take))
+}
+
+async fn fetch_authorized(
+    locks: &AccountLocks,
+    store: TokenStore,
+    endpoints: &Endpoints<'_>,
+    url: &str,
+    account_id: &str,
+    client_id: &str,
+) -> CommandResult<serde_json::Value> {
     validate_account_id(account_id)?;
     validate_client_id(client_id)?;
     let lock = locks.for_account(account_id);
@@ -246,7 +284,7 @@ pub async fn fetch_usage(
     } else if tokens.expired(now_ms()) {
         return Err(signin_required());
     }
-    match request_usage(endpoints.usage, &tokens.access_token).await {
+    match request_usage(url, &tokens.access_token).await {
         Err(error) if is_signin_required(&error) => {}
         outcome => return outcome,
     }
@@ -267,7 +305,7 @@ pub async fn fetch_usage(
         save_rotated(store, account_id, &fresh).await?;
         fresh
     };
-    match request_usage(endpoints.usage, &fresh.access_token).await {
+    match request_usage(url, &fresh.access_token).await {
         Err(error) if is_signin_required(&error) => Err(reject(store, account_id, fresh).await),
         outcome => outcome,
     }
@@ -280,6 +318,22 @@ pub async fn claude_usage_fetch(
     client_id: String,
 ) -> CommandResult<serde_json::Value> {
     fetch_usage(
+        &locks,
+        app_store(),
+        &Endpoints::anthropic(),
+        &account_id,
+        &client_id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn claude_usage_resets_fetch(
+    locks: State<'_, AccountLocks>,
+    account_id: String,
+    client_id: String,
+) -> CommandResult<serde_json::Value> {
+    fetch_resets(
         &locks,
         app_store(),
         &Endpoints::anthropic(),
@@ -1051,5 +1105,187 @@ mod tests {
         assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
         assert!(token.requests().is_empty());
         assert!(usage.requests().is_empty());
+    }
+
+    const RESETS_JSON: &str = r#"{"five_hour":{"utilization":41.0},"cedar_ember":{"eligible":true,"grants":[{"id":"g1"}]}}"#;
+
+    fn resets(
+        store: &'static MemoryStore,
+        token: &TestServer,
+        usage: &TestServer,
+    ) -> CommandResult<serde_json::Value> {
+        block_on(fetch_resets(
+            &AccountLocks::default(),
+            store,
+            &endpoints(token, usage),
+            "acc",
+            CLIENT_ID,
+        ))
+    }
+
+    #[test]
+    fn the_resets_url_appends_the_query_to_the_usage_url() {
+        assert_eq!(
+            resets_url(USAGE_URL),
+            "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1"
+        );
+    }
+
+    #[test]
+    fn resets_ask_for_the_cedar_ember_query_and_return_only_that_block() {
+        let store = store_with("acc", &tokens("at-1", Some("rt-1"), in_minutes(60)));
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "200 OK", RESETS_JSON);
+        let block = resets(store, &token, &usage).unwrap();
+        assert_eq!(block["eligible"], true);
+        assert_eq!(block["grants"][0]["id"], "g1");
+        assert!(block.get("five_hour").is_none());
+        let request = usage.requests().remove(0).to_lowercase();
+        assert!(request.starts_with("get /usage?cedar_ember=1&skip_spend=1 "));
+        assert!(request.contains("authorization: bearer at-1"));
+        assert!(request.contains("anthropic-beta: oauth-2025-04-20"));
+        assert!(token.requests().is_empty());
+    }
+
+    #[test]
+    fn a_response_without_the_resets_block_is_null() {
+        let store = store_with("acc", &tokens("at", Some("rt"), in_minutes(60)));
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "200 OK", USAGE_JSON);
+        assert!(resets(store, &token, &usage).unwrap().is_null());
+    }
+
+    #[test]
+    fn resets_are_refused_before_any_io_for_invalid_ids() {
+        let run = |account: &str, client: &str| {
+            block_on(fetch_resets(
+                &AccountLocks::default(),
+                MemoryStore::leaked(),
+                &Endpoints::anthropic(),
+                account,
+                client,
+            ))
+            .unwrap_err()
+            .kind
+        };
+        assert_eq!(run("../x", CLIENT_ID), ErrorKind::InvalidArgument);
+        assert_eq!(run("acc", "not-a-uuid"), ErrorKind::InvalidArgument);
+    }
+
+    #[test]
+    fn resets_without_stored_tokens_must_sign_in_and_call_nothing() {
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "200 OK", RESETS_JSON);
+        let error = resets(MemoryStore::leaked(), &token, &usage).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
+        assert!(usage.requests().is_empty());
+    }
+
+    #[test]
+    fn resets_429_is_rate_limited_with_the_retry_after() {
+        let store = store_with("acc", &tokens("at", Some("rt"), in_minutes(60)));
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let response = "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 90\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+        let usage = TestServer::start("/usage", vec![response.to_string()]);
+        let error = resets(store, &token, &usage).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::RateLimited);
+        assert_eq!(error.retry_after_secs, Some(Some(90)));
+        assert_eq!(usage.requests().len(), 1);
+    }
+
+    #[test]
+    fn resets_5xx_is_an_http_error_without_the_token() {
+        let store = store_with("acc", &tokens("at-secret", Some("rt"), in_minutes(60)));
+        let token = TestServer::json("/token", "500 Internal Server Error", "{}");
+        let usage = TestServer::json("/usage", "503 Service Unavailable", "{}");
+        let error = resets(store, &token, &usage).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Http);
+        assert!(!error.message.contains("secret"));
+    }
+
+    #[test]
+    fn resets_share_the_token_refresh_and_save_the_rotation() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(4)));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":28800}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", RESETS_JSON);
+        resets(store, &token, &usage).unwrap();
+        assert!(usage.requests()[0]
+            .to_lowercase()
+            .contains("authorization: bearer at-new"));
+        let saved = load_tokens(store, "acc").unwrap().unwrap();
+        assert_eq!(saved.refresh_token.as_deref(), Some("rt-new"));
+    }
+
+    #[test]
+    fn resets_401_after_the_renewal_asks_for_sign_in_and_marks_the_account() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), None));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "401 Unauthorized", "{}");
+        let error = resets(store, &token, &usage).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
+        assert!(load_tokens(store, "acc").unwrap().unwrap().rejected);
+        assert_eq!(token.requests().len(), 1);
+    }
+
+    #[test]
+    fn a_resets_401_refreshes_once_and_retries_the_same_resets_url() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), None));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::start(
+            "/usage",
+            vec![
+                json_response("401 Unauthorized", "{}"),
+                json_response("200 OK", RESETS_JSON),
+            ],
+        );
+        let block = resets(store, &token, &usage).unwrap();
+        assert_eq!(block["grants"][0]["id"], "g1");
+        assert_eq!(token.requests().len(), 1);
+        let calls = usage.requests();
+        assert_eq!(calls.len(), 2);
+        for call in &calls {
+            assert!(
+                call.to_lowercase()
+                    .starts_with("get /usage?cedar_ember=1&skip_spend=1 "),
+                "{call}"
+            );
+        }
+        assert!(calls[1]
+            .to_lowercase()
+            .contains("authorization: bearer at-new"));
+    }
+
+    #[test]
+    fn resets_and_usage_of_the_same_account_spend_the_refresh_token_once() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), in_minutes(1)));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::json("/usage", "200 OK", RESETS_JSON);
+        let locks = AccountLocks::default();
+        let targets = endpoints(&token, &usage);
+        std::thread::scope(|scope| {
+            let plain =
+                scope.spawn(|| block_on(fetch_usage(&locks, store, &targets, "acc", CLIENT_ID)));
+            let block =
+                scope.spawn(|| block_on(fetch_resets(&locks, store, &targets, "acc", CLIENT_ID)));
+            assert!(plain.join().unwrap().is_ok());
+            assert!(block.join().unwrap().is_ok());
+        });
+        assert_eq!(token.requests().len(), 1);
     }
 }

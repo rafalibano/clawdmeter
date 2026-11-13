@@ -123,6 +123,40 @@ describe('usage alerts in the patch', () => {
   });
 });
 
+describe('usage blocks in the patch', () => {
+  it('changes one block and keeps the others', () => {
+    const next = applyPatch(createDefaultSettings(), { usageBlocks: { resets: false } });
+    expect(next.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: false });
+    expect(applyPatch(next, { usageBlocks: { resets: true, modelLimits: false } }).usageBlocks).toEqual({
+      modelLimits: false,
+      extraUsage: true,
+      resets: true,
+    });
+  });
+
+  it('ignores values that are not booleans and unknown blocks', () => {
+    const base = applyPatch(createDefaultSettings(), { usageBlocks: { extraUsage: false } });
+    const next = applyPatch(base, { usageBlocks: { modelLimits: 'no' as never, resets: 0 as never, lastDays: true } as never });
+    expect(next.usageBlocks).toEqual(base.usageBlocks);
+    expect(applyPatch(base, {}).usageBlocks).toEqual(base.usageBlocks);
+    expect(applyPatch(base, { usageBlocks: null as never }).usageBlocks).toEqual(base.usageBlocks);
+  });
+
+  it('does not change the object of the previous settings', () => {
+    const base = createDefaultSettings();
+    applyPatch(base, { usageBlocks: { resets: false } });
+    expect(base.usageBlocks.resets).toBe(true);
+  });
+
+  it('mergePatches combines the blocks of both patches', () => {
+    expect(mergePatches({ usageBlocks: { resets: false } }, { usageBlocks: { modelLimits: false } }).usageBlocks).toEqual({
+      resets: false,
+      modelLimits: false,
+    });
+    expect(mergePatches({}, {})).not.toHaveProperty('usageBlocks');
+  });
+});
+
 describe('Claude accounts in the patch', () => {
   const PERSONAL = { id: 'a1', name: 'Personal' };
   const WORK = { id: 'a2', name: 'Work' };

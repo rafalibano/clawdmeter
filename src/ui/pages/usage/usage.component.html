@@ -40,6 +40,77 @@
     }
   </section>
 
+  @let extra = blocks()?.extraUsage;
+  @let resetsView = blocks()?.resets;
+
+  @if (blocks()?.modelLimits; as limits) {
+    <section class="card bars" data-block="model-limits" [attr.aria-label]="i18n.t('usage.models.title')">
+      @for (limit of limits; track limit.name) {
+        <div class="bar" data-window="model">
+          <div class="bar-head">
+            <span class="bar-label">{{ limit.name }}</span>
+            <span class="bar-percent">{{ limit.percent }}</span>
+          </div>
+          <div class="track">
+            <div class="fill" [style.width.%]="limit.fill"></div>
+          </div>
+          <div class="bar-foot">
+            <span class="reset">{{ limit.reset }}</span>
+          </div>
+        </div>
+      }
+    </section>
+  }
+
+  @if (extra) {
+    <section class="card extra" data-block="extra-usage" [attr.data-enabled]="extra.enabled" [attr.aria-label]="i18n.t('usage.extra.title')">
+      <div class="bar-head">
+        <span class="bar-label">{{ i18n.t('usage.extra.title') }}</span>
+        <span class="state">{{ extra.state }}</span>
+      </div>
+      @if (extra.amounts) {
+        <div class="amounts">
+          <span>{{ extra.amounts }}</span>
+          @if (extra.percent) {
+            <span class="bar-percent">{{ extra.percent }}</span>
+          }
+        </div>
+      }
+      @if (extra.fill !== null) {
+        <div class="track">
+          <div class="fill" [style.width.%]="extra.fill"></div>
+        </div>
+      }
+    </section>
+  }
+
+  @if (resetsView) {
+    <section class="card resets" data-block="resets" [attr.aria-label]="i18n.t('usage.resets.title')">
+      <div class="bar-head">
+        <span class="bar-label">{{ i18n.t('usage.resets.title') }}</span>
+        <span class="state">{{ resetsView.total }}</span>
+      </div>
+      <ul class="grants">
+        @for (grant of resetsView.grants; track grant.id) {
+          <li class="grant" [attr.data-recommended]="grant.recommended" [attr.data-usable]="grant.usable">
+            <div class="grant-head">
+              <span class="grant-title">{{ grant.title }}</span>
+              @if (grant.recommended) {
+                <span class="badge">{{ i18n.t('usage.resets.recommended') }}</span>
+              }
+            </div>
+            <div class="grant-meta">
+              <span>{{ grant.clears }}</span>
+              <span>{{ grant.uses }}</span>
+              <span>{{ grant.expires }}</span>
+              <span class="availability">{{ grant.availability }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
   <div class="toolbar" role="group" [attr.aria-label]="i18n.t('usage.period')">
     @for (range of ranges; track range.id) {
       <button

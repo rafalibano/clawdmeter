@@ -159,6 +159,19 @@
   <span class="hint">{{ i18n.t('settings.alerts.hint') }}</span>
 </cm-settings-section>
 
+<cm-settings-section name="usage-tab" [heading]="i18n.t('settings.usageTab')">
+  <span summary>{{ usageTabSummaryText() }}</span>
+  <div class="field">
+    @for (row of blockRows(); track row.id) {
+      <label class="check" [attr.data-usage-block]="row.id">
+        <input type="checkbox" [checked]="row.checked" (change)="toggleUsageBlock(row.id, checkedOf($event))" />
+        <span>{{ i18n.t(row.labelKey) }}</span>
+      </label>
+    }
+  </div>
+  <span class="hint">{{ i18n.t('settings.usageTab.hint') }}</span>
+</cm-settings-section>
+
 <cm-launch-at-login />
 
 <cm-update-settings />

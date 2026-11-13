@@ -44,6 +44,7 @@ pub fn run() {
             commands::claude_oauth::claude_account_status,
             commands::claude_oauth::claude_account_remove,
             commands::claude_usage::claude_usage_fetch,
+            commands::claude_usage::claude_usage_resets_fetch,
             commands::process::process_run,
             commands::process::process_spawn,
             commands::process::process_kill,

@@ -85,7 +85,7 @@ src/
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, JsonUsageHistoryStores (one history file per Claude account), LocalStorageJsonFile
 │  ├─ platform/       Tauri adapters (invoke, plugins): vault, Claude accounts (claude_oauth_* / claude_account_*), processes, OAuth loopback, notifications
-│  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: the GET /api/oauth/usage runs in Rust)
+│  ├─ anthropic/      AnthropicUsageGateway and AnthropicUsageResetsGateway (commands `claude_usage_fetch` and `claude_usage_resets_fetch`: the GET /api/oauth/usage runs in Rust)
 │  ├─ claude-code/    TauriSessionDirectory (reads ~/.claude/sessions through plugin-fs)
 │  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (reads only ~/.config/claude-usage-bar/history.json)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway

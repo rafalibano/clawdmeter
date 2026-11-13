@@ -7,7 +7,7 @@ import { DEFAULT_ATTENTION_CONFIG, sessionActivity } from '../../domain/sessions
 import { DAY_MS, MINUTE_MS } from '../../domain/time';
 import { TOTAL_RETENTION_MS } from '../../domain/usage';
 import { DemoProcessProbe, DemoSessionDirectory } from './demo-sessions';
-import { DemoUsageGateway, DemoUsageHistoryStores, DemoUsageModel, DemoUsageModels } from './demo-usage';
+import { DemoUsageGateway, DemoUsageHistoryStores, DemoUsageModel, DemoUsageModels, DemoUsageResetsGateway } from './demo-usage';
 import { DemoUsageIndicator } from './demo-usage-indicator';
 
 const ORIGIN = new Date(2026, 10, 5, 14, 30).getTime();
@@ -81,6 +81,20 @@ describe('demo usage model', () => {
     expect((await stores.forAccount('demo-work').load()).fiveHour.length).toBeGreaterThan(5_000);
     expect(stores.forAccount('demo-work')).toBe(stores.forAccount('demo-work'));
     expect(await stores.adoptLegacy()).toBe(false);
+  });
+
+  it('the demo snapshot carries model limits and extra usage for the new blocks', () => {
+    const snapshot = model.snapshotAt(ORIGIN);
+    expect(snapshot.modelLimits?.map((limit) => limit.name)).toEqual(['Fable', 'Sonnet']);
+    expect(snapshot.modelLimits?.every((limit) => limit.resetsAt !== null)).toBe(true);
+    expect(snapshot.extraUsage).toMatchObject({ enabled: true, currency: 'USD', exponent: 2 });
+  });
+
+  it('the demo resets gateway returns future grants of the three types, one of them not usable yet', async () => {
+    const resets = await new DemoUsageResetsGateway(() => ORIGIN).fetch();
+    expect(resets?.grants.map((grant) => grant.type)).toEqual(['session', 'weekly', 'full']);
+    expect(resets?.grants.every((grant) => grant.endsAt !== null && grant.endsAt > ORIGIN)).toBe(true);
+    expect(resets?.grants.filter((grant) => grant.usableNow)).toHaveLength(2);
   });
 
   it('LoadUsage with the demo already returns a ready forecast for the 5h window', async () => {

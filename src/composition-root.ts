@@ -4,9 +4,15 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { ImportExternalUsageHistory, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
+import {
+  ImportExternalUsageHistory,
+  LoadSessions,
+  LoadUsage,
+  LoadUsageResets,
+  NotifyUsageQuartiles,
+} from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
-import { AnthropicUsageGateway } from './infrastructure/anthropic';
+import { AnthropicUsageGateway, AnthropicUsageResetsGateway } from './infrastructure/anthropic';
 import { TauriSessionDirectory } from './infrastructure/claude-code';
 import { TauriClaudeUsageBarHistorySource } from './infrastructure/claude-usage-bar';
 import {
@@ -103,6 +109,7 @@ export function createComposition(): Application {
     connectionAdapters,
     usageHistories,
     updateChecker: new TauriUpdateChecker(commands),
+    loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new AnthropicUsageResetsGateway(commands), clock),
     launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>
       createSkills(
