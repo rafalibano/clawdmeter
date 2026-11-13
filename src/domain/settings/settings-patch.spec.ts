@@ -209,3 +209,23 @@ describe('Claude accounts in the patch', () => {
   });
 });
 
+
+describe('last days block in the patch', () => {
+  it('switches the block on and off', () => {
+    const on = applyPatch(createDefaultSettings(), { usageDailyHistory: true });
+    expect(on.usageDailyHistory).toBe(true);
+    expect(applyPatch(on, { usageDailyHistory: false }).usageDailyHistory).toBe(false);
+  });
+
+  it('ignores a value that is not a boolean and keeps it when the patch does not mention it', () => {
+    const on = applyPatch(createDefaultSettings(), { usageDailyHistory: true });
+    expect(applyPatch(on, { usageDailyHistory: 'no' as unknown as boolean }).usageDailyHistory).toBe(true);
+    expect(applyPatch(on, { language: 'pt-BR' }).usageDailyHistory).toBe(true);
+  });
+
+  it('mergePatches keeps the latest value and omits the field when neither patch has it', () => {
+    expect(mergePatches({ usageDailyHistory: true }, { usageDailyHistory: false }).usageDailyHistory).toBe(false);
+    expect(mergePatches({ usageDailyHistory: true }, {}).usageDailyHistory).toBe(true);
+    expect(mergePatches({}, {})).not.toHaveProperty('usageDailyHistory');
+  });
+});

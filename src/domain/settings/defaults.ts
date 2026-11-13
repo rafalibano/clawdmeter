@@ -20,6 +20,7 @@ export function createDefaultSettings(): AppSettings {
     projectionMethod: DEFAULT_PROJECTION_METHOD,
     seriesColors: { fiveHour: null, sevenDay: null },
     usageAlerts: defaultUsageAlerts(),
+    usageDailyHistory: false,
     claude: defaultClaudeSettings(),
   };
 }
