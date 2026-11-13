@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::State;
@@ -9,13 +9,17 @@ use tauri::State;
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::home::home_dir;
-use super::transcript::{assistant_reply, read_lines, Entry, MAX_LINE};
+use super::transcript::{assistant_reply, read_lines_no_follow, Entry, RunCounts, MAX_LINE};
 
 const MAX_DAYS: usize = 30;
 const MAX_TRACKED_FILES: usize = 4096;
 const MAX_MODEL_ID: usize = 80;
 const UNKNOWN_MODEL: &str = "unknown";
 const SCAN_BUDGET: u64 = 1024 * 1024 * 1024;
+const MIN_DAY_SECS: i64 = 22 * 3_600;
+const MAX_DAY_SECS: i64 = 26 * 3_600;
+const MAX_PAST_SECS: i64 = 32 * 86_400;
+const MAX_FUTURE_SECS: i64 = 3 * 86_400;
 
 struct Event {
     at: i64,
@@ -27,7 +31,8 @@ struct Event {
 #[derive(Default)]
 struct FileState {
     offset: u64,
-    last_message_id: Option<String>,
+    run: RunCounts,
+    last_event_at: Option<i64>,
     events: Vec<Event>,
 }
 
@@ -71,6 +76,7 @@ pub struct DayUsage {
 #[serde(rename_all = "camelCase")]
 pub struct DailyUsage {
     pub complete: bool,
+    pub truncated: bool,
     pub days: Vec<DayUsage>,
 }
 
@@ -203,15 +209,24 @@ impl Store {
         let Some(state) = self.files.get_mut(path) else {
             return;
         };
-        // One API response is written as one line per content block, all carrying the same usage.
-        if reply.id.is_some() && reply.id == state.last_message_id {
+        let (repeat, grown) = state.run.absorb(&reply);
+        if repeat {
+            let last = state.events.last_mut();
+            if let Some(last) = last.filter(|last| Some(last.at) == state.last_event_at) {
+                let extra = grown
+                    .iter()
+                    .fold(0u64, |sum, part| sum.saturating_add(*part));
+                last.tokens = last.tokens.saturating_add(extra);
+                last.context = last.context.map(|context| context.max(reply.context()));
+            }
             return;
         }
-        state.last_message_id = reply.id.clone();
         if at < since {
+            state.last_event_at = None;
             return;
         }
-        let tokens = reply.context() + reply.output;
+        state.last_event_at = Some(at);
+        let tokens = reply.context().saturating_add(reply.output);
         let context = main.then(|| reply.context());
         let model = self.intern(model_id(reply.model));
         if let Some(state) = self.files.get_mut(path) {
@@ -234,7 +249,7 @@ impl Store {
         }
         let from = state.offset;
         let to = candidate.len.min(from.saturating_add(*budget));
-        let outcome = read_lines(&candidate.path, from, to, |line| {
+        let outcome = read_lines_no_follow(&candidate.path, from, to, |line| {
             self.apply_line(&candidate.path, candidate.main, since, line);
         });
         match outcome {
@@ -328,7 +343,7 @@ fn collect_subagents(dir: &Path, session: &str, since: i64, found: &mut Vec<Cand
     }
 }
 
-fn candidates(projects: &Path, since: i64) -> Vec<Candidate> {
+fn candidates(projects: &Path, since: i64) -> (Vec<Candidate>, bool) {
     let mut found = Vec::new();
     for project in project_dirs(projects) {
         collect_project(&project, since, &mut found);
@@ -338,17 +353,24 @@ fn candidates(projects: &Path, since: i64) -> Vec<Candidate> {
             .cmp(&a.modified)
             .then_with(|| a.path.cmp(&b.path))
     });
+    let truncated = found.len() > MAX_TRACKED_FILES;
     found.truncate(MAX_TRACKED_FILES);
-    found
+    (found, truncated)
 }
 
-fn validate(day_starts: &[i64]) -> CommandResult<()> {
+fn validate(day_starts: &[i64], now: i64) -> CommandResult<()> {
     let count = day_starts.len();
     if !(2..=MAX_DAYS + 1).contains(&count) {
         return Err(invalid("invalid day range"));
     }
-    if day_starts[0] <= 0 || day_starts.windows(2).any(|pair| pair[0] >= pair[1]) {
+    let gaps_ok = day_starts
+        .windows(2)
+        .all(|pair| (MIN_DAY_SECS..=MAX_DAY_SECS).contains(&(pair[1] - pair[0])));
+    if !gaps_ok {
         return Err(invalid("invalid day boundaries"));
+    }
+    if day_starts[0] < now - MAX_PAST_SECS || day_starts[count - 1] > now + MAX_FUTURE_SECS {
+        return Err(invalid("day boundaries out of range"));
     }
     Ok(())
 }
@@ -360,7 +382,13 @@ struct DayAccumulator {
     peaks: HashMap<String, u64>,
 }
 
-fn aggregate(store: &Store, found: &[Candidate], day_starts: &[i64], complete: bool) -> DailyUsage {
+fn aggregate(
+    store: &Store,
+    found: &[Candidate],
+    day_starts: &[i64],
+    complete: bool,
+    truncated: bool,
+) -> DailyUsage {
     let days = day_starts.len() - 1;
     let mut accumulators: Vec<DayAccumulator> =
         (0..days).map(|_| DayAccumulator::default()).collect();
@@ -374,7 +402,8 @@ fn aggregate(store: &Store, found: &[Candidate], day_starts: &[i64], complete: b
                 continue;
             }
             let day = &mut accumulators[upper - 1];
-            *day.tokens.entry(event.model).or_default() += event.tokens;
+            let total = day.tokens.entry(event.model).or_default();
+            *total = total.saturating_add(event.tokens);
             day.sessions.insert(item.session.clone());
             if let Some(context) = event.context {
                 let peak = day.peaks.entry(item.session.clone()).or_default();
@@ -405,22 +434,28 @@ fn aggregate(store: &Store, found: &[Candidate], day_starts: &[i64], complete: b
             }
         })
         .collect();
-    DailyUsage { complete, days }
+    DailyUsage {
+        complete,
+        truncated,
+        days,
+    }
 }
 
 fn scan(
     tallies: &DailyTallies,
     projects: &Path,
     day_starts: &[i64],
+    now: i64,
     mut budget: u64,
 ) -> CommandResult<DailyUsage> {
-    validate(day_starts)?;
+    validate(day_starts, now)?;
     let since = day_starts[0];
-    let found = candidates(projects, since);
+    // The folder walk happens under the lock so a concurrent call never sees stale lengths.
     let mut store = tallies
         .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (found, truncated) = candidates(projects, since);
     store.start_window(since);
     let kept: HashSet<&PathBuf> = found.iter().map(|item| &item.path).collect();
     store.files.retain(|path, _| kept.contains(path));
@@ -435,7 +470,13 @@ fn scan(
         }
         complete &= store.refresh(item, since, &mut budget);
     }
-    Ok(aggregate(&store, &found, day_starts, complete))
+    Ok(aggregate(&store, &found, day_starts, complete, truncated))
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |age| age.as_secs() as i64)
 }
 
 #[tauri::command]
@@ -449,7 +490,7 @@ pub async fn daily_usage(
             return Ok(None);
         };
         let projects = home.join(".claude").join("projects");
-        scan(&tallies, &projects, &day_starts, SCAN_BUDGET).map(Some)
+        scan(&tallies, &projects, &day_starts, unix_now(), SCAN_BUDGET).map(Some)
     })
     .await
 }
@@ -466,6 +507,10 @@ mod tests {
 
     fn at(text: &str) -> i64 {
         parse_timestamp(text).unwrap()
+    }
+
+    fn now() -> i64 {
+        at("2026-11-13T15:00:00Z")
     }
 
     fn scratch(name: &str) -> PathBuf {
@@ -538,7 +583,7 @@ mod tests {
     }
 
     fn run(tallies: &DailyTallies, projects: &Path) -> DailyUsage {
-        scan(tallies, projects, &boundaries(), BUDGET).unwrap()
+        scan(tallies, projects, &boundaries(), now(), BUDGET).unwrap()
     }
 
     fn tokens_of(day: &DayUsage, model: &str) -> u64 {
@@ -989,7 +1034,7 @@ mod tests {
             keys.sort();
             keys
         };
-        assert_eq!(keys(&json), vec!["complete", "days"]);
+        assert_eq!(keys(&json), vec!["complete", "days", "truncated"]);
         let day = &json["days"][1];
         assert_eq!(
             keys(day),
@@ -1018,7 +1063,7 @@ mod tests {
         let mut passes = 0;
         let usage = loop {
             passes += 1;
-            let usage = scan(&tallies, &projects, &boundaries(), budget).unwrap();
+            let usage = scan(&tallies, &projects, &boundaries(), now(), budget).unwrap();
             if usage.complete {
                 break usage;
             }
@@ -1043,14 +1088,14 @@ mod tests {
         );
         let tallies = DailyTallies::default();
         let narrow: Vec<i64> = boundaries()[1..].to_vec();
-        let usage = scan(&tallies, &projects, &narrow, BUDGET).unwrap();
+        let usage = scan(&tallies, &projects, &narrow, now(), BUDGET).unwrap();
         assert_eq!(usage.days.len(), 3);
         assert_eq!(tokens_of(&usage.days[0], "claude-opus-5"), 10);
-        let wide = scan(&tallies, &projects, &boundaries(), BUDGET).unwrap();
+        let wide = scan(&tallies, &projects, &boundaries(), now(), BUDGET).unwrap();
         assert_eq!(tokens_of(&wide.days[0], "claude-opus-5"), 1);
         assert_eq!(tokens_of(&wide.days[1], "claude-opus-5"), 10);
         set_mtime(&path, at("2026-11-01T00:00:00Z"));
-        scan(&tallies, &projects, &boundaries(), BUDGET).unwrap();
+        scan(&tallies, &projects, &boundaries(), now(), BUDGET).unwrap();
         assert!(tallies.0.lock().unwrap().files.is_empty());
     }
 
@@ -1076,9 +1121,198 @@ mod tests {
             vec![at("2026-11-10T03:00:00Z"), at("2026-11-10T03:00:00Z")],
             vec![at("2026-11-11T03:00:00Z"), at("2026-11-10T03:00:00Z")],
             vec![-5, 10],
-            (0..40).map(|n| 1_000_000 + n * 86_400).collect(),
+            vec![1, 2],
+            (0..40)
+                .map(|n| at("2026-11-01T03:00:00Z") + n * 86_400)
+                .collect(),
         ] {
-            assert!(scan(&tallies, &projects, &bad, BUDGET).is_err(), "{bad:?}");
+            assert!(
+                scan(&tallies, &projects, &bad, now(), BUDGET).is_err(),
+                "{bad:?}"
+            );
         }
+    }
+
+    #[test]
+    fn enforces_the_day_bound_in_rust() {
+        let day = 86_400;
+        let first = at("2026-11-10T03:00:00Z");
+        let check = |starts: Vec<i64>| validate(&starts, now());
+        assert!(check(vec![first, first + day]).is_ok());
+        assert!(check(vec![first, first + 23 * 3_600, first + 48 * 3_600 - 3_600]).is_ok());
+        assert!(check(vec![first, first + 25 * 3_600]).is_ok());
+        assert!(check(vec![first, first + 21 * 3_600]).is_err());
+        assert!(check(vec![first, first + 27 * 3_600]).is_err());
+        assert!(check(vec![first, first + 3_600, first + day]).is_err());
+        assert!(check(vec![now() - 40 * day, now() - 39 * day]).is_err());
+        assert!(check(vec![now() + 5 * day, now() + 6 * day]).is_err());
+        assert!(check(vec![now() - 31 * day, now() - 30 * day]).is_ok());
+    }
+
+    #[test]
+    fn reports_when_more_files_than_the_cap_were_left_out() {
+        let projects = scratch("truncated");
+        let line = reply("2026-11-10T12:00:00Z", "a", "claude-opus-5", 1, 0, 0, 0);
+        for n in 0..=MAX_TRACKED_FILES {
+            let session = format!("{n:08x}-72c7-4d3e-9e35-eedfed0368f1");
+            append(&main_file(&projects, &session), std::slice::from_ref(&line));
+        }
+        let tallies = DailyTallies::default();
+        let usage = run(&tallies, &projects);
+        assert!(usage.truncated);
+        assert_eq!(tallies.0.lock().unwrap().files.len(), MAX_TRACKED_FILES);
+        std::fs::remove_file(main_file(
+            &projects,
+            &format!("{:08x}-72c7-4d3e-9e35-eedfed0368f1", 0),
+        ))
+        .unwrap();
+        assert!(!run(&DailyTallies::default(), &projects).truncated);
+    }
+
+    #[test]
+    fn keeps_the_largest_counters_of_a_streamed_reply() {
+        let projects = scratch("streamed");
+        append(
+            &main_file(&projects, SESSION),
+            &[
+                reply("2026-11-10T12:00:00Z", "a", "claude-opus-5", 10, 100, 0, 1),
+                reply("2026-11-10T12:00:01Z", "a", "claude-opus-5", 10, 100, 0, 5),
+                reply("2026-11-10T12:00:02Z", "a", "claude-opus-5", 10, 100, 0, 9),
+                reply("2026-11-10T12:00:03Z", "a", "claude-opus-5", 10, 100, 0, 4),
+                reply("2026-11-10T12:01:00Z", "b", "claude-opus-5", 1, 1, 1, 1),
+            ],
+        );
+        let tallies = DailyTallies::default();
+        let usage = run(&tallies, &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), 119 + 4);
+        assert_eq!(usage.days[1].context_peaks, vec![110]);
+        append(
+            &main_file(&projects, SESSION),
+            &[reply(
+                "2026-11-10T12:01:01Z",
+                "b",
+                "claude-opus-5",
+                1,
+                1,
+                1,
+                8,
+            )],
+        );
+        let usage = run(&tallies, &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), 119 + 4 + 7);
+    }
+
+    #[test]
+    fn a_streamed_reply_before_the_window_never_leaks_into_it() {
+        let projects = scratch("streamed-old");
+        append(
+            &main_file(&projects, SESSION),
+            &[
+                reply("2026-11-01T12:00:00Z", "old", "claude-opus-5", 500, 0, 0, 1),
+                reply(
+                    "2026-11-01T12:00:01Z",
+                    "old",
+                    "claude-opus-5",
+                    500,
+                    0,
+                    0,
+                    50,
+                ),
+                reply("2026-11-10T12:00:00Z", "new", "claude-opus-5", 7, 0, 0, 0),
+            ],
+        );
+        let usage = run(&DailyTallies::default(), &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), 7);
+    }
+
+    #[test]
+    fn hostile_counters_saturate_instead_of_overflowing() {
+        let projects = scratch("saturate");
+        let max = u64::MAX;
+        append(
+            &main_file(&projects, SESSION),
+            &[
+                reply(
+                    "2026-11-10T12:00:00Z",
+                    "a",
+                    "claude-opus-5",
+                    max,
+                    max,
+                    max,
+                    max,
+                ),
+                reply("2026-11-10T12:01:00Z", "b", "claude-opus-5", max, 1, 1, 1),
+            ],
+        );
+        let usage = run(&DailyTallies::default(), &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), max);
+        assert_eq!(usage.days[1].context_peaks, vec![max]);
+    }
+
+    #[test]
+    fn sliding_the_window_forward_prunes_old_events_without_reading_again() {
+        let projects = scratch("slide");
+        let path = main_file(&projects, SESSION);
+        append(
+            &path,
+            &[
+                reply("2026-11-09T12:00:00Z", "a", "claude-opus-5", 1, 0, 0, 0),
+                reply("2026-11-10T12:00:00Z", "b", "claude-opus-5", 10, 0, 0, 0),
+                reply("2026-11-11T12:00:00Z", "c", "claude-opus-5", 100, 0, 0, 0),
+            ],
+        );
+        let tallies = DailyTallies::default();
+        let wide = run(&tallies, &projects);
+        assert_eq!(tokens_of(&wide.days[0], "claude-opus-5"), 1);
+        let read = bytes_read(&tallies);
+        let narrow: Vec<i64> = boundaries()[2..].to_vec();
+        let usage = scan(&tallies, &projects, &narrow, now(), BUDGET).unwrap();
+        assert_eq!(bytes_read(&tallies), read);
+        assert_eq!(tokens_of(&usage.days[0], "claude-opus-5"), 100);
+        let store = tallies.0.lock().unwrap();
+        assert_eq!(store.covered_from, Some(narrow[0]));
+        assert_eq!(store.files[&path].events.len(), 1);
+    }
+
+    #[test]
+    fn concurrent_calls_agree_and_read_every_byte_once() {
+        let projects = scratch("concurrent");
+        let mut size = 0;
+        for n in 0..24 {
+            let session = format!("{n:08x}-72c7-4d3e-9e35-eedfed0368f1");
+            let path = main_file(&projects, &session);
+            let lines: Vec<String> = (0..40)
+                .map(|m| {
+                    reply(
+                        "2026-11-10T12:00:00Z",
+                        &format!("m{n}-{m}"),
+                        "claude-opus-5",
+                        1,
+                        0,
+                        0,
+                        0,
+                    )
+                })
+                .collect();
+            append(&path, &lines);
+            size += std::fs::metadata(&path).unwrap().len();
+        }
+        let tallies = DailyTallies::default();
+        let totals: Vec<(u64, bool)> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        let usage = run(&tallies, &projects);
+                        (tokens_of(&usage.days[1], "claude-opus-5"), usage.complete)
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .map(|worker| worker.join().unwrap())
+                .collect()
+        });
+        assert!(totals.iter().all(|total| *total == (24 * 40, true)));
+        assert_eq!(bytes_read(&tallies), size);
     }
 }

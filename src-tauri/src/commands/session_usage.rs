@@ -9,7 +9,9 @@ use tauri::State;
 use super::blocking::run_blocking;
 use super::error::{CommandError, CommandResult, ErrorKind};
 use super::home::home_dir;
-use super::transcript::{assistant_reply, non_empty, read_lines, regular_file_len, Entry, Message};
+use super::transcript::{
+    assistant_reply, non_empty, read_lines, regular_file_len, Entry, Message, RunCounts,
+};
 
 const MAX_TRACKED_FILES: usize = 256;
 const MAX_SUBAGENTS: usize = 50;
@@ -26,7 +28,7 @@ struct Tally {
     output_tokens: u64,
     cache_read_tokens: u64,
     cache_creation_tokens: u64,
-    last_message_id: Option<String>,
+    run: RunCounts,
     last_used: u64,
 }
 
@@ -118,15 +120,11 @@ fn apply_assistant(tally: &mut Tally, message: Message) {
     };
     tally.model = Some(reply.model.clone());
     tally.context_tokens = Some(reply.context());
-    // One API response is written as one line per content block, all carrying the same usage.
-    if reply.id.is_some() && reply.id == tally.last_message_id {
-        return;
-    }
-    tally.last_message_id = reply.id;
-    tally.input_tokens += reply.input;
-    tally.cache_read_tokens += reply.cache_read;
-    tally.cache_creation_tokens += reply.cache_creation;
-    tally.output_tokens += reply.output;
+    let (_, [input, cache_read, cache_creation, output]) = tally.run.absorb(&reply);
+    tally.input_tokens = tally.input_tokens.saturating_add(input);
+    tally.cache_read_tokens = tally.cache_read_tokens.saturating_add(cache_read);
+    tally.cache_creation_tokens = tally.cache_creation_tokens.saturating_add(cache_creation);
+    tally.output_tokens = tally.output_tokens.saturating_add(output);
 }
 
 fn advance(tally: &mut Tally, path: &Path) -> std::io::Result<()> {
@@ -728,6 +726,34 @@ mod tests {
                     started_at: Some("2026-11-10T15:00:00.000Z".into()),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn keeps_the_largest_counters_of_a_streamed_reply() {
+        let (projects, project) = setup("streamed");
+        let transcript = project.join(format!("{SESSION}.jsonl"));
+        append(
+            &transcript,
+            &[
+                assistant("m1", "claude-opus-5-5", 10, 100, 5, 1),
+                assistant("m1", "claude-opus-5-5", 10, 100, 5, 9),
+                assistant("m1", "claude-opus-5-5", 10, 100, 5, 4),
+                assistant("m2", "claude-opus-5-5", 1, 0, 0, 2),
+            ],
+        );
+        let tallies = TranscriptTallies::default();
+        let usage = read_session_usage(&tallies, &projects, SESSION, "/Users/dev/my.repo")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.cache_read_tokens,
+                usage.cache_creation_tokens,
+                usage.output_tokens
+            ),
+            (11, 100, 5, 11)
         );
     }
 }
