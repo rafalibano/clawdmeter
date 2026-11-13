@@ -120,7 +120,7 @@ export const en = {
   'projection.since-reset': 'Since reset',
   'settings.usageTab': 'Usage tab',
   'settings.usageTab.line': 'Chart line',
-  'settings.usageTab.line.hint': 'Stepped holds the last reading until the next one. Smooth connects the readings with a curve; a reset still drops straight down.',
+  'settings.usageTab.line.hint': 'Stepped holds the last level across a pause in readings. Smooth joins the readings around a pause with a curve.',
   'settings.usageTab.line.stepped': 'Stepped',
   'settings.usageTab.line.smooth': 'Smooth',
   'settings.hexAria': '{label} in hexadecimal',

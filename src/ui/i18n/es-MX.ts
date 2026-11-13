@@ -110,7 +110,7 @@ export const esMX: Record<MessageKey, string> = {
   'projection.since-reset': 'Desde el reinicio',
   'settings.usageTab': 'Pestaña Uso',
   'settings.usageTab.line': 'Línea de la gráfica',
-  'settings.usageTab.line.hint': 'Escalones mantiene la última lectura hasta la siguiente. Suavizada une las lecturas con una curva; el reinicio sigue cayendo en vertical.',
+  'settings.usageTab.line.hint': 'Escalones mantiene el último nivel durante una pausa en las lecturas. Suavizada une con una curva las lecturas alrededor de una pausa.',
   'settings.usageTab.line.stepped': 'Escalones',
   'settings.usageTab.line.smooth': 'Suavizada',
   'settings.hexAria': '{label} en hexadecimal',

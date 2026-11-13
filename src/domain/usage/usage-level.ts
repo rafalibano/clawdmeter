@@ -63,7 +63,7 @@ export function levelSteps(points: readonly UsagePoint[], from: number, to: numb
 function resetDrop(anchor: UsagePoint, until: number, next: UsagePoint | null): LevelPoint[] {
   const { resetsAt } = anchor;
   if (resetsAt === null || resetsAt <= anchor.at - RESET_JITTER_MS) return [];
-  const early = resetsAt >= until && resetsAt < until + RESET_JITTER_MS && next !== null && next.utilization < anchor.utilization;
+  const early = resetsAt >= until && resetsAt < until + RESET_JITTER_MS && next !== null && (next.resetsAt === null || next.resetsAt > resetsAt + RESET_JITTER_MS);
   if (resetsAt >= until && !early) return [];
   const dropAt = Math.min(Math.max(resetsAt, anchor.at), until - 1);
   return [

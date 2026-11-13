@@ -174,7 +174,7 @@ describe('smoothLevelSteps', () => {
   it('dense 5-minute readings across a reset add no drop, whatever the bucket width, so no bounce can be drawn', () => {
     const resetsAt = FROM + 3 * HOUR_MS;
     const dense: UsagePoint[] = [];
-    for (let at = FROM; at <= NOW; at += 5 * MINUTE_MS) {
+    for (let at = FROM + 90_000; at <= NOW; at += 5 * MINUTE_MS) {
       dense.push(reading(at, at < resetsAt ? 80 : 2, at < resetsAt ? resetsAt : resetsAt + 5 * HOUR_MS));
     }
     for (const bucketMs of [12 * MINUTE_MS, 84 * MINUTE_MS, 6 * HOUR_MS]) {
@@ -199,6 +199,12 @@ describe('smoothLevelSteps', () => {
       [next - 1, 70],
       [next - 1, 0],
     ]);
+  });
+
+  it('a small decrease without a reset gets no drop', () => {
+    const resetsAt = FROM + 3 * HOUR_MS;
+    const points = [reading(FROM, 70, resetsAt), reading(resetsAt - 20_000, 69, resetsAt), reading(resetsAt + 5 * MINUTE_MS, 1, NOW + HOUR_MS), reading(NOW - MINUTE_MS, 2, NOW + HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([]);
   });
 
   it('a reading just before the reset that still reads the old level gets no drop', () => {

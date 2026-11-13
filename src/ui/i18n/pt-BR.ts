@@ -110,7 +110,7 @@ export const ptBR: Record<MessageKey, string> = {
   'projection.since-reset': 'Desde o reset',
   'settings.usageTab': 'Aba Uso',
   'settings.usageTab.line': 'Linha do gráfico',
-  'settings.usageTab.line.hint': 'Degraus mantém a última leitura até a próxima. Suavizada liga as leituras com uma curva; o reset continua caindo na vertical.',
+  'settings.usageTab.line.hint': 'Degraus mantém o último nível durante uma pausa nas leituras. Suavizada liga com uma curva as leituras em volta de uma pausa.',
   'settings.usageTab.line.stepped': 'Degraus',
   'settings.usageTab.line.smooth': 'Suavizada',
   'settings.hexAria': '{label} em hexadecimal',

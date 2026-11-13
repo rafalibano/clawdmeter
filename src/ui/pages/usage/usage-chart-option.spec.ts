@@ -680,7 +680,7 @@ describe('smooth chart line', () => {
     const CYCLE = 5 * HOUR_MS;
     const dense = (): UsagePoint[] => {
       const list: UsagePoint[] = [];
-      for (let at = NOW - 31 * DAY_MS; at <= NOW; at += 5 * MINUTE_MS) {
+      for (let at = NOW - 31 * DAY_MS + 90_000; at <= NOW; at += 5 * MINUTE_MS) {
         const start = Math.floor(at / CYCLE) * CYCLE;
         list.push(reading(at, (90 * (at - start)) / CYCLE, start + CYCLE));
       }
