@@ -655,7 +655,7 @@ describe('smooth chart line', () => {
     expect(build([], 'smooth').points).toEqual([]);
   });
 
-  it('the tooltip shows the value of the line drawn in each mode', () => {
+  it('the tooltip reads the line through the same curve function in both modes', () => {
     for (const line of ['stepped', 'smooth'] as const) {
       const model = modelOf(consecutive, line);
       const format = tooltipFormatter(model, palette, PT);
@@ -674,5 +674,40 @@ describe('smooth chart line', () => {
       const out = buildChartOption(modelOf(consecutive, line), palette) as unknown as { series: { smooth: number }[] };
       expect(out.series[0]).toMatchObject({ smooth: 0.5 });
     }
+  });
+
+  describe('with the real 5-minute polling and 5h cycles', () => {
+    const CYCLE = 5 * HOUR_MS;
+    const dense = (): UsagePoint[] => {
+      const list: UsagePoint[] = [];
+      for (let at = NOW - 31 * DAY_MS; at <= NOW; at += 5 * MINUTE_MS) {
+        const start = Math.floor(at / CYCLE) * CYCLE;
+        list.push(reading(at, (90 * (at - start)) / CYCLE, start + CYCLE));
+      }
+      return list;
+    };
+
+    for (const range of ['1d', '7d', '30d']) {
+      it(`${range}: no vertical pair and no drop-and-bounce between the readings of a reset`, () => {
+        const smooth = modelOf(dense(), 'smooth', range).windows[0]!.points;
+        const xs = smooth.map((point) => point[0]);
+        expect(new Set(xs).size).toBe(xs.length);
+        const stepped = modelOf(dense(), 'stepped', range).windows[0]!.points;
+        expect(smooth.filter((point) => point[1] === 0).length).toBeLessThanOrEqual(stepped.filter((point) => point[1] === 0).length);
+        for (let index = 1; index < smooth.length - 1; index++) {
+          const [before, here, after] = [smooth[index - 1]![1], smooth[index]![1], smooth[index + 1]![1]];
+          const bounce = here < before - 30 && after > here + 30 && smooth[index + 1]![0] - smooth[index]![0] < 30 * MINUTE_MS;
+          expect(bounce).toBe(false);
+        }
+      });
+    }
+  });
+
+  it('a reset right at the next reading is a vertical drop, not a slope across the gap', () => {
+    const resetsAt = NOW - 4 * HOUR_MS;
+    const smooth = build([reading(NOW - 5 * HOUR_MS, 70, resetsAt), reading(resetsAt, 0, NOW + HOUR_MS), reading(NOW - 3 * HOUR_MS, 5, NOW + HOUR_MS), reading(NOW - 5 * MINUTE_MS, 6, NOW + HOUR_MS)], 'smooth');
+    expect(smooth.points).toContainEqual([resetsAt - 1, 70]);
+    expect(smooth.points).toContainEqual([resetsAt - 1, 0]);
+    expect(curveValueAt(smooth.points, resetsAt - 30 * MINUTE_MS)).toBeGreaterThan(60);
   });
 });

@@ -361,7 +361,9 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
     expect(migrateSettings({ schemaVersion: 10, claude: { accounts: [], activeAccountId: 'a1' } }).claude.activeAccountId).toBeNull();
     expect(migrateSettings({ schemaVersion: 10, claude: 'x' }).claude).toEqual(createDefaultSettings().claude);
   });
+});
 
+describe('migration 10 -> 11 (usage chart line)', () => {
   it('adds the usage chart line at schema 11: keeps a valid value and falls back to stepped otherwise', () => {
     expect(migrateSettings({ schemaVersion: 10 }).usageChartLine).toBe('stepped');
     expect(migrateSettings({ schemaVersion: 10, usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');

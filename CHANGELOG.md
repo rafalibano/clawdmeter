@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Settings has a new **Usage tab** section (the place for the Usage tab switches) with a **Chart line** option: **Stepped** (the default, the chart as it was) or **Smooth**. Smooth joins the readings directly with a curve instead of holding each level until the next reading, so there is no flat-then-jump staircase between consecutive readings. A 5h or 7d reset still drops straight down at the reset time, a gap of more than 3 hours without readings still holds the last level until the next reading (no slope is invented across it), the range still starts from the last reading before it, and the line never goes past now. The tooltip shows the value of the line drawn in either mode. Settings schema goes to 11.
+- Settings has a new **Usage tab** section (the place for the Usage tab switches) with a **Chart line** option: **Stepped** (the default, the chart as it was) or **Smooth**. Smooth joins the readings directly with a curve instead of holding each level until the next reading, so there is no flat-then-jump staircase between consecutive readings. A 5h or 7d reset drops straight down only when the readings around it are far enough apart to be drawn apart; with the usual 5-minute readings it is part of the curve, as the averaged points of that stretch, a gap of more than 3 hours without readings still holds the last level until the next reading (no slope is invented across it), the range still starts from the last reading before it, and the line never goes past now. The tooltip shows the value of the line drawn in either mode. Settings schema goes to 11.
 
 ## 0.2.5
 

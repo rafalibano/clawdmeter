@@ -108,7 +108,7 @@ export const esMX: Record<MessageKey, string> = {
   'projection.7d': 'Últimos 7 días',
   'projection.14d': 'Últimos 14 días',
   'projection.since-reset': 'Desde el reinicio',
-  'settings.usageTab': 'Pestaña Usage',
+  'settings.usageTab': 'Pestaña Uso',
   'settings.usageTab.line': 'Línea de la gráfica',
   'settings.usageTab.line.hint': 'Escalones mantiene la última lectura hasta la siguiente. Suavizada une las lecturas con una curva; el reinicio sigue cayendo en vertical.',
   'settings.usageTab.line.stepped': 'Escalones',

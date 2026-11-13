@@ -1,5 +1,6 @@
 import type { ConnectionAction } from '../../../domain/connections';
 import {
+  DEFAULT_USAGE_CHART_LINE,
   EXHAUSTION_LEVEL,
   USAGE_WINDOWS,
   isCycleAvailable,
@@ -61,7 +62,7 @@ export function resetText(resetsAt: number | null, now: number, l: Localizer): s
   return remaining <= 0 ? l.t('usage.reset.now') : l.t('usage.reset.in', { span: l.span(remaining) });
 }
 
-export function toUsageView(data: UsageData, rangeId: string, l: Localizer, method: ProjectionMethod, line: UsageChartLine = 'stepped'): UsageView {
+export function toUsageView(data: UsageData, rangeId: string, l: Localizer, method: ProjectionMethod, line: UsageChartLine = DEFAULT_USAGE_CHART_LINE): UsageView {
   const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
   const bars = USAGE_WINDOWS.map(({ kind, label }): UsageBarView => {
     const reading = data.snapshot[kind];

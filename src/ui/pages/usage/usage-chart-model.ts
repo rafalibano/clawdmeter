@@ -1,4 +1,5 @@
 import {
+  DEFAULT_USAGE_CHART_LINE,
   DEFAULT_USAGE_RANGE,
   isCycleAvailable,
   levelSteps,
@@ -133,7 +134,7 @@ export function buildChartModel(
   inputs: readonly WindowInput[],
   range: UsageRange,
   now: number,
-  line: UsageChartLine = 'stepped',
+  line: UsageChartLine = DEFAULT_USAGE_CHART_LINE,
 ): UsageChartModel {
   const weeklyResetsAt = inputs.find((input) => input.kind === 'sevenDay')?.resetsAt ?? null;
   const cycle = range.cycle === true && isCycleAvailable(weeklyResetsAt, now);
