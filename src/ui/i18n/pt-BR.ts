@@ -269,7 +269,7 @@ export const ptBR: Record<MessageKey, string> = {
   'usage.daily.tokens': '{value} tokens',
   'usage.daily.tokensByModel': 'Tokens por modelo',
   'usage.daily.unknownModel': 'desconhecido',
-  'usage.daily.partial': 'Parcial: algumas transcrições ainda não foram contadas.',
+  'usage.daily.partial': 'Parcial: algumas transcrições não foram contadas.',
   'refresh.tooltip': 'Atualizar',
   'refresh.loading': 'Atualizando…',
   'refresh.cooldown': 'Atualizar disponível em {span}',

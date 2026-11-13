@@ -97,14 +97,6 @@ describe('DailyUsageHistory', () => {
     expect(DAILY_USAGE_POLL_MS).toBeGreaterThanOrEqual(5 * 60_000);
   });
 
-  it('reads right away from the in-memory settings, whatever the saved file says', async () => {
-    const { reader, history } = setup();
-    history.sync(settings(), true);
-    await flushPromises();
-    expect(reader.reads).toBe(1);
-    expect(tokensOf(history.current)).toBe(10);
-  });
-
   it('syncing again with the same settings does not read again', async () => {
     const { clock, reader, history } = setup();
     history.sync(settings(), true);

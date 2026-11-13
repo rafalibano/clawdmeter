@@ -269,7 +269,7 @@ export const esMX: Record<MessageKey, string> = {
   'usage.daily.tokens': '{value} tokens',
   'usage.daily.tokensByModel': 'Tokens por modelo',
   'usage.daily.unknownModel': 'desconocido',
-  'usage.daily.partial': 'Parcial: algunas transcripciones aún no se cuentan.',
+  'usage.daily.partial': 'Parcial: algunas transcripciones no se contaron.',
   'refresh.tooltip': 'Actualizar',
   'refresh.loading': 'Actualizando…',
   'refresh.cooldown': 'Actualizar disponible en {span}',

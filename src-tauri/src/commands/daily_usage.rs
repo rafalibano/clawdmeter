@@ -363,9 +363,11 @@ fn validate(day_starts: &[i64], now: i64) -> CommandResult<()> {
     if !(2..=MAX_DAYS + 1).contains(&count) {
         return Err(invalid("invalid day range"));
     }
-    let gaps_ok = day_starts
-        .windows(2)
-        .all(|pair| (MIN_DAY_SECS..=MAX_DAY_SECS).contains(&(pair[1] - pair[0])));
+    let gaps_ok = day_starts.windows(2).all(|pair| {
+        pair[1]
+            .checked_sub(pair[0])
+            .is_some_and(|gap| (MIN_DAY_SECS..=MAX_DAY_SECS).contains(&gap))
+    });
     if !gaps_ok {
         return Err(invalid("invalid day boundaries"));
     }
@@ -1275,44 +1277,60 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_calls_agree_and_read_every_byte_once() {
+    fn concurrent_calls_over_a_growing_file_never_reread_or_miscount() {
+        use std::sync::atomic::{AtomicBool, Ordering};
         let projects = scratch("concurrent");
-        let mut size = 0;
-        for n in 0..24 {
-            let session = format!("{n:08x}-72c7-4d3e-9e35-eedfed0368f1");
-            let path = main_file(&projects, &session);
-            let lines: Vec<String> = (0..40)
-                .map(|m| {
-                    reply(
-                        "2026-11-10T12:00:00Z",
-                        &format!("m{n}-{m}"),
-                        "claude-opus-5",
-                        1,
-                        0,
-                        0,
-                        0,
-                    )
-                })
-                .collect();
-            append(&path, &lines);
-            size += std::fs::metadata(&path).unwrap().len();
-        }
+        let path = main_file(&projects, SESSION);
+        let line = |n: u32| {
+            reply(
+                "2026-11-10T12:00:00Z",
+                &format!("m{n}"),
+                "claude-opus-5",
+                1,
+                0,
+                0,
+                0,
+            )
+        };
+        append(&path, &[line(0)]);
         let tallies = DailyTallies::default();
-        let totals: Vec<(u64, bool)> = std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..4)
+        let writing = AtomicBool::new(true);
+        std::thread::scope(|scope| {
+            let scanners: Vec<_> = (0..4)
                 .map(|_| {
                     scope.spawn(|| {
-                        let usage = run(&tallies, &projects);
-                        (tokens_of(&usage.days[1], "claude-opus-5"), usage.complete)
+                        while writing.load(Ordering::SeqCst) {
+                            assert!(run(&tallies, &projects).complete);
+                        }
                     })
                 })
                 .collect();
-            workers
-                .into_iter()
-                .map(|worker| worker.join().unwrap())
-                .collect()
+            for n in 1..200 {
+                append(&path, &[line(n)]);
+            }
+            writing.store(false, Ordering::SeqCst);
+            for scanner in scanners {
+                scanner.join().unwrap();
+            }
         });
-        assert!(totals.iter().all(|total| *total == (24 * 40, true)));
-        assert_eq!(bytes_read(&tallies), size);
+        let usage = run(&tallies, &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), 200);
+        assert_eq!(
+            bytes_read(&tallies),
+            std::fs::metadata(&path).unwrap().len()
+        );
+    }
+
+    #[test]
+    fn day_boundaries_that_overflow_are_rejected_not_wrapped() {
+        for bad in [
+            vec![i64::MIN, i64::MAX],
+            vec![i64::MIN, 0],
+            vec![0, i64::MAX],
+            vec![i64::MAX - 1, i64::MAX],
+            vec![now(), i64::MIN],
+        ] {
+            assert!(validate(&bad, now()).is_err(), "{bad:?}");
+        }
     }
 }

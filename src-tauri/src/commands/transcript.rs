@@ -231,6 +231,7 @@ fn read_lines_from(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn scratch(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "clawdmeter-transcript-{name}-{}",

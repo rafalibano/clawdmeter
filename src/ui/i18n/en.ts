@@ -279,7 +279,7 @@ export const en = {
   'usage.daily.tokens': '{value} tokens',
   'usage.daily.tokensByModel': 'Tokens by model',
   'usage.daily.unknownModel': 'unknown',
-  'usage.daily.partial': 'Partial: some transcripts are not counted yet.',
+  'usage.daily.partial': 'Partial: some transcripts were not counted.',
   'refresh.tooltip': 'Refresh',
   'refresh.loading': 'Refreshing…',
   'refresh.cooldown': 'Refresh available in {span}',
