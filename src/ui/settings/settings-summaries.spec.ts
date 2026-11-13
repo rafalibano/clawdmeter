@@ -9,6 +9,7 @@ import {
   launchAtLoginSummary,
   pagesSummary,
   projectionSummary,
+  usageChartLineSummary,
 } from './settings-summaries';
 
 describe('settings section summaries', () => {
@@ -42,6 +43,13 @@ describe('settings section summaries', () => {
     expect(projectionSummary(pt, '14d')).toBe('Últimos 14 dias');
     expect(projectionSummary(pt, '7d')).toBe('Últimos 7 dias');
     expect(appearanceSummary(pt, 'dark')).toBe('Escuro');
+  });
+
+  it('usage tab shows the chart line in the three languages', () => {
+    expect(usageChartLineSummary(pt, 'stepped')).toBe('Degraus');
+    expect(usageChartLineSummary(pt, 'smooth')).toBe('Suavizada');
+    expect(usageChartLineSummary(new Localizer('en'), 'smooth')).toBe('Smooth');
+    expect(usageChartLineSummary(new Localizer('es-MX'), 'stepped')).toBe('Escalones');
   });
 
   describe('launch at login', () => {

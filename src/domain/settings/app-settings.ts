@@ -1,6 +1,7 @@
 import type { ProjectionMethod } from '../usage/projection-method';
 import type { ClaudeSettings } from './claude-accounts';
 import type { UsageAlertSettings } from '../usage/usage-alerts';
+import type { UsageChartLine } from '../usage/usage-chart-line';
 import type { PageId } from './page-id';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -36,5 +37,6 @@ export interface AppSettings {
   projectionMethod: ProjectionMethod;
   seriesColors: SeriesColorSettings;
   usageAlerts: UsageAlertSettings;
+  usageChartLine: UsageChartLine;
   claude: ClaudeSettings;
 }

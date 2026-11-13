@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HOUR_MS, MINUTE_MS } from '../time';
 import type { UsagePoint } from './usage-history';
-import { LEVEL_GAP_MS, levelAt, levelSteps } from './usage-level';
+import { LEVEL_GAP_MS, SMOOTH_HOLD_GAP_MS, levelAt, levelSteps, smoothLevelSteps } from './usage-level';
 import { RESET_JITTER_MS } from './usage-window';
 
 const NOW = 1_800_000_000_000;
@@ -107,5 +107,110 @@ describe('levelSteps', () => {
     expect(levelSteps(points, FROM, FROM + HOUR_MS)).toEqual([[FROM + HOUR_MS - 1, 1]]);
     expect(levelSteps(points, FROM, FROM + HOUR_MS, 2 * HOUR_MS)).toEqual([]);
     expect(levelSteps(points, FROM, FROM + HOUR_MS, MINUTE_MS)).toEqual([[FROM + HOUR_MS - 1, 1]]);
+  });
+});
+
+describe('smoothLevelSteps', () => {
+  const reading = (at: number, utilization: number, resetsAt: number | null = null): UsagePoint => ({ at, utilization, resetsAt });
+
+  it('without any point there is nothing to draw', () => {
+    expect(smoothLevelSteps([], FROM, NOW)).toEqual([]);
+  });
+
+  it('adds no hold between readings closer than the smooth gap, where the stepped mode would', () => {
+    const to = FROM + 2 * HOUR_MS;
+    const points = [reading(FROM, 10), reading(FROM + HOUR_MS, 20), reading(to - MINUTE_MS, 30)];
+    expect(levelSteps(points, FROM, to)).toContainEqual([FROM + HOUR_MS - 1, 10]);
+    expect(smoothLevelSteps(points, FROM, to)).toEqual([]);
+  });
+
+  it('holds across a gap longer than the smooth gap, up to just before the next reading', () => {
+    const points = [reading(FROM, 10), reading(FROM + SMOOTH_HOLD_GAP_MS + MINUTE_MS, 20), reading(NOW - MINUTE_MS, 30)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([[FROM + SMOOTH_HOLD_GAP_MS + MINUTE_MS - 1, 10]]);
+  });
+
+  it('a reset between close readings still drops straight down, with no hold', () => {
+    const resetsAt = FROM + 30 * MINUTE_MS;
+    const to = FROM + 2 * HOUR_MS;
+    const points = [reading(FROM, 80, resetsAt), reading(FROM + HOUR_MS, 3), reading(to - MINUTE_MS, 4)];
+    expect(smoothLevelSteps(points, FROM, to)).toEqual([
+      [resetsAt, 80],
+      [resetsAt, 0],
+    ]);
+  });
+
+  it('a reset inside a long gap drops and holds the post-reset level until the next reading', () => {
+    const resetsAt = FROM + HOUR_MS;
+    const next = FROM + 5 * HOUR_MS;
+    const points = [reading(FROM, 60, resetsAt), reading(next, 9), reading(NOW - MINUTE_MS, 10)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([
+      [resetsAt, 60],
+      [resetsAt, 0],
+      [next - 1, 0],
+    ]);
+  });
+
+  it('extends the last reading up to the end of the range with the stepped gap and never beyond it', () => {
+    const points = [reading(NOW - 2 * HOUR_MS, 10), reading(NOW - HOUR_MS, 40)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([[NOW, 40]]);
+    expect(smoothLevelSteps([reading(NOW - 2 * HOUR_MS, 10), reading(NOW - 5 * MINUTE_MS, 40)], FROM, NOW)).toEqual([]);
+  });
+
+  it('carries the last reading before the range into its start, like the stepped mode', () => {
+    const points = [reading(FROM - 3 * HOUR_MS, 35, NOW + 3 * HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual(levelSteps(points, FROM, NOW));
+    const dropped = [reading(FROM - 3 * HOUR_MS, 64, FROM - HOUR_MS)];
+    expect(smoothLevelSteps(dropped, FROM, NOW)).toEqual([
+      [FROM, 0],
+      [NOW, 0],
+    ]);
+  });
+
+  it('a larger minimum gap widens the trailing hold', () => {
+    const points = [reading(NOW - 2 * HOUR_MS, 10), reading(NOW - HOUR_MS, 40)];
+    expect(smoothLevelSteps(points, FROM, NOW, 2 * HOUR_MS)).toEqual([]);
+  });
+
+  it('dense 5-minute readings across a reset add no drop, whatever the bucket width, so no bounce can be drawn', () => {
+    const resetsAt = FROM + 3 * HOUR_MS;
+    const dense: UsagePoint[] = [];
+    for (let at = FROM + 90_000; at <= NOW; at += 5 * MINUTE_MS) {
+      dense.push(reading(at, at < resetsAt ? 80 : 2, at < resetsAt ? resetsAt : resetsAt + 5 * HOUR_MS));
+    }
+    for (const bucketMs of [12 * MINUTE_MS, 84 * MINUTE_MS, 6 * HOUR_MS]) {
+      expect(smoothLevelSteps(dense, FROM, NOW, 2 * bucketMs)).toEqual([]);
+    }
+  });
+
+  it('a reset right at the next reading, which already reads lower, drops straight down instead of sloping', () => {
+    const resetsAt = FROM + HOUR_MS;
+    const points = [reading(FROM, 70, resetsAt), reading(resetsAt, 0, NOW + HOUR_MS), reading(resetsAt + 2 * HOUR_MS, 5, NOW + HOUR_MS), reading(NOW - MINUTE_MS, 6, NOW + HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([
+      [resetsAt - 1, 70],
+      [resetsAt - 1, 0],
+    ]);
+  });
+
+  it('a reading taken seconds before the reset that already reads zero drops straight down too', () => {
+    const resetsAt = FROM + HOUR_MS;
+    const next = resetsAt - 20_000;
+    const points = [reading(FROM, 70, resetsAt), reading(next, 0, NOW + HOUR_MS), reading(next + 2 * HOUR_MS, 5, NOW + HOUR_MS), reading(NOW - MINUTE_MS, 6, NOW + HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([
+      [next - 1, 70],
+      [next - 1, 0],
+    ]);
+  });
+
+  it('a small decrease without a reset gets no drop', () => {
+    const resetsAt = FROM + 3 * HOUR_MS;
+    const points = [reading(FROM, 70, resetsAt), reading(resetsAt - 20_000, 69, resetsAt), reading(resetsAt + 5 * MINUTE_MS, 1, NOW + HOUR_MS), reading(NOW - MINUTE_MS, 2, NOW + HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW)).toEqual([]);
+  });
+
+  it('a reading just before the reset that still reads the old level gets no drop', () => {
+    const resetsAt = FROM + HOUR_MS;
+    const next = resetsAt - 20_000;
+    const points = [reading(FROM, 70, resetsAt), reading(next, 71, resetsAt), reading(next + 20_000 + HOUR_MS, 5, NOW + HOUR_MS)];
+    expect(smoothLevelSteps(points, FROM, NOW).filter((step) => step[0] === next - 1)).toEqual([]);
   });
 });

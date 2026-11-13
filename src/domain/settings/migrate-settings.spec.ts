@@ -47,6 +47,7 @@ describe('migrateSettings', () => {
       projectionMethod: 'since-reset',
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
       usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
+      usageChartLine: 'smooth',
       claude: {
         useDefaultClientId: false,
         clientId: '11111111-2222-4333-8444-555555555555',
@@ -257,7 +258,7 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
   it('a file from version 9 without claude uses the default client id, with no custom id and zero accounts, keeping the rest', () => {
     const migrated = migrateSettings({ schemaVersion: 9, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(10);
+    expect(SCHEMA_VERSION).toBe(11);
     expect(migrated.claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null });
     expect(migrated.language).toBe('pt-BR');
     expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
@@ -362,3 +363,19 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
   });
 });
 
+describe('migration 10 -> 11 (usage chart line)', () => {
+  it('adds the usage chart line at schema 11: keeps a valid value and falls back to stepped otherwise', () => {
+    expect(migrateSettings({ schemaVersion: 10 }).usageChartLine).toBe('stepped');
+    expect(migrateSettings({ schemaVersion: 10, usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');
+    expect(migrateSettings({ schemaVersion: 10, usageChartLine: 'curvy' }).usageChartLine).toBe('stepped');
+    expect(migrateSettings({ schemaVersion: 10, usageChartLine: 3 }).usageChartLine).toBe('stepped');
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');
+    expect(migrateSettings({ schemaVersion: 10 }).schemaVersion).toBe(11);
+    expect(createDefaultSettings().usageChartLine).toBe('stepped');
+  });
+
+  it('migrating from schema 10 keeps the other settings untouched', () => {
+    const migrated = migrateSettings({ schemaVersion: 10, language: 'pt-BR', projectionMethod: '24h' });
+    expect(migrated).toMatchObject({ language: 'pt-BR', projectionMethod: '24h', usageChartLine: 'stepped' });
+  });
+});
