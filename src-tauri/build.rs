@@ -8,6 +8,7 @@ const APP_COMMANDS: &[&str] = &[
     "claude_account_status",
     "claude_account_remove",
     "claude_usage_fetch",
+    "claude_usage_resets_fetch",
     "process_run",
     "process_spawn",
     "process_kill",
