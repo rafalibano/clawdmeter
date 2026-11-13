@@ -94,7 +94,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
     updates: new Updates(deps.updateChecker, github, deps.clock),
-    usageResets: new UsageResetsMonitor(deps.loadUsageResets ?? null, deps.clock),
+    usageResets: new UsageResetsMonitor(deps.loadUsageResets ?? null, deps.clock, connections.monitor),
     language: deps.language ?? new CurrentLanguage(),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),

@@ -63,7 +63,7 @@
   }
 
   @if (extra) {
-    <section class="card extra" data-block="extra-usage" [attr.data-enabled]="extra.enabled">
+    <section class="card extra" data-block="extra-usage" [attr.data-enabled]="extra.enabled" [attr.aria-label]="i18n.t('usage.extra.title')">
       <div class="bar-head">
         <span class="bar-label">{{ i18n.t('usage.extra.title') }}</span>
         <span class="state">{{ extra.state }}</span>

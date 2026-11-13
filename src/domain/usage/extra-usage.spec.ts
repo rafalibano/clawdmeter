@@ -18,6 +18,7 @@ describe('parseExtraUsage', () => {
   it('reads the enabled state, the amounts in minor units, the currency and the percent', () => {
     expect(parseExtraUsage(extra())).toEqual({
       enabled: true,
+      limitReached: false,
       usedMinor: 2_500.5,
       limitMinor: 10_000,
       percent: 25,
@@ -33,12 +34,47 @@ describe('parseExtraUsage', () => {
 
   it('has no percent when there is no limit and no reported utilization', () => {
     expect(parseExtraUsage(extra({ utilization: null, monthly_limit: null }))).toMatchObject({ limitMinor: null, percent: null });
-    expect(parseExtraUsage(extra({ utilization: null, monthly_limit: 0 }))).toMatchObject({ limitMinor: null, percent: null });
+  });
+
+  it('a limit of 0 is a real limit, not "no limit", and gives no percent since it cannot be divided', () => {
+    expect(parseExtraUsage(extra({ utilization: null, monthly_limit: 0, used_credits: 300 }))).toMatchObject({ limitMinor: 0, percent: null });
+    expect(parseExtraUsage(extra({ monthly_limit: 0, utilization: 40 }))).toMatchObject({ limitMinor: 0, percent: 40 });
+  });
+
+  it('only a missing or null monthly limit means no limit', () => {
+    expect(parseExtraUsage(extra({ utilization: null, monthly_limit: undefined }))?.limitMinor).toBeNull();
+    expect(parseExtraUsage(extra({ utilization: null, monthly_limit: null }))?.limitMinor).toBeNull();
+    expect(parseExtraUsage(extra({ monthly_limit: 'abc' }))?.limitMinor).toBeNull();
+  });
+
+  it('uses utilization only when it is a finite number from 0 to 100, otherwise derives from used and limit', () => {
+    const percent = (utilization: unknown) => parseExtraUsage(extra({ utilization, used_credits: 5_000 }))?.percent;
+    expect(percent(0)).toBe(0);
+    expect(percent(100)).toBe(100);
+    expect(percent(33.3)).toBe(33.3);
+    for (const unknown of [null, undefined, -1, 100.5, 250, Number.NaN, Number.POSITIVE_INFINITY, 'abc']) {
+      expect(percent(unknown)).toBe(50);
+    }
+  });
+
+  it('flags a reached spend limit', () => {
+    expect(parseExtraUsage(extra({ spend_limit_reached: true }))).toMatchObject({ enabled: true, limitReached: true });
+    for (const spend_limit_reached of [false, null, undefined, 'true', 1]) {
+      expect(parseExtraUsage(extra({ spend_limit_reached }))?.limitReached).toBe(false);
+    }
+  });
+
+  it('a user who turned it off is not enabled, whatever is_enabled says', () => {
+    expect(parseExtraUsage(extra({ is_enabled: true, user_disabled: true }))?.enabled).toBe(false);
+    expect(parseExtraUsage(extra({ is_enabled: true, user_disabled: false }))?.enabled).toBe(true);
+    expect(parseExtraUsage(extra({ is_enabled: true, user_disabled: null }))?.enabled).toBe(true);
+    expect(parseExtraUsage(extra({ is_enabled: false, user_disabled: false }))?.enabled).toBe(false);
   });
 
   it('an account with it off still returns the block, flagged as disabled', () => {
     expect(parseExtraUsage(extra({ is_enabled: false, used_credits: null, monthly_limit: null, utilization: null }))).toEqual({
       enabled: false,
+      limitReached: false,
       usedMinor: 0,
       limitMinor: null,
       percent: null,

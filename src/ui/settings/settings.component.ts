@@ -77,8 +77,8 @@ export class SettingsComponent {
   protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
   protected readonly alertRows = computed(() => usageAlertRows(this.settings().usageAlerts));
   protected readonly alertsSummaryText = computed(() => usageAlertsSummary(this.i18n.localizer(), this.settings().usageAlerts));
-  protected readonly usageBlockRows = computed(() => usageBlockRows(this.settings().usageBlocks));
-  protected readonly usageTabSummaryText = computed(() => usageBlocksSummary(this.i18n.localizer(), this.usageBlockRows()));
+  protected readonly blockRows = computed(() => usageBlockRows(this.settings().usageBlocks));
+  protected readonly usageTabSummaryText = computed(() => usageBlocksSummary(this.i18n.localizer(), this.blockRows()));
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),

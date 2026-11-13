@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ConnectionMonitor } from '../connections/connection-monitor';
 import { RateLimitedError } from '../../domain/rate-limit';
-import type { AppSettings } from '../../domain/settings';
+import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, type AppSettings } from '../../domain/settings';
 import { MINUTE_MS } from '../../domain/time';
 import type { UsageResets } from '../../domain/usage';
 import { LoadUsageResets, type UsageResetsData } from '../use-cases/usage/load-usage-resets';
@@ -22,27 +23,37 @@ const RESETS: UsageResets = {
       startsAt: null,
       endsAt: null,
       clears: ['sevenDay'],
+      clearsScoped: [],
       paused: false,
       usableNow: true,
     },
   ],
 };
 
+const CUSTOM_CLIENT = '11111111-2222-4333-8444-555555555555';
+
 let world: FakeConnectionWorld;
 let clock: FakeClock;
 let gateway: FakeUsageResetsGateway;
+let connections: ConnectionMonitor;
 let monitor: UsageResetsMonitor;
 let published: (UsageResetsData | null)[];
 
-function settings(resets: boolean, accountId: string | null = FAKE_ACCOUNT.id): AppSettings {
+function settings(resets: boolean, accountId: string | null = FAKE_ACCOUNT.id, clientId: string | null = null): AppSettings {
   const base = settingsWithAccounts([FAKE_ACCOUNT, { id: 'account-2', name: 'Work' }], accountId);
-  return { ...base, usageBlocks: { ...base.usageBlocks, resets } };
+  const claude = clientId === null ? base.claude : { ...base.claude, useDefaultClientId: false, clientId };
+  return { ...base, claude, usageBlocks: { ...base.usageBlocks, resets } };
 }
 
-async function use(next: AppSettings): Promise<void> {
-  world.settings.emitExternalChange(next);
-  monitor.sync(next);
+async function use(next: AppSettings, usagePageEnabled = true): Promise<void> {
+  monitor.sync(next, usagePageEnabled);
   await flushPromises();
+}
+
+function build(loader: LoadUsageResets | null): UsageResetsMonitor {
+  const created = new UsageResetsMonitor(loader, clock, connections);
+  created.subscribe((data) => published.push(data));
+  return created;
 }
 
 beforeEach(async () => {
@@ -51,9 +62,9 @@ beforeEach(async () => {
   await clock.advance(1_800_000_000_000);
   gateway = new FakeUsageResetsGateway();
   gateway.outcome = RESETS;
-  monitor = new UsageResetsMonitor(new LoadUsageResets(world.prefs, world.settings, gateway, clock), clock);
+  connections = new ConnectionMonitor();
   published = [];
-  monitor.subscribe((data) => published.push(data));
+  monitor = build(new LoadUsageResets(world.prefs, gateway, clock));
 });
 
 describe('UsageResetsMonitor', () => {
@@ -75,6 +86,20 @@ describe('UsageResetsMonitor', () => {
     expect(monitor.current).toBeNull();
   });
 
+  it('with the Usage page turned off it never reads, even with the block on, and reads once the page is back', async () => {
+    await use(settings(true), false);
+    await clock.advance(5 * USAGE_RESETS_POLL_INTERVAL_MS);
+    expect(gateway.fetches).toBe(0);
+    expect(clock.activeTimers()).toBe(0);
+    await use(settings(true), true);
+    expect(gateway.fetches).toBe(1);
+    await use(settings(true), false);
+    expect(monitor.current).toBeNull();
+    expect(clock.activeTimers()).toBe(0);
+    await clock.advance(3 * USAGE_RESETS_POLL_INTERVAL_MS);
+    expect(gateway.fetches).toBe(1);
+  });
+
   it('reads again at each interval, not more often', async () => {
     await use(settings(true));
     await clock.advance(USAGE_RESETS_POLL_INTERVAL_MS - 1);
@@ -87,10 +112,17 @@ describe('UsageResetsMonitor', () => {
 
   it('syncing again with unrelated changes does not read again', async () => {
     await use(settings(true));
-    monitor.sync(settings(true));
+    monitor.sync(settings(true), true);
     await flushPromises();
     expect(gateway.fetches).toBe(1);
     expect(clock.activeTimers()).toBe(1);
+  });
+
+  it('turning the block on reads what the app has in memory, even while the file on disk still says off', async () => {
+    world.settings.emitExternalChange(settings(false));
+    await use(settings(true));
+    expect(gateway.fetches).toBe(1);
+    expect(monitor.current).not.toBeNull();
   });
 
   it('turning the block off clears the data, stops the timer and stops the requests', async () => {
@@ -118,7 +150,14 @@ describe('UsageResetsMonitor', () => {
     expect(clock.activeTimers()).toBe(1);
   });
 
-  it('an account with no resets publishes nothing', async () => {
+  it('changing the client id reads again with the new one', async () => {
+    await use(settings(true));
+    await use(settings(true, FAKE_ACCOUNT.id, CUSTOM_CLIENT));
+    expect(gateway.requests.map((request) => request.clientId)).toEqual([DEFAULT_CLAUDE_OAUTH_CLIENT_ID, CUSTOM_CLIENT]);
+    expect(clock.activeTimers()).toBe(1);
+  });
+
+  it('an account without resets publishes nothing', async () => {
     gateway.outcome = null;
     await use(settings(true));
     expect(monitor.current).toBeNull();
@@ -147,18 +186,59 @@ describe('UsageResetsMonitor', () => {
     expect(monitor.current).not.toBeNull();
   });
 
+  it('the backoff of an account survives turning the block off and on', async () => {
+    gateway.outcome = new RateLimitedError(40 * MINUTE_MS);
+    await use(settings(true));
+    gateway.outcome = RESETS;
+    await use(settings(false));
+    await use(settings(true));
+    expect(gateway.fetches).toBe(1);
+    await clock.advance(20 * MINUTE_MS);
+    await use(settings(false));
+    await use(settings(true));
+    expect(gateway.fetches).toBe(1);
+    await clock.advance(21 * MINUTE_MS);
+    await use(settings(false));
+    await use(settings(true));
+    expect(gateway.fetches).toBe(2);
+  });
+
+  it('the backoff survives turning the Usage page off and on, and a client id change', async () => {
+    gateway.outcome = new RateLimitedError(40 * MINUTE_MS);
+    await use(settings(true));
+    gateway.outcome = RESETS;
+    await use(settings(true), false);
+    await use(settings(true), true);
+    await use(settings(true, FAKE_ACCOUNT.id, CUSTOM_CLIENT));
+    expect(gateway.fetches).toBe(1);
+  });
+
+  it('another account is not held back by the backoff of the first one', async () => {
+    gateway.outcome = new RateLimitedError(40 * MINUTE_MS);
+    await use(settings(true));
+    gateway.outcome = RESETS;
+    await use(settings(true, 'account-2'));
+    expect(gateway.requests.map((request) => request.accountId)).toEqual([FAKE_ACCOUNT.id, 'account-2']);
+    expect(monitor.current?.accountId).toBe('account-2');
+  });
+
   it('a result that arrives after the block was turned off is discarded', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const slow = {
-      fetch: async () => {
-        await held;
-        return RESETS;
-      },
-    };
-    monitor = new UsageResetsMonitor(new LoadUsageResets(world.prefs, world.settings, slow, clock), clock);
+    monitor = build(
+      new LoadUsageResets(
+        world.prefs,
+        {
+          fetch: async () => {
+            await held;
+            return RESETS;
+          },
+        },
+        clock,
+      ),
+    );
     await use(settings(true));
     await use(settings(false));
     release();
@@ -172,14 +252,19 @@ describe('UsageResetsMonitor', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const slow = {
-      fetch: async () => {
-        calls += 1;
-        await held;
-        return RESETS;
-      },
-    };
-    monitor = new UsageResetsMonitor(new LoadUsageResets(world.prefs, world.settings, slow, clock), clock);
+    monitor = build(
+      new LoadUsageResets(
+        world.prefs,
+        {
+          fetch: async () => {
+            calls += 1;
+            await held;
+            return RESETS;
+          },
+        },
+        clock,
+      ),
+    );
     await use(settings(true));
     await clock.advance(2 * USAGE_RESETS_POLL_INTERVAL_MS);
     expect(calls).toBe(1);
@@ -188,8 +273,8 @@ describe('UsageResetsMonitor', () => {
   });
 
   it('without a loader it never reads', async () => {
-    const idle = new UsageResetsMonitor(null, clock);
-    idle.sync(settings(true));
+    const idle = build(null);
+    idle.sync(settings(true), true);
     await flushPromises();
     expect(idle.current).toBeNull();
     expect(clock.activeTimers()).toBe(0);
@@ -212,5 +297,58 @@ describe('UsageResetsMonitor', () => {
     stop();
     monitor.stop();
     expect(heard).toHaveLength(1);
+  });
+});
+
+describe('UsageResetsMonitor and the Claude connection', () => {
+  it('turning the Claude connection back on reads right away instead of waiting for the next interval', async () => {
+    connections.set('claude', { state: 'disconnected' });
+    world.prefs.current = { ...world.prefs.current, claude: { ...world.prefs.current.claude, enabled: false } };
+    await use(settings(true));
+    await clock.advance(USAGE_RESETS_POLL_INTERVAL_MS);
+    expect(gateway.fetches).toBe(0);
+    world.prefs.current = { ...world.prefs.current, claude: { ...world.prefs.current.claude, enabled: true } };
+    connections.set('claude', { state: 'connected' });
+    await flushPromises();
+    expect(gateway.fetches).toBe(1);
+    expect(monitor.current).not.toBeNull();
+  });
+
+  it('disconnecting Claude hides the block at once', async () => {
+    await use(settings(true));
+    expect(monitor.current).not.toBeNull();
+    connections.set('claude', { state: 'disconnected' });
+    expect(monitor.current).toBeNull();
+  });
+
+  it('other status changes and other connections do not trigger a read', async () => {
+    await use(settings(true));
+    connections.set('claude', { state: 'checking' });
+    connections.set('claude', { state: 'connected' });
+    connections.set('github', { state: 'disconnected' });
+    connections.set('github', { state: 'connected' });
+    await flushPromises();
+    expect(gateway.fetches).toBe(1);
+  });
+
+  it('reconnecting with the block off, or the page off, reads nothing', async () => {
+    connections.set('claude', { state: 'disconnected' });
+    await use(settings(false));
+    connections.set('claude', { state: 'connected' });
+    connections.set('claude', { state: 'disconnected' });
+    await use(settings(true), false);
+    connections.set('claude', { state: 'connected' });
+    await flushPromises();
+    expect(gateway.fetches).toBe(0);
+  });
+
+  it('a reconnect during a backoff does not skip it', async () => {
+    gateway.outcome = new RateLimitedError(40 * MINUTE_MS);
+    await use(settings(true));
+    gateway.outcome = RESETS;
+    connections.set('claude', { state: 'disconnected' });
+    connections.set('claude', { state: 'connected' });
+    await flushPromises();
+    expect(gateway.fetches).toBe(1);
   });
 });

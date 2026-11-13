@@ -16,6 +16,7 @@ export interface ResetGrant {
   startsAt: number | null;
   endsAt: number | null;
   clears: readonly UsageWindowKind[];
+  clearsScoped: readonly string[];
   paused: boolean;
   usableNow: boolean;
 }
@@ -34,18 +35,34 @@ const CLEARS_BY_TYPE: Record<ResetGrantType, readonly UsageWindowKind[]> = {
   full: ALL_WINDOWS,
 };
 
-function windowsIn(value: unknown): UsageWindowKind[] {
-  const tokens = (Array.isArray(value) ? value : [value]).flatMap((item) => {
-    const text = asText(item);
-    return text === null ? [] : [text.toLowerCase()];
-  });
+const FIVE_HOUR_TOKENS = ['five_hour', 'session'];
+const SEVEN_DAY_TOKENS = ['seven_day', 'weekly'];
+const BOTH_TOKENS = ['all', 'both', 'full', 'full_reset'];
+const SCOPED_TOKEN = /^(five_hour|seven_day|weekly)_[a-z0-9_]+$/;
+
+interface ReadWindows {
+  windows: UsageWindowKind[];
+  scoped: string[];
+}
+
+function readWindows(value: unknown): ReadWindows {
   const found = new Set<UsageWindowKind>();
-  for (const token of tokens) {
-    if (/\b(all|both|full)\b/.test(token)) ALL_WINDOWS.forEach((kind) => found.add(kind));
-    if (/five|5h|session/.test(token)) found.add('fiveHour');
-    if (/seven|7d|week/.test(token)) found.add('sevenDay');
+  const scoped: string[] = [];
+  for (const item of Array.isArray(value) ? value : [value]) {
+    const token = asText(item)?.toLowerCase().replace(/[\s-]+/g, '_');
+    if (token === undefined || token === null) continue;
+    if (BOTH_TOKENS.includes(token)) ALL_WINDOWS.forEach((kind) => found.add(kind));
+    else if (FIVE_HOUR_TOKENS.includes(token)) found.add('fiveHour');
+    else if (SEVEN_DAY_TOKENS.includes(token)) found.add('sevenDay');
+    else if (SCOPED_TOKEN.test(token) && !scoped.includes(token)) scoped.push(token);
   }
-  return ALL_WINDOWS.filter((kind) => found.has(kind));
+  return { windows: ALL_WINDOWS.filter((kind) => found.has(kind)), scoped };
+}
+
+function typeOfWindows(windows: readonly UsageWindowKind[]): ResetGrantType | undefined {
+  if (windows.length === ALL_WINDOWS.length) return 'full';
+  if (windows[0] === 'fiveHour') return 'session';
+  return windows[0] === 'sevenDay' ? 'weekly' : undefined;
 }
 
 function readId(value: unknown): string | null {
@@ -53,13 +70,19 @@ function readId(value: unknown): string | null {
   return asText(value);
 }
 
+function readType(raw: unknown, declared: readonly UsageWindowKind[]): ResetGrantType | undefined {
+  if (raw === undefined || raw === null) return typeOfWindows(declared);
+  return RESET_GRANT_TYPES.find((candidate) => candidate === raw);
+}
+
 function readGrant(raw: unknown): ResetGrant | null {
   if (!isRecord(raw)) return null;
   const id = readId(raw['id']);
-  const type = RESET_GRANT_TYPES.find((candidate) => candidate === raw['type']);
+  const declared = readWindows(raw['clears']);
+  const type = readType(raw['type'], declared.windows);
   if (id === null || type === undefined) return null;
-  const declared = windowsIn(raw['clears']);
   const total = asNumber(raw['resets_total']);
+  const derived = declared.windows.length === 0 && declared.scoped.length === 0;
   return {
     id,
     label: asText(raw['label']),
@@ -68,7 +91,8 @@ function readGrant(raw: unknown): ResetGrant | null {
     resetsTotal: total === null ? null : Math.max(0, Math.floor(total)),
     startsAt: asTimestamp(raw['starts_at']),
     endsAt: asTimestamp(raw['ends_at']),
-    clears: declared.length > 0 ? declared : CLEARS_BY_TYPE[type],
+    clears: derived ? CLEARS_BY_TYPE[type] : declared.windows,
+    clearsScoped: declared.scoped,
     paused: raw['paused'] === true,
     usableNow: raw['usable_now'] === true,
   };
@@ -82,7 +106,7 @@ export function parseUsageResets(raw: unknown): UsageResets | null {
     return grant === null ? [] : [grant];
   });
   if (grants.length === 0) return null;
-  return { atLimit: raw['at_limit'] === true, exhausted: windowsIn(raw['exhausted']), grants };
+  return { atLimit: raw['at_limit'] === true, exhausted: readWindows(raw['exhausted']).windows, grants };
 }
 
 export function isGrantExpired(grant: ResetGrant, now: number): boolean {
@@ -110,6 +134,10 @@ export function blockedWindows(snapshot: UsageSnapshot, resets: UsageResets): Se
   return blocked;
 }
 
+function clearsAll(grant: ResetGrant, blocked: ReadonlySet<UsageWindowKind>): boolean {
+  return [...blocked].every((kind) => grant.clears.includes(kind));
+}
+
 function expiresBefore(a: ResetGrant, b: ResetGrant): number {
   if (a.endsAt === b.endsAt) return a.clears.length - b.clears.length;
   if (a.endsAt === null) return 1;
@@ -117,16 +145,13 @@ function expiresBefore(a: ResetGrant, b: ResetGrant): number {
   return a.endsAt - b.endsAt;
 }
 
-export function recommendedGrant(
-  resets: UsageResets,
-  snapshot: UsageSnapshot,
-  now: number,
-): ResetGrant | null {
+export function recommendedGrant(resets: UsageResets, snapshot: UsageSnapshot, now: number): ResetGrant | null {
   const blocked = blockedWindows(snapshot, resets);
-  // Not at a limit means nothing to clear, so no grant is recommended.
   if (blocked.size === 0) return null;
   const candidates = resets.grants.filter(
     (grant) => isGrantUsable(grant, now) && grant.clears.some((kind) => blocked.has(kind)),
   );
-  return [...candidates].sort(expiresBefore)[0] ?? null;
+  const rank = (a: ResetGrant, b: ResetGrant) =>
+    Number(clearsAll(b, blocked)) - Number(clearsAll(a, blocked)) || expiresBefore(a, b);
+  return [...candidates].sort(rank)[0] ?? null;
 }

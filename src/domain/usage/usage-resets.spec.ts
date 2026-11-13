@@ -52,6 +52,7 @@ const grant = (overrides: Partial<ResetGrant> = {}): ResetGrant => ({
   startsAt: null,
   endsAt: NOW + DAY_MS,
   clears: ['fiveHour'],
+  clearsScoped: [],
   paused: false,
   usableNow: true,
   ...overrides,
@@ -85,6 +86,7 @@ describe('parseUsageResets', () => {
           startsAt: Date.parse('2026-11-01T00:00:00Z'),
           endsAt: Date.parse('2026-11-20T00:00:00Z'),
           clears: ['fiveHour'],
+          clearsScoped: [],
           paused: false,
           usableNow: true,
         },
@@ -112,7 +114,8 @@ describe('parseUsageResets', () => {
         'x',
         7,
         [],
-        rawGrant({ id: 'no-type', type: undefined }),
+        rawGrant({ id: 'no-type-no-clears', type: undefined, clears: undefined }),
+        rawGrant({ id: 'scoped-only', type: undefined, clears: 'seven_day_opus' }),
         rawGrant({ id: 'new-type', type: 'monthly' }),
         rawGrant({ id: '', type: 'weekly' }),
         rawGrant({ id: undefined, type: 'weekly' }),
@@ -137,6 +140,7 @@ describe('parseUsageResets', () => {
       startsAt: null,
       endsAt: null,
       clears: ['fiveHour', 'sevenDay'],
+      clearsScoped: [],
       paused: false,
       usableNow: false,
     });
@@ -149,6 +153,7 @@ describe('parseUsageResets', () => {
     expect(clears('weekly', null)).toEqual(['sevenDay']);
     expect(clears('full', 42)).toEqual(['fiveHour', 'sevenDay']);
     expect(clears('weekly', 'something else')).toEqual(['sevenDay']);
+    expect(clears('weekly', ['unknown', 7, null])).toEqual(['sevenDay']);
   });
 
   it('understands what a grant clears as a word, a list or "all"', () => {
@@ -158,6 +163,36 @@ describe('parseUsageResets', () => {
     expect(clears(['five_hour', 'seven_day'])).toEqual(['fiveHour', 'sevenDay']);
     expect(clears('all')).toEqual(['fiveHour', 'sevenDay']);
     expect(clears(['session'])).toEqual(['fiveHour']);
+    expect(clears('full_reset')).toEqual(['fiveHour', 'sevenDay']);
+    expect(clears(' Five-Hour ')).toEqual(['fiveHour']);
+  });
+
+  it('keeps model-scoped windows apart: they never count as the main 7d or 5h window', () => {
+    const grant = (value: unknown, type = 'weekly') => parseUsageResets(rawBlock([rawGrant({ type, clears: value })]))?.grants[0];
+    expect(grant(['seven_day_opus'])).toMatchObject({ clears: [], clearsScoped: ['seven_day_opus'] });
+    expect(grant(['seven_day_sonnet', 'seven_day'])).toMatchObject({ clears: ['sevenDay'], clearsScoped: ['seven_day_sonnet'] });
+    expect(grant('seven_day_overage_included')).toMatchObject({ clears: [], clearsScoped: ['seven_day_overage_included'] });
+    expect(grant('weekly_scoped')).toMatchObject({ clears: [], clearsScoped: ['weekly_scoped'] });
+    expect(grant(['seven_day_opus', 'seven_day_opus'])?.clearsScoped).toEqual(['seven_day_opus']);
+  });
+
+  it('a grant without type gets it from what it clears', () => {
+    const typeOf = (value: unknown) => parseUsageResets(rawBlock([rawGrant({ type: undefined, clears: value })]))?.grants[0];
+    expect(typeOf('five_hour')).toMatchObject({ type: 'session', clears: ['fiveHour'] });
+    expect(typeOf('seven_day')).toMatchObject({ type: 'weekly', clears: ['sevenDay'] });
+    expect(typeOf(['five_hour', 'seven_day'])).toMatchObject({ type: 'full', clears: ['fiveHour', 'sevenDay'] });
+    expect(typeOf('all')).toMatchObject({ type: 'full' });
+    expect(parseUsageResets(rawBlock([rawGrant({ type: null, clears: 'session' })]))?.grants[0]?.type).toBe('session');
+  });
+
+  it('a grant without type and without usable clears is dropped, and so is one with only model-scoped windows', () => {
+    for (const clears of [undefined, null, 'whatever', [], 'seven_day_opus']) {
+      expect(parseUsageResets(rawBlock([rawGrant({ type: undefined, clears })]))).toBeNull();
+    }
+  });
+
+  it('a grant with an unrecognized type is still skipped', () => {
+    expect(parseUsageResets(rawBlock([rawGrant({ type: 'monthly', clears: 'five_hour' })]))).toBeNull();
   });
 
   it('only a boolean true counts for paused and usable_now; counts are whole and not negative', () => {
@@ -173,6 +208,12 @@ describe('parseUsageResets', () => {
       'sevenDay',
     ]);
     expect(parseUsageResets(rawBlock([rawGrant()], { exhausted: 'x' }))?.exhausted).toEqual([]);
+  });
+
+  it('a model-scoped exhausted window does not mark the main 7d as blocked', () => {
+    const parsed = parseUsageResets(rawBlock([rawGrant()], { exhausted: ['seven_day_opus'] }));
+    expect(parsed?.exhausted).toEqual([]);
+    expect(blockedWindows(snapshot(10, 10), parsed!).size).toBe(0);
   });
 });
 
@@ -279,6 +320,30 @@ describe('recommendedGrant', () => {
     const all = [session('session', NOW + 2 * DAY_MS), weekly('weekly', NOW + DAY_MS)];
     expect(recommendedGrant(resets(all, { exhausted: ['fiveHour'] }), snapshot(50, 50), NOW)?.id).toBe('session');
     expect(recommendedGrant(resets(all, { atLimit: true }), snapshot(50, 50), NOW)?.id).toBe('weekly');
+  });
+
+  it('with both windows blocked, a grant that clears both beats an earlier one that clears only one', () => {
+    const all = resets([session('session', NOW + HOUR_MS), weekly('weekly', NOW + 2 * HOUR_MS), full('full', NOW + 5 * DAY_MS)]);
+    expect(recommendedGrant(all, snapshot(100, 100), NOW)?.id).toBe('full');
+  });
+
+  it('with both windows blocked and no grant that clears both, still recommends the one that expires first', () => {
+    const all = resets([session('late', NOW + 3 * DAY_MS), weekly('soon', NOW + DAY_MS)]);
+    expect(recommendedGrant(all, snapshot(100, 100), NOW)?.id).toBe('soon');
+  });
+
+  it('among grants that clear all the blocked windows, the earliest expiry wins, then the one that clears fewer', () => {
+    const all = resets([full('b', NOW + 4 * DAY_MS), full('a', NOW + 2 * DAY_MS), weekly('w', NOW + HOUR_MS)]);
+    expect(recommendedGrant(all, snapshot(100, 100), NOW)?.id).toBe('a');
+    const tie = resets([full('full', NOW + DAY_MS), weekly('weekly', NOW + DAY_MS)]);
+    expect(recommendedGrant(tie, snapshot(20, 100), NOW)?.id).toBe('weekly');
+  });
+
+  it('a grant that clears only a model-scoped window is not recommended for the main 7d', () => {
+    const scoped = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'], endsAt: NOW + HOUR_MS });
+    const all = resets([scoped, weekly('weekly', NOW + 5 * DAY_MS)]);
+    expect(recommendedGrant(all, snapshot(20, 100), NOW)?.id).toBe('weekly');
+    expect(recommendedGrant(resets([scoped]), snapshot(20, 100), NOW)).toBeNull();
   });
 
   it('does not reorder the grants it receives', () => {

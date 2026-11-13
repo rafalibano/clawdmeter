@@ -1,5 +1,5 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
-import { createDefaultSettings, type AppSettings, type SettingsPatch } from '../../domain/settings';
+import { createDefaultSettings, isPageEnabled, type AppSettings, type SettingsPatch } from '../../domain/settings';
 import { SettingsSession, type SettingsSessionError } from '../../application/session';
 import { USAGE_PAGE } from '../pages/usage/usage-page-ref';
 import { APPLICATION } from './application.token';
@@ -26,7 +26,7 @@ export class SettingsFacade {
     effect(() => {
       if (!this.loaded()) return;
       this.app.scheduler.sync(this.state());
-      this.app.usageResets.sync(this.state());
+      this.app.usageResets.sync(this.state(), isPageEnabled(this.state(), USAGE_PAGE.id));
     });
     effect(() => {
       const language = this.state().language;

@@ -109,12 +109,7 @@ export function createComposition(): Application {
     connectionAdapters,
     usageHistories,
     updateChecker: new TauriUpdateChecker(commands),
-    loadUsageResets: new LoadUsageResets(
-      connectionAdapters.prefs,
-      settingsStore,
-      new AnthropicUsageResetsGateway(commands),
-      clock,
-    ),
+    loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new AnthropicUsageResetsGateway(commands), clock),
     launchAtLogin: new TauriLaunchAtLogin(commands),
     skills: ({ connections }) =>
       createSkills(

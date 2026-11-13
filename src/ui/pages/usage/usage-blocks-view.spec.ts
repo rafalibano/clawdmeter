@@ -23,6 +23,7 @@ const grant = (overrides: Partial<ResetGrant> = {}): ResetGrant => ({
   startsAt: null,
   endsAt: NOW + 2 * DAY_MS,
   clears: ['fiveHour'],
+  clearsScoped: [],
   paused: false,
   usableNow: true,
   ...overrides,
@@ -64,6 +65,7 @@ describe('toModelLimitViews', () => {
 describe('toExtraUsageView', () => {
   const extra = (overrides: Partial<ExtraUsage> = {}): ExtraUsage => ({
     enabled: true,
+    limitReached: false,
     usedMinor: 4_250,
     limitMinor: 10_000,
     percent: 42.5,
@@ -110,6 +112,22 @@ describe('toExtraUsageView', () => {
 
   it('caps the bar at 100% while keeping the real percent text', () => {
     expect(toExtraUsageView(extra({ usedMinor: 15_000, percent: 150 }), EN)).toMatchObject({ percent: '150%', fill: 100 });
+  });
+
+  it('says the limit was reached, still showing what was spent', () => {
+    expect(toExtraUsageView(extra({ limitReached: true, usedMinor: 10_000, percent: 100 }), EN)).toEqual({
+      enabled: true,
+      state: 'Limit reached',
+      amounts: '$100.00 of $100.00',
+      percent: '100%',
+      fill: 100,
+    });
+    expect(toExtraUsageView(extra({ limitReached: true }), PT)?.state).toBe('Limite atingido');
+    expect(toExtraUsageView(extra({ limitReached: true }), new Localizer('es-MX'))?.state).toBe('Límite alcanzado');
+  });
+
+  it('a limit of zero is shown as a real limit', () => {
+    expect(toExtraUsageView(extra({ limitMinor: 0, usedMinor: 0, percent: null }), EN)).toMatchObject({ amounts: '$0.00 of $0.00', percent: null });
   });
 
   it('when off, shows only the state', () => {
@@ -184,6 +202,39 @@ describe('toResetsView', () => {
     expect(view?.grants.filter((item) => item.recommended).map((item) => item.id)).toEqual(['soon']);
   });
 
+  it('shows a grant that clears only a model-scoped window by that name, not as the main 7d', () => {
+    const scoped = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'] });
+    const both = grant({ id: 'both', type: 'weekly', clears: ['sevenDay'], clearsScoped: ['seven_day_sonnet'] });
+    const view = toResetsView(data(resets([scoped, both])), snapshot(), NOW, EN);
+    expect(view?.grants.map((item) => item.clears)).toEqual(['Clears seven_day_opus', 'Clears 7d + seven_day_sonnet']);
+  });
+
+  it('does not recommend a model-scoped grant when the main 7d is blocked', () => {
+    const scoped = grant({ id: 'opus', type: 'weekly', clears: [], clearsScoped: ['seven_day_opus'], endsAt: NOW + HOUR_MS });
+    const weekly = grant({ id: 'weekly', type: 'weekly', clears: ['sevenDay'], endsAt: NOW + 5 * DAY_MS });
+    const blocked = snapshot({ sevenDay: { utilization: 100, resetsAt: NOW + DAY_MS } });
+    const view = toResetsView(data(resets([scoped, weekly])), blocked, NOW, EN);
+    expect(view?.grants.filter((item) => item.recommended).map((item) => item.id)).toEqual(['weekly']);
+  });
+
+  it('uses the singular when one is left, in each language', () => {
+    const one = data(resets([grant({ resetsLeft: 1, resetsTotal: 1 })]));
+    const noTotal = data(resets([grant({ resetsLeft: 1, resetsTotal: null })]));
+    expect(toResetsView(one, snapshot(), NOW, EN)).toMatchObject({ total: '1 left' });
+    expect(toResetsView(one, snapshot(), NOW, PT)).toMatchObject({ total: '1 restante' });
+    expect(toResetsView(one, snapshot(), NOW, new Localizer('es-MX'))).toMatchObject({ total: '1 restante' });
+    expect(toResetsView(one, snapshot(), NOW, PT)?.grants[0]?.uses).toBe('1 de 1 restante');
+    expect(toResetsView(noTotal, snapshot(), NOW, PT)?.grants[0]?.uses).toBe('1 restante');
+    expect(toResetsView(noTotal, snapshot(), NOW, new Localizer('es-MX'))?.grants[0]?.uses).toBe('1 restante');
+    expect(toResetsView(noTotal, snapshot(), NOW, EN)?.grants[0]?.uses).toBe('1 left');
+  });
+
+  it('uses the plural for zero and several', () => {
+    const zero = data(resets([grant({ resetsLeft: 0, resetsTotal: 3 })]));
+    expect(toResetsView(zero, snapshot(), NOW, EN)?.total).toBe('0 left');
+    expect(toResetsView(zero, snapshot(), NOW, new Localizer('es-MX'))?.total).toBe('0 restantes');
+  });
+
   it('highlights nothing when the user is not at a limit', () => {
     const view = toResetsView(data(resets([grant()])), snapshot(), NOW, EN);
     expect(view?.grants.some((item) => item.recommended)).toBe(false);
@@ -205,7 +256,7 @@ describe('toResetsView', () => {
 describe('toUsageBlocksView', () => {
   const full = snapshot({
     modelLimits: [{ name: 'Fable', utilization: 10, resetsAt: NOW + DAY_MS }],
-    extraUsage: { enabled: true, usedMinor: 100, limitMinor: 1_000, percent: 10, currency: 'USD', exponent: 2 },
+    extraUsage: { enabled: true, limitReached: false, usedMinor: 100, limitMinor: 1_000, percent: 10, currency: 'USD', exponent: 2 },
   });
   const input = (overrides: Partial<Parameters<typeof toUsageBlocksView>[0]> = {}) => ({
     snapshot: full,

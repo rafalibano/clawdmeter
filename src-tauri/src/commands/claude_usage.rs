@@ -1232,6 +1232,39 @@ mod tests {
         let error = resets(store, &token, &usage).unwrap_err();
         assert_eq!(error.kind, ErrorKind::ClaudeSigninRequired);
         assert!(load_tokens(store, "acc").unwrap().unwrap().rejected);
+        assert_eq!(token.requests().len(), 1);
+    }
+
+    #[test]
+    fn a_resets_401_refreshes_once_and_retries_the_same_resets_url() {
+        let store = store_with("acc", &tokens("at-old", Some("rt-old"), None));
+        let token = TestServer::json(
+            "/token",
+            "200 OK",
+            r#"{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}"#,
+        );
+        let usage = TestServer::start(
+            "/usage",
+            vec![
+                json_response("401 Unauthorized", "{}"),
+                json_response("200 OK", RESETS_JSON),
+            ],
+        );
+        let block = resets(store, &token, &usage).unwrap();
+        assert_eq!(block["grants"][0]["id"], "g1");
+        assert_eq!(token.requests().len(), 1);
+        let calls = usage.requests();
+        assert_eq!(calls.len(), 2);
+        for call in &calls {
+            assert!(
+                call.to_lowercase()
+                    .starts_with("get /usage?cedar_ember=1&skip_spend=1 "),
+                "{call}"
+            );
+        }
+        assert!(calls[1]
+            .to_lowercase()
+            .contains("authorization: bearer at-new"));
     }
 
     #[test]

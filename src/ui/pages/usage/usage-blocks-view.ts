@@ -9,7 +9,6 @@ import {
   type ResetGrant,
   type UsageBlockSettings,
   type UsageSnapshot,
-  type UsageWindowKind,
 } from '../../../domain/usage';
 import type { Localizer } from '../../i18n';
 import { resetText } from './usage-view';
@@ -58,7 +57,7 @@ export function toModelLimitViews(snapshot: UsageSnapshot, now: number, l: Local
 
 export function toExtraUsageView(extra: ExtraUsage | null | undefined, l: Localizer): ExtraUsageView | null {
   if (extra === null || extra === undefined) return null;
-  const state = l.t(extra.enabled ? 'usage.extra.on' : 'usage.extra.off');
+  const state = l.t(!extra.enabled ? 'usage.extra.off' : extra.limitReached ? 'usage.extra.limitReached' : 'usage.extra.on');
   if (!extra.enabled) return { enabled: false, state, amounts: null, percent: null, fill: null };
   const used = l.money(extra.usedMinor, extra.currency, extra.exponent);
   const amounts =
@@ -74,9 +73,9 @@ export function toExtraUsageView(extra: ExtraUsage | null | undefined, l: Locali
   };
 }
 
-function clearsText(kinds: readonly UsageWindowKind[], l: Localizer): string {
-  const labels = USAGE_WINDOWS.filter(({ kind }) => kinds.includes(kind)).map(({ label }) => label);
-  return l.t('usage.resets.clears', { windows: labels.join(' + ') });
+function clearsText(grant: ResetGrant, l: Localizer): string {
+  const main = USAGE_WINDOWS.filter(({ kind }) => grant.clears.includes(kind)).map(({ label }) => label);
+  return l.t('usage.resets.clears', { windows: [...main, ...grant.clearsScoped].join(' + ') });
 }
 
 function availabilityText(grant: ResetGrant, now: number, l: Localizer): string {
@@ -86,15 +85,15 @@ function availabilityText(grant: ResetGrant, now: number, l: Localizer): string 
 
 function usesText(grant: ResetGrant, l: Localizer): string {
   return grant.resetsTotal === null
-    ? l.t('usage.resets.left', { left: grant.resetsLeft })
-    : l.t('usage.resets.leftOf', { left: grant.resetsLeft, total: grant.resetsTotal });
+    ? l.plural('usage.resets.left', grant.resetsLeft, { left: grant.resetsLeft })
+    : l.plural('usage.resets.leftOf', grant.resetsLeft, { left: grant.resetsLeft, total: grant.resetsTotal });
 }
 
 function grantView(grant: ResetGrant, recommendedId: string | null, now: number, l: Localizer): ResetGrantView {
   return {
     id: grant.id,
     title: grant.label ?? l.t(`usage.resets.type.${grant.type}`),
-    clears: clearsText(grant.clears, l),
+    clears: clearsText(grant, l),
     uses: usesText(grant, l),
     expires: grant.endsAt === null ? l.t('usage.resets.noExpiry') : l.t('usage.resets.expires', { span: l.span(grant.endsAt - now) }),
     availability: availabilityText(grant, now, l),
@@ -114,7 +113,7 @@ export function toResetsView(
   if (grants.length === 0) return null;
   const recommendedId = recommendedGrant(data.resets, snapshot, now)?.id ?? null;
   return {
-    total: l.t('usage.resets.total', { count: totalResetsLeft(data.resets, now) }),
+    total: l.plural('usage.resets.total', totalResetsLeft(data.resets, now), { count: totalResetsLeft(data.resets, now) }),
     grants: grants.map((grant) => grantView(grant, recommendedId, now, l)),
   };
 }

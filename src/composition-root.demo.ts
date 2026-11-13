@@ -76,12 +76,7 @@ export function createComposition(): Application {
     connectionAdapters,
     usageHistories,
     updateChecker: new DemoUpdateChecker(world.update),
-    loadUsageResets: new LoadUsageResets(
-      connectionAdapters.prefs,
-      settingsStore,
-      new DemoUsageResetsGateway(() => clock.now()),
-      clock,
-    ),
+    loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new DemoUsageResetsGateway(() => clock.now()), clock),
     launchAtLogin: new DemoLaunchAtLogin(),
     skills: ({ connections }) =>
       createSkills(

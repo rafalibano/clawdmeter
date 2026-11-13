@@ -1,3 +1,5 @@
+import { isRecord } from './payload';
+
 export type UsageBlockId = 'modelLimits' | 'extraUsage' | 'resets';
 
 export const USAGE_BLOCK_IDS: readonly UsageBlockId[] = ['modelLimits', 'extraUsage', 'resets'];
@@ -9,7 +11,7 @@ export function defaultUsageBlocks(): UsageBlockSettings {
 }
 
 export function normalizeUsageBlocks(value: unknown, current: UsageBlockSettings = defaultUsageBlocks()): UsageBlockSettings {
-  const given = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const given = isRecord(value) ? value : {};
   const blocks = { ...current };
   for (const id of USAGE_BLOCK_IDS) {
     const flag = given[id];

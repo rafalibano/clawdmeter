@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID } from '../../../domain/settings';
 import type { UsageResets } from '../../../domain/usage';
 import { FakeClock } from '../../testing/fake-clock';
-import { FAKE_ACCOUNT, createFakeConnectionWorld, settingsWithAccounts, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
+import { createFakeConnectionWorld, type FakeConnectionWorld } from '../../testing/fake-connection-adapters';
 import { FakeUsageResetsGateway } from '../../testing/fake-usage-adapters';
 import { LoadUsageResets } from './load-usage-resets';
 
 const START = 1_800_000_000_000;
+const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+const TARGET = { accountId: 'account-1', clientId: CLIENT_ID };
 
 const RESETS: UsageResets = {
   atLimit: false,
@@ -21,6 +22,7 @@ const RESETS: UsageResets = {
       startsAt: null,
       endsAt: START + 1_000,
       clears: ['fiveHour'],
+      clearsScoped: [],
       paused: false,
       usableNow: true,
     },
@@ -38,49 +40,34 @@ beforeEach(async () => {
   await clock.advance(START);
   gateway = new FakeUsageResetsGateway();
   gateway.outcome = RESETS;
-  load = new LoadUsageResets(world.prefs, world.settings, gateway, clock);
+  load = new LoadUsageResets(world.prefs, gateway, clock);
 });
 
 describe('LoadUsageResets', () => {
-  it('reads the resets of the active account with the effective client id and tags them with the account and the time', async () => {
-    const data = await load.execute();
-    expect(gateway.requests).toEqual([{ accountId: FAKE_ACCOUNT.id, clientId: DEFAULT_CLAUDE_OAUTH_CLIENT_ID }]);
-    expect(data).toEqual({ accountId: FAKE_ACCOUNT.id, at: START, resets: RESETS });
+  it('reads the resets of the account it is given with that client id and tags them with the account and the time', async () => {
+    const data = await load.execute(TARGET);
+    expect(gateway.requests).toEqual([{ accountId: 'account-1', clientId: CLIENT_ID }]);
+    expect(data).toEqual({ accountId: 'account-1', at: START, resets: RESETS });
   });
 
-  it('with the resets block off it makes no request at all', async () => {
-    const base = settingsWithAccounts([FAKE_ACCOUNT]);
-    world.settings.emitExternalChange({ ...base, usageBlocks: { ...base.usageBlocks, resets: false } });
-    await expect(load.execute()).resolves.toBeNull();
-    expect(gateway.fetches).toBe(0);
-  });
-
-  it('only the resets switch matters: the other blocks off do not stop the read', async () => {
-    const base = settingsWithAccounts([FAKE_ACCOUNT]);
-    world.settings.emitExternalChange({ ...base, usageBlocks: { modelLimits: false, extraUsage: false, resets: true } });
-    await load.execute();
-    expect(gateway.fetches).toBe(1);
-  });
-
-  it('without an active account it makes no request and reports no error', async () => {
-    world.settings.emitExternalChange(settingsWithAccounts([]));
-    await expect(load.execute()).resolves.toBeNull();
-    expect(gateway.fetches).toBe(0);
+  it('does not read the settings file: what the caller passes is what is used', async () => {
+    await load.execute({ accountId: 'account-9', clientId: '11111111-2222-4333-8444-555555555555' });
+    expect(gateway.requests).toEqual([{ accountId: 'account-9', clientId: '11111111-2222-4333-8444-555555555555' }]);
   });
 
   it('with the Claude connection off it makes no request', async () => {
     world.prefs.current = { ...world.prefs.current, claude: { ...world.prefs.current.claude, enabled: false } };
-    await expect(load.execute()).resolves.toBeNull();
+    await expect(load.execute(TARGET)).resolves.toBeNull();
     expect(gateway.fetches).toBe(0);
   });
 
   it('an account without resets gives data with no resets', async () => {
     gateway.outcome = null;
-    await expect(load.execute()).resolves.toEqual({ accountId: FAKE_ACCOUNT.id, at: START, resets: null });
+    await expect(load.execute(TARGET)).resolves.toEqual({ accountId: 'account-1', at: START, resets: null });
   });
 
   it('a gateway failure is thrown to the caller', async () => {
     gateway.outcome = new Error('boom');
-    await expect(load.execute()).rejects.toThrow('boom');
+    await expect(load.execute(TARGET)).rejects.toThrow('boom');
   });
 });
