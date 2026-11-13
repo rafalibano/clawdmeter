@@ -592,3 +592,87 @@ describe('last known level across the range', () => {
     expect(weekly.status).toBe('ready');
   });
 });
+
+describe('smooth chart line', () => {
+  const reading = (at: number, utilization: number, resetsAt: number | null = null): UsagePoint => ({ at, utilization, resetsAt });
+  const modelOf = (list: UsagePoint[], line?: 'stepped' | 'smooth', range = '1d') =>
+    buildChartModel([{ kind: 'fiveHour', label: '5h', points: list, forecast: { status: 'collecting' }, resetsAt: null }], usageRange(range), NOW, line);
+  const build = (list: UsagePoint[], line: 'stepped' | 'smooth') => modelOf(list, line).windows[0]!;
+  const consecutive = [reading(NOW - 10 * HOUR_MS, 20), reading(NOW - 8 * HOUR_MS, 30), reading(NOW - 6 * HOUR_MS, 35), reading(NOW - 4 * HOUR_MS, 38), reading(NOW - 2 * HOUR_MS, 40), reading(NOW - 5 * MINUTE_MS, 41)];
+
+  it('stepped is the default and does not change the output', () => {
+    const explicit = build(consecutive, 'stepped');
+    expect(modelOf(consecutive).windows[0]!.points).toEqual(explicit.points);
+    expect(explicit.points).toContainEqual([NOW - 8 * HOUR_MS - 1, 20]);
+  });
+
+  it('consecutive readings are joined directly, with no flat stretch before each jump', () => {
+    expect(build(consecutive, 'smooth').points).toEqual([
+      [NOW - 10 * HOUR_MS, 20],
+      [NOW - 8 * HOUR_MS, 30],
+      [NOW - 6 * HOUR_MS, 35],
+      [NOW - 4 * HOUR_MS, 38],
+      [NOW - 2 * HOUR_MS, 40],
+      [NOW - 5 * MINUTE_MS, 41],
+    ]);
+  });
+
+  it('a reset drop stays vertical between the readings around it', () => {
+    const resetsAt = NOW - 3 * HOUR_MS;
+    const smooth = build([reading(NOW - 4 * HOUR_MS, 80, resetsAt), reading(NOW - 2 * HOUR_MS, 3), reading(NOW - 5 * MINUTE_MS, 6)], 'smooth');
+    expect(smooth.points).toEqual([
+      [NOW - 4 * HOUR_MS, 80],
+      [resetsAt, 80],
+      [resetsAt, 0],
+      [NOW - 2 * HOUR_MS, 3],
+      [NOW - 5 * MINUTE_MS, 6],
+    ]);
+    expect(curveValueAt(smooth.points, resetsAt - 1)).toBeGreaterThan(70);
+    expect(curveValueAt(smooth.points, resetsAt + MINUTE_MS)).toBeLessThan(5);
+  });
+
+  it('a long gap holds the level and then steps, instead of sloping across the gap', () => {
+    const smooth = build([reading(NOW - 20 * HOUR_MS, 10), reading(NOW - 10 * HOUR_MS, 25), reading(NOW - 5 * MINUTE_MS, 26)], 'smooth');
+    expect(smooth.points).toEqual([
+      [NOW - 20 * HOUR_MS, 10],
+      [NOW - 10 * HOUR_MS - 1, 10],
+      [NOW - 10 * HOUR_MS, 25],
+      [NOW - 5 * MINUTE_MS - 1, 25],
+      [NOW - 5 * MINUTE_MS, 26],
+    ]);
+    expect(curveValueAt(smooth.points, NOW - 15 * HOUR_MS)).toBe(10);
+  });
+
+  it('range edge: carries the reading before the range in and never draws past now', () => {
+    const smooth = build([reading(NOW - 30 * HOUR_MS, 12), reading(NOW - 2 * HOUR_MS, 18)], 'smooth');
+    expect(smooth.points[0]).toEqual([NOW - DAY_MS, 12]);
+    expect(Math.max(...smooth.points.map((point) => point[0]))).toBeLessThanOrEqual(NOW);
+    expect(smooth.points.at(-1)).toEqual([NOW, 18]);
+    expect(curveValueAt(smooth.points, NOW)).toBe(18);
+  });
+
+  it('a range with no reading stays empty', () => {
+    expect(build([], 'smooth').points).toEqual([]);
+  });
+
+  it('the tooltip shows the value of the line drawn in each mode', () => {
+    for (const line of ['stepped', 'smooth'] as const) {
+      const model = modelOf(consecutive, line);
+      const format = tooltipFormatter(model, palette, PT);
+      for (const at of [NOW - 9 * HOUR_MS, NOW - 7 * HOUR_MS, NOW - 3 * HOUR_MS]) {
+        const value = curveValueAt(model.windows[0]!.points, at)!;
+        expect(format([{ axisValue: at }])).toContain(`5h ${Math.round(value)}%`);
+      }
+    }
+    const mid = NOW - 9 * HOUR_MS;
+    expect(curveValueAt(build(consecutive, 'smooth').points, mid)).toBeGreaterThan(20);
+    expect(curveValueAt(build(consecutive, 'stepped').points, mid)).toBe(20);
+  });
+
+  it('the series option keeps the same curve smoothing in both modes', () => {
+    for (const line of ['stepped', 'smooth'] as const) {
+      const out = buildChartOption(modelOf(consecutive, line), palette) as unknown as { series: { smooth: number }[] };
+      expect(out.series[0]).toMatchObject({ smooth: 0.5 });
+    }
+  });
+});

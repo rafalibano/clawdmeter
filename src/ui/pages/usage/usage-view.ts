@@ -6,6 +6,7 @@ import {
   usageRange,
   type Forecast,
   type ProjectionMethod,
+  type UsageChartLine,
   type UsageWindowKind,
 } from '../../../domain/usage';
 import type { PageUpdate } from '../../../application/scheduler';
@@ -60,7 +61,7 @@ export function resetText(resetsAt: number | null, now: number, l: Localizer): s
   return remaining <= 0 ? l.t('usage.reset.now') : l.t('usage.reset.in', { span: l.span(remaining) });
 }
 
-export function toUsageView(data: UsageData, rangeId: string, l: Localizer, method: ProjectionMethod): UsageView {
+export function toUsageView(data: UsageData, rangeId: string, l: Localizer, method: ProjectionMethod, line: UsageChartLine = 'stepped'): UsageView {
   const forecasts = new ProjectUsage().execute(data.history, data.snapshot, data.at, method);
   const bars = USAGE_WINDOWS.map(({ kind, label }): UsageBarView => {
     const reading = data.snapshot[kind];
@@ -84,6 +85,7 @@ export function toUsageView(data: UsageData, rangeId: string, l: Localizer, meth
     })),
     usageRange(rangeId),
     data.at,
+    line,
   );
   return { bars, chart, cycleAvailable: isCycleAvailable(data.snapshot.sevenDay?.resetsAt ?? null, data.at) };
 }

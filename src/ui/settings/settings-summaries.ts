@@ -1,6 +1,6 @@
 import type { ConnectionTone } from './connections/connection-view';
 import type { Localizer } from '../i18n';
-import type { ProjectionMethod } from '../../domain/usage';
+import type { ProjectionMethod, UsageChartLine } from '../../domain/usage';
 import type { ThemeMode } from '../../domain/settings';
 
 export type StatusDot = 'ok' | 'attention' | 'off';
@@ -27,6 +27,10 @@ export function connectionsAttentionText(l: Localizer, tones: readonly Connectio
 
 export function projectionSummary(l: Localizer, method: ProjectionMethod): string {
   return l.t(`projection.${method}`);
+}
+
+export function usageChartLineSummary(l: Localizer, line: UsageChartLine): string {
+  return l.t(`settings.usageTab.line.${line}`);
 }
 
 export function appearanceSummary(l: Localizer, theme: ThemeMode): string {
