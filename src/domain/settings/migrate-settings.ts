@@ -61,6 +61,11 @@ const addClaudeAccounts: Migration = (raw) => ({
   claude: readClaudeSettings(raw['claude']),
 });
 
+const addUsageDailyHistory: Migration = (raw) => ({
+  ...raw,
+  usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -72,6 +77,7 @@ export const MIGRATIONS: readonly Migration[] = [
   adoptSevenDayProjection,
   addUsageAlerts,
   addClaudeAccounts,
+  addUsageDailyHistory,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -105,6 +111,10 @@ function readUsageAlerts(value: unknown): UsageAlertSettings {
   };
 }
 
+function readUsageDailyHistory(value: unknown): boolean {
+  return value === true;
+}
+
 function readEnabledPages(value: unknown): Record<string, boolean> {
   if (!isRecord(value)) return {};
   const pages: Record<string, boolean> = {};
@@ -132,6 +142,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
     seriesColors: readSeriesColors(raw['seriesColors']),
     usageAlerts: readUsageAlerts(raw['usageAlerts']),
+    usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
     claude: readClaudeSettings(raw['claude']),
   };
 }

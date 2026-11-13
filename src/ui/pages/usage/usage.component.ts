@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import type { ConnectionAction } from '../../../domain/connections';
 import { USAGE_RANGES, type UsageRange } from '../../../domain/usage';
+import type { DailyUsageState } from '../../../application/daily-usage';
 import { I18n } from '../../i18n';
 import { APPLICATION } from '../../shell/application.token';
 import { ConnectionsFacade } from '../../shell/connections.facade';
@@ -10,7 +11,9 @@ import { SettingsFacade } from '../../shell/settings.facade';
 import { chartPalette } from '../../theme/chart-palette';
 import { ThemeService } from '../../theme/theme.service';
 import { buildChartOption } from './usage-chart-option';
+import { toDailyView } from './usage-daily-view';
 import { USAGE_PAGE } from './usage-page-ref';
+import { UsageDailyComponent } from './usage-daily.component';
 import { UsageViewState } from './usage-view-state';
 import { activeUsageData, toUsageErrorView, toUsageView } from './usage-view';
 
@@ -18,7 +21,7 @@ const CLOCK_TICK_MS = 15_000;
 
 @Component({
   selector: 'cm-usage-page',
-  imports: [NgxEchartsDirective],
+  imports: [NgxEchartsDirective, UsageDailyComponent],
   providers: [provideEchartsCore({ echarts: () => import('./echarts-setup').then((module) => module.echarts) })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './usage.component.html',
@@ -57,6 +60,14 @@ export class UsageComponent {
     };
   });
 
+  private readonly daily = signal<DailyUsageState | null>(this.application.dailyUsage.current);
+
+  protected readonly dailyBlock = computed(() => {
+    const state = this.daily();
+    if (state === null) return null;
+    return { view: state.status === 'ready' ? toDailyView(state.usage, this.now(), this.i18n.localizer()) : null };
+  });
+
   protected readonly error = computed(() => {
     const update = this.update();
     if (update?.status !== 'error') return null;
@@ -73,7 +84,11 @@ export class UsageComponent {
 
   constructor() {
     const stop = this.application.clock.every(CLOCK_TICK_MS, () => this.now.set(this.application.clock.now()));
-    inject(DestroyRef).onDestroy(stop);
+    const stopDaily = this.application.dailyUsage.subscribe((state) => this.daily.set(state));
+    inject(DestroyRef).onDestroy(() => {
+      stop();
+      stopDaily();
+    });
   }
 
   protected rangeLabel(range: UsageRange): string {

@@ -1,6 +1,7 @@
 pub mod blocking;
 pub mod claude_oauth;
 pub mod claude_usage;
+pub mod daily_usage;
 pub mod error;
 pub mod home;
 pub mod launch_at_login;
@@ -14,5 +15,6 @@ pub mod session_usage;
 pub mod terminal;
 #[cfg(test)]
 mod test_support;
+pub mod transcript;
 pub mod tray_usage;
 pub mod updater;

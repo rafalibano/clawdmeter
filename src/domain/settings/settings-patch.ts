@@ -20,6 +20,7 @@ export interface SettingsPatch {
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
+  usageDailyHistory?: boolean;
   claude?: Partial<ClaudeSettings>;
 }
 
@@ -38,6 +39,8 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
     merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
   }
+  const usageDailyHistory = second.usageDailyHistory ?? first.usageDailyHistory;
+  if (usageDailyHistory !== undefined) merged.usageDailyHistory = usageDailyHistory;
   if (first.claude !== undefined || second.claude !== undefined) {
     merged.claude = { ...first.claude, ...second.claude };
   }
@@ -101,6 +104,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
+    usageDailyHistory: typeof patch.usageDailyHistory === 'boolean' ? patch.usageDailyHistory : current.usageDailyHistory,
     claude: applyClaude(current.claude, patch.claude ?? {}),
   };
 }

@@ -36,5 +36,6 @@ export interface AppSettings {
   projectionMethod: ProjectionMethod;
   seriesColors: SeriesColorSettings;
   usageAlerts: UsageAlertSettings;
+  usageDailyHistory: boolean;
   claude: ClaudeSettings;
 }

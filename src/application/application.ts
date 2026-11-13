@@ -2,6 +2,7 @@ import { createClaudeAccounts, type ClaudeAccounts } from './claude-accounts';
 import type { ConnectionAdapters } from './connections/connection-adapters';
 import { createConnections, type Connections } from './connections/create-connections';
 import { GitHubTokenResolver } from './connections/github-token-resolver';
+import { DailyUsageHistory } from './daily-usage';
 import type { PageModule } from './pages/page-module';
 import { PageRegistry } from './pages/page-registry';
 import { CurrentLanguage } from './language';
@@ -19,6 +20,7 @@ import {
 } from './use-cases';
 import { JoinMeeting } from './use-cases/calendar';
 import { OpenGitHubUrl } from './use-cases/pull-requests';
+import type { LoadDailyUsage } from './use-cases/usage';
 import { Updates } from './updates';
 
 export interface Application {
@@ -31,6 +33,7 @@ export interface Application {
   openGitHubUrl: OpenGitHubUrl;
   skills: Skills;
   updates: Updates;
+  dailyUsage: DailyUsageHistory;
   language: CurrentLanguage;
   getSettings: GetSettings;
   getSettingsStatus: GetSettingsStatus;
@@ -54,6 +57,7 @@ export interface ApplicationDeps {
   settingsStore: SettingsStore;
   connectionAdapters: ConnectionAdapters;
   usageHistories: UsageHistoryStores;
+  loadDailyUsage?: LoadDailyUsage;
   newAccountId?: () => string;
   updateChecker: UpdateChecker;
   launchAtLogin: LaunchAtLogin;
@@ -90,6 +94,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
     updates: new Updates(deps.updateChecker, github, deps.clock),
+    dailyUsage: new DailyUsageHistory(deps.loadDailyUsage, deps.clock),
     language: deps.language ?? new CurrentLanguage(),
     getSettings: new GetSettings(deps.settingsStore),
     getSettingsStatus: new GetSettingsStatus(deps.settingsStore),

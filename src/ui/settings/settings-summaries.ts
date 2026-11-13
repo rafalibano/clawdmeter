@@ -29,6 +29,10 @@ export function projectionSummary(l: Localizer, method: ProjectionMethod): strin
   return l.t(`projection.${method}`);
 }
 
+export function usageTabSummary(l: Localizer, dailyHistory: boolean): string {
+  return l.t(dailyHistory ? 'settings.usageTab.summary.on' : 'settings.usageTab.summary.off');
+}
+
 export function appearanceSummary(l: Localizer, theme: ThemeMode): string {
   return l.t(`theme.${theme}`);
 }
