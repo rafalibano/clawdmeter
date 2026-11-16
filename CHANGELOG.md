@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Usage: the **Last days** block now starts collapsed, showing only its title; click the title to open or close it. The choice survives switching tabs while the app is open and is not saved in the settings.
 
