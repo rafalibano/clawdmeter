@@ -12,9 +12,42 @@
 }
 
 .daily-title {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+.daily-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chevron {
+  color: var(--cm-muted);
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.daily-toggle:hover .chevron {
+  color: var(--cm-fg);
+}
+
+.open .chevron {
+  transform: rotate(180deg);
+}
+
+.open .daily-title {
+  margin-bottom: 8px;
 }
 
 .daily-heading {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Usage: the **Last days** block now starts collapsed, showing only its title; click the title to open or close it. The choice survives switching tabs while the app is open and is not saved in the settings.
+
 ## 0.2.6
 
 - Settings has a new **Usage tab** section (the place for the Usage tab switches) with a **Chart line** option: **Stepped** (the default, the chart as it was) or **Smooth**. With the usual 5-minute readings the two look alike; they differ after a pause in readings (Mac asleep, app closed). Stepped holds the last level across the pause and then jumps; smooth joins the readings around a pause shorter than 3 hours with a curve, and still holds the level across a longer one, so no slope is invented there. A 5h or 7d reset that falls in a pause still drops straight down, the range still starts from the last reading before it, and the line never goes past now. The tooltip shows the value of the line drawn in either mode. Settings schema goes to 11.
