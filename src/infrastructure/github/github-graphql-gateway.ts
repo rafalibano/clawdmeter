@@ -12,7 +12,8 @@ import type {
 import type { FetchLike } from '../platform/tauri-fetch';
 
 const ENDPOINT = 'https://api.github.com/graphql';
-const ALIAS_PATTERN = /^[a-z][A-Za-z0-9]*$/;
+// GitHub answers 502 when one request takes over 10 s; a page this size stays well under it.
+const PAGE_SIZE = 25;
 
 const PULL_REQUEST_FRAGMENT = `fragment PullRequestFields on PullRequest {
   id number title url isDraft state createdAt updatedAt mergeable reviewDecision
@@ -37,22 +38,26 @@ interface GraphqlNode {
   commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: { state?: string } | null } } | null> };
 }
 
+interface GraphqlSearch {
+  issueCount?: number;
+  pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+  nodes?: Array<GraphqlNode | null>;
+}
+
 interface GraphqlResponse {
-  data?: Record<string, { issueCount?: number; nodes?: Array<GraphqlNode | null> } | null> | null;
+  data?: { search?: GraphqlSearch | null } | null;
   errors?: Array<{ type?: string; message?: string }>;
   message?: string;
 }
 
-export function buildSearchQuery(aliases: readonly string[]): string {
-  for (const alias of aliases) {
-    if (!ALIAS_PATTERN.test(alias)) throw new Error(`Invalid search alias: ${alias}`);
+const SEARCH_QUERY = `query($query: String!, $first: Int!, $after: String) {
+  search(query: $query, type: ISSUE, first: $first, after: $after) {
+    issueCount
+    pageInfo { hasNextPage endCursor }
+    nodes { ...PullRequestFields }
   }
-  const variables = aliases.map((alias) => `$${alias}: String!`).join(', ');
-  const searches = aliases
-    .map((alias) => `${alias}: search(query: $${alias}, type: ISSUE, first: $first) { issueCount nodes { ...PullRequestFields } }`)
-    .join('\n  ');
-  return `query(${variables}, $first: Int!) {\n  ${searches}\n}\n${PULL_REQUEST_FRAGMENT}`;
 }
+${PULL_REQUEST_FRAGMENT}`;
 
 const CI_STATES: Record<string, CiState> = {
   SUCCESS: 'success',
@@ -108,6 +113,30 @@ export class GitHubGraphqlGateway implements PullRequestGateway {
     limit: number,
   ): Promise<Record<K, PullRequestList>> {
     const aliases = Object.keys(queries) as K[];
+    const lists = await Promise.all(aliases.map((alias) => this.searchOne(token, queries[alias], limit)));
+    const result = {} as Record<K, PullRequestList>;
+    aliases.forEach((alias, index) => (result[alias] = lists[index]!));
+    return result;
+  }
+
+  private async searchOne(token: string, query: string, limit: number): Promise<PullRequestList> {
+    const items: PullRequest[] = [];
+    let total: number | null = null;
+    let after: string | null = null;
+    let fetched = 0;
+    while (fetched < limit) {
+      const first = Math.min(PAGE_SIZE, limit - fetched);
+      const search = await this.page(token, { query, first, after });
+      total ??= search?.issueCount ?? null;
+      items.push(...(search?.nodes ?? []).flatMap((node) => toPullRequest(node) ?? []));
+      fetched += first;
+      after = search?.pageInfo?.endCursor ?? null;
+      if (search?.pageInfo?.hasNextPage !== true || after === null) break;
+    }
+    return { items, total: total ?? items.length };
+  }
+
+  private async page(token: string, variables: { query: string; first: number; after: string | null }): Promise<GraphqlSearch | null> {
     const response = await this.fetcher(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -115,21 +144,14 @@ export class GitHubGraphqlGateway implements PullRequestGateway {
         Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query: buildSearchQuery(aliases), variables: { ...queries, first: limit } }),
+      body: JSON.stringify({ query: SEARCH_QUERY, variables }),
     });
     const body = await this.readBody(response);
     const errors = body.errors ?? [];
     const blocking = blockingProblem(errors);
     if (blocking) throw blocking;
-    const data = body.data;
-    if (!data) throw new Error(errors[0]?.message ?? 'GitHub response without data.');
-    const result = {} as Record<K, PullRequestList>;
-    for (const alias of aliases) {
-      const search = data[alias];
-      const items = (search?.nodes ?? []).flatMap((node) => toPullRequest(node) ?? []);
-      result[alias] = { items, total: search?.issueCount ?? items.length };
-    }
-    return result;
+    if (!body.data) throw new Error(errors[0]?.message ?? 'GitHub response without data.');
+    return body.data.search ?? null;
   }
 
   private async readBody(response: Response): Promise<GraphqlResponse> {
