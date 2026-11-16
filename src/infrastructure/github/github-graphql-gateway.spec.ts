@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFakeFetch, type FakeResponse } from '../testing/fakes';
-import { GitHubGraphqlGateway, buildSearchQuery, toPullRequest } from './github-graphql-gateway';
+import { GitHubGraphqlGateway, toPullRequest } from './github-graphql-gateway';
 
 const NODE = {
   id: 'PR_1',
@@ -18,23 +18,30 @@ const NODE = {
   commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] },
 };
 
-function gateway(reply: FakeResponse) {
-  const { fetcher, requests } = createFakeFetch(() => reply);
+interface Sent {
+  query: string;
+  variables: { query: string; first: number; after: string | null };
+}
+
+const sent = (body: string | undefined) => JSON.parse(body ?? '{}') as Sent;
+
+function gateway(reply: FakeResponse | ((variables: Sent['variables']) => FakeResponse)) {
+  const { fetcher, requests } = createFakeFetch((request) => (typeof reply === 'function' ? reply(sent(request.body).variables) : reply));
   return { gateway: new GitHubGraphqlGateway(fetcher), requests };
 }
 
 describe('GitHubGraphqlGateway', () => {
-  it('sends a POST to /graphql with token, queries as variables and a limit', async () => {
+  it('sends a POST to /graphql with the token and the search as a variable', async () => {
     const { gateway: gql, requests } = gateway({
-      json: { data: { mine: { issueCount: 1, nodes: [NODE] } } },
+      json: { data: { search: { issueCount: 1, nodes: [NODE] } } },
     });
     const result = await gql.search('tok', { mine: 'author:@me is:open is:pr' }, 50);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ url: 'https://api.github.com/graphql', method: 'POST' });
     expect(requests[0]?.headers['Authorization']).toBe('Bearer tok');
-    const body = JSON.parse(requests[0]?.body ?? '{}') as { query: string; variables: Record<string, unknown> };
-    expect(body.variables).toEqual({ mine: 'author:@me is:open is:pr', first: 50 });
-    expect(body.query).toContain('mine: search(query: $mine');
+    const body = sent(requests[0]?.body);
+    expect(body.variables).toEqual({ query: 'author:@me is:open is:pr', first: 25, after: null });
+    expect(body.query).toContain('search(query: $query');
     expect(result.mine).toEqual({
       total: 1,
       items: [
@@ -57,20 +64,47 @@ describe('GitHubGraphqlGateway', () => {
     });
   });
 
-  it('several searches in a single request and an issueCount above the limit', async () => {
-    const { gateway: gql, requests } = gateway({
-      json: {
-        data: {
-          toReview: { issueCount: 120, nodes: [NODE, null, {}] },
-          reviewed: { issueCount: 0, nodes: [] },
-        },
-      },
-    });
+  it('one request per search, and an issueCount above the limit', async () => {
+    const { gateway: gql, requests } = gateway(({ query }) => ({
+      json: { data: { search: query === 'a' ? { issueCount: 120, nodes: [NODE, null, {}] } : { issueCount: 0, nodes: [] } } },
+    }));
     const result = await gql.search('t', { toReview: 'a', reviewed: 'b' }, 50);
-    expect(requests).toHaveLength(1);
+    expect(requests.map((request) => sent(request.body).variables.query).sort()).toEqual(['a', 'b']);
     expect(result.toReview.items).toHaveLength(1);
     expect(result.toReview.total).toBe(120);
     expect(result.reviewed).toEqual({ items: [], total: 0 });
+  });
+
+  it('follows the cursor in pages of 25 until the limit', async () => {
+    const pageOf = (count: number, from: number) => Array.from({ length: count }, (_, index) => ({ ...NODE, id: `PR_${from + index}` }));
+    const { gateway: gql, requests } = gateway(({ first, after }) => ({
+      json: {
+        data: {
+          search: {
+            issueCount: 271,
+            pageInfo: { hasNextPage: true, endCursor: after === null ? 'c1' : 'c2' },
+            nodes: pageOf(first, after === null ? 0 : after === 'c1' ? 25 : 50),
+          },
+        },
+      },
+    }));
+    const result = await gql.search('t', { toReview: 'a' }, 60);
+    expect(requests.map((request) => sent(request.body).variables)).toEqual([
+      { query: 'a', first: 25, after: null },
+      { query: 'a', first: 25, after: 'c1' },
+      { query: 'a', first: 10, after: 'c2' },
+    ]);
+    expect(result.toReview.items).toHaveLength(60);
+    expect(new Set(result.toReview.items.map((item) => item.id)).size).toBe(60);
+    expect(result.toReview.total).toBe(271);
+  });
+
+  it('stops when there is no next page', async () => {
+    const { gateway: gql, requests } = gateway({
+      json: { data: { search: { issueCount: 1, pageInfo: { hasNextPage: false, endCursor: 'c1' }, nodes: [NODE] } } },
+    });
+    await gql.search('t', { mine: 'q' }, 50);
+    expect(requests).toHaveLength(1);
   });
 
   it('maps missing states to none/unknown/open', () => {
@@ -106,7 +140,7 @@ describe('GitHubGraphqlGateway', () => {
     const scope = gateway({ json: { errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'Your token has not been granted the required scopes' }] } });
     await expect(scope.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-missing-scope' });
     const saml = gateway({
-      json: { data: { mine: { issueCount: 0, nodes: [] } }, errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement' }] },
+      json: { data: { search: { issueCount: 0, nodes: [] } }, errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement' }] },
     });
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
   });
@@ -124,12 +158,12 @@ describe('GitHubGraphqlGateway', () => {
   });
 
   it('partial data with a plain error uses the valid nodes', async () => {
-    const partial = gateway({
+    const partial = gateway(({ query }) => ({
       json: {
-        data: { mine: { issueCount: 2, nodes: [NODE, null, { id: 'quebrado' }] }, other: null },
+        data: { search: query === 'q' ? { issueCount: 2, nodes: [NODE, null, { id: 'quebrado' }] } : null },
         errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a node' }],
       },
-    });
+    }));
     const result = await partial.gateway.search('t', { mine: 'q', other: 'r' }, 10);
     expect(result.mine.items.map((item) => item.id)).toEqual(['PR_1']);
     expect(result.other).toEqual({ items: [], total: 0 });
@@ -137,16 +171,12 @@ describe('GitHubGraphqlGateway', () => {
 
   it('partial data with scope or SAML still throws the connection problem', async () => {
     const scope = gateway({
-      json: { data: { mine: { issueCount: 1, nodes: [NODE] } }, errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] },
+      json: { data: { search: { issueCount: 1, nodes: [NODE] } }, errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] },
     });
     await expect(scope.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-missing-scope' });
     const saml = gateway({
-      json: { data: { mine: null }, errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement' }] },
+      json: { data: { search: null }, errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement' }] },
     });
     await expect(saml.gateway.search('t', { mine: 'q' }, 10)).rejects.toMatchObject({ problem: 'github-org-access' });
-  });
-
-  it('rejects an invalid alias before building the query', () => {
-    expect(() => buildSearchQuery(['ok', 'bad alias'])).toThrow('Invalid search alias');
   });
 });
