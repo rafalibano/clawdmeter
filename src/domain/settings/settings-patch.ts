@@ -1,6 +1,7 @@
 import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings } from './app-settings';
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
+import { isUsageChartLine, type UsageChartLine } from '../usage/usage-chart-line';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
 import { normalizeUsageBlocks, type UsageBlockSettings } from '../usage/usage-blocks';
 import {
@@ -22,6 +23,7 @@ export interface SettingsPatch {
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
   usageBlocks?: Partial<UsageBlockSettings>;
+  usageChartLine?: UsageChartLine;
   claude?: Partial<ClaudeSettings>;
 }
 
@@ -43,6 +45,8 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   if (first.usageBlocks !== undefined || second.usageBlocks !== undefined) {
     merged.usageBlocks = { ...first.usageBlocks, ...second.usageBlocks };
   }
+  const usageChartLine = second.usageChartLine ?? first.usageChartLine;
+  if (usageChartLine !== undefined) merged.usageChartLine = usageChartLine;
   if (first.claude !== undefined || second.claude !== undefined) {
     merged.claude = { ...first.claude, ...second.claude };
   }
@@ -107,6 +111,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
     usageBlocks: normalizeUsageBlocks(patch.usageBlocks, current.usageBlocks),
+    usageChartLine: isUsageChartLine(patch.usageChartLine) ? patch.usageChartLine : current.usageChartLine,
     claude: applyClaude(current.claude, patch.claude ?? {}),
   };
 }

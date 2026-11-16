@@ -2,6 +2,7 @@ import { DEFAULT_LANGUAGE, type AppSettings } from './app-settings';
 import { DEFAULT_PROJECTION_METHOD } from '../usage/projection-method';
 import { defaultUsageAlerts } from '../usage/usage-alerts';
 import { defaultUsageBlocks } from '../usage/usage-blocks';
+import { DEFAULT_USAGE_CHART_LINE } from '../usage/usage-chart-line';
 import { defaultClaudeSettings } from './claude-accounts';
 import { maintenancePagesOff } from './maintenance-pages';
 import { SCHEMA_VERSION } from './schema-version';
@@ -22,6 +23,7 @@ export function createDefaultSettings(): AppSettings {
     seriesColors: { fiveHour: null, sevenDay: null },
     usageAlerts: defaultUsageAlerts(),
     usageBlocks: defaultUsageBlocks(),
+    usageChartLine: DEFAULT_USAGE_CHART_LINE,
     claude: defaultClaudeSettings(),
   };
 }

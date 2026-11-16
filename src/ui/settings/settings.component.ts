@@ -10,9 +10,11 @@ import {
 } from '../../domain/settings';
 import {
   PROJECTION_METHODS,
+  USAGE_CHART_LINES,
   type ProjectionMethod,
   type Quartile,
   type UsageBlockId,
+  type UsageChartLine,
   type UsageWindowKind,
 } from '../../domain/usage';
 import { I18n } from '../i18n';
@@ -23,7 +25,7 @@ import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
 import { SettingsSectionComponent } from './settings-section.component';
-import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
+import { appearanceSummary, pagesSummary, projectionSummary, usageChartLineSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
 import { usageBlockRows, usageBlocksSummary } from './usage-block-rows';
@@ -58,6 +60,7 @@ export class SettingsComponent {
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
   protected readonly projectionMethods = PROJECTION_METHODS;
+  protected readonly chartLines = USAGE_CHART_LINES;
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
@@ -78,10 +81,15 @@ export class SettingsComponent {
   protected readonly alertRows = computed(() => usageAlertRows(this.settings().usageAlerts));
   protected readonly alertsSummaryText = computed(() => usageAlertsSummary(this.i18n.localizer(), this.settings().usageAlerts));
   protected readonly blockRows = computed(() => usageBlockRows(this.settings().usageBlocks));
-  protected readonly usageTabSummaryText = computed(() => usageBlocksSummary(this.i18n.localizer(), this.blockRows()));
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
+  );
+  protected readonly usageTabSummaryText = computed(() =>
+    [
+      usageChartLineSummary(this.i18n.localizer(), this.settings().usageChartLine),
+      usageBlocksSummary(this.i18n.localizer(), this.blockRows()),
+    ].join(' · '),
   );
   protected readonly appearanceSummaryText = computed(() =>
     appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
@@ -129,6 +137,14 @@ export class SettingsComponent {
 
   protected setProjection(projectionMethod: ProjectionMethod): void {
     this.facade.update({ projectionMethod });
+  }
+
+  protected chartLineLabel(line: UsageChartLine): string {
+    return this.i18n.t(`settings.usageTab.line.${line}`);
+  }
+
+  protected setChartLine(usageChartLine: UsageChartLine): void {
+    this.facade.update({ usageChartLine });
   }
 
   protected setLanguage(language: AppLanguage): void {

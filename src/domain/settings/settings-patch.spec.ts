@@ -56,6 +56,18 @@ describe('projection method in the patch', () => {
   });
 });
 
+describe('usage chart line in the patch', () => {
+  it('changes the line and ignores an unknown value', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');
+    expect(applyPatch(base, { usageChartLine: 'curvy' as never }).usageChartLine).toBe('stepped');
+    expect(applyPatch(base, {}).usageChartLine).toBe('stepped');
+    expect(applyPatch({ ...base, usageChartLine: 'smooth' }, {}).usageChartLine).toBe('smooth');
+    expect(mergePatches({ usageChartLine: 'smooth' }, {}).usageChartLine).toBe('smooth');
+    expect(mergePatches({ usageChartLine: 'smooth' }, { usageChartLine: 'stepped' }).usageChartLine).toBe('stepped');
+  });
+});
+
 describe('mergePatches', () => {
   it('the second patch wins on the same fields', () => {
     const merged = mergePatches(
@@ -154,6 +166,23 @@ describe('usage blocks in the patch', () => {
       modelLimits: false,
     });
     expect(mergePatches({}, {})).not.toHaveProperty('usageBlocks');
+  });
+});
+
+describe('chart line and usage blocks together', () => {
+  it('one patch changes both fields and leaves everything else', () => {
+    const next = applyPatch(createDefaultSettings(), { usageChartLine: 'smooth', usageBlocks: { resets: false } });
+    expect(next.usageChartLine).toBe('smooth');
+    expect(next.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: false });
+  });
+
+  it('mergePatches keeps both fields', () => {
+    const merged = mergePatches({ usageChartLine: 'smooth' }, { usageBlocks: { modelLimits: false } });
+    expect(merged).toMatchObject({ usageChartLine: 'smooth', usageBlocks: { modelLimits: false } });
+  });
+
+  it('defaults carry both', () => {
+    expect(createDefaultSettings()).toMatchObject({ usageChartLine: 'stepped', usageBlocks: { modelLimits: true, extraUsage: true, resets: true } });
   });
 });
 
