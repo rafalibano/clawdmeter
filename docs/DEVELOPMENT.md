@@ -80,13 +80,14 @@ src/
 │  ├─ skills/         createSkills and SkillRunBoard (live runs and history)
 │  ├─ updates/        Updates: update check every 6 h, download with progress, install and restart
 │  ├─ daily-usage/    DailyUsageHistory: state and slow timer of the Usage tab's Last days block
+│  ├─ usage-resets/   UsageResetsMonitor: state and slow timer of the Usage tab's Resets block
 │  ├─ pages/          PageModule (contract) and PageRegistry
 │  ├─ scheduler/      PollingScheduler: only schedules enabled pages
 │  └─ testing/        fakes of the ports, used only in tests
 ├─ infrastructure/
 │  ├─ persistence/    JsonSettingsStore, JsonConnectionPrefsStore, JsonUsageHistoryStores (one history file per Claude account), LocalStorageJsonFile
 │  ├─ platform/       Tauri adapters (invoke, plugins): vault, Claude accounts (claude_oauth_* / claude_account_*), processes, OAuth loopback, notifications
-│  ├─ anthropic/      AnthropicUsageGateway (command `claude_usage_fetch`: the GET /api/oauth/usage runs in Rust)
+│  ├─ anthropic/      AnthropicUsageGateway and AnthropicUsageResetsGateway (commands `claude_usage_fetch` and `claude_usage_resets_fetch`: the GET /api/oauth/usage runs in Rust)
 │  ├─ claude-code/    TauriSessionDirectory (reads ~/.claude/sessions through plugin-fs)
 │  ├─ claude-usage-bar/  TauriClaudeUsageBarHistorySource (reads only ~/.config/claude-usage-bar/history.json)
 │  ├─ github/         GhCliTokenSource, GitHubDeviceFlowAuthorizer, GitHubRestAccountGateway, GitHubGraphqlGateway

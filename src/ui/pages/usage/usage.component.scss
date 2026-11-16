@@ -67,6 +67,72 @@
   --series: var(--cm-series-seven);
 }
 
+.bar[data-window='model'],
+.extra {
+  --series: var(--cm-accent);
+}
+
+.state {
+  font-size: 12px;
+  color: var(--cm-muted);
+}
+
+.amounts {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.grants {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant {
+  padding: 8px 10px;
+  border: 1px solid var(--cm-border);
+  border-radius: var(--cm-radius-btn);
+  font-size: 12px;
+}
+
+.grant[data-recommended='true'] {
+  border-color: var(--cm-accent);
+}
+
+.grant[data-usable='false'] {
+  opacity: 0.7;
+}
+
+.grant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.grant-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--cm-muted);
+}
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--cm-accent);
+  color: var(--cm-accent-fg);
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .bar-head {
   display: flex;
   align-items: baseline;

@@ -10,6 +10,13 @@ export type { MessageArgs } from '../../application/ports';
 
 export const DICTIONARIES: Record<AppLanguage, Record<MessageKey, string>> = { 'pt-BR': ptBR, en, 'es-MX': esMX };
 
+type PluralBase =
+  | 'sessions.count'
+  | 'sessions.flagged'
+  | 'usage.resets.total'
+  | 'usage.resets.left'
+  | 'usage.resets.leftOf';
+
 const LOCALES: Record<AppLanguage, string> = { 'pt-BR': 'pt-BR', en: 'en-US', 'es-MX': 'es-MX' };
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -39,8 +46,12 @@ export class Localizer implements Translator {
   }
 
   count(base: 'sessions.count' | 'sessions.flagged', count: number): string {
-    const key = new Intl.PluralRules(this.locale).select(count) === 'one' ? `${base}.one` : `${base}.other`;
-    return this.t(key as MessageKey, { count });
+    return this.plural(base, count, { count });
+  }
+
+  plural(base: PluralBase, amount: number, args: MessageArgs): string {
+    const key = new Intl.PluralRules(this.locale).select(amount) === 'one' ? `${base}.one` : `${base}.other`;
+    return this.t(key as MessageKey, args);
   }
 
   number(value: number, maximumFractionDigits = 2): string {
@@ -53,6 +64,15 @@ export class Localizer implements Translator {
 
   budget(usd: number): string {
     return `US$ ${this.number(usd)}`;
+  }
+
+  money(minorUnits: number, currency: string, exponent = 2): string {
+    return new Intl.NumberFormat(this.locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent,
+    }).format(minorUnits / 10 ** exponent);
   }
 
   clock(at: number, timeZone?: string): string {

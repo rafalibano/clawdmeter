@@ -24,7 +24,9 @@ export class SettingsFacade {
 
   constructor() {
     effect(() => {
-      if (this.loaded()) this.app.scheduler.sync(this.state());
+      if (!this.loaded()) return;
+      this.app.scheduler.sync(this.state());
+      this.app.usageResets.sync(this.state(), isPageEnabled(this.state(), USAGE_PAGE.id));
     });
     effect(() => {
       const settings = this.state();
@@ -39,6 +41,7 @@ export class SettingsFacade {
     inject(DestroyRef).onDestroy(() => {
       this.session.dispose();
       this.app.scheduler.stopAll();
+      this.app.usageResets.stop();
       this.app.dailyUsage.stop();
     });
     void this.session.start();

@@ -8,7 +8,15 @@ import {
   type SeriesColorSettings,
   type ThemeMode,
 } from '../../domain/settings';
-import { PROJECTION_METHODS, USAGE_CHART_LINES, type ProjectionMethod, type Quartile, type UsageChartLine, type UsageWindowKind } from '../../domain/usage';
+import {
+  PROJECTION_METHODS,
+  USAGE_CHART_LINES,
+  type ProjectionMethod,
+  type Quartile,
+  type UsageBlockId,
+  type UsageChartLine,
+  type UsageWindowKind,
+} from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
@@ -20,6 +28,7 @@ import { SettingsSectionComponent } from './settings-section.component';
 import { appearanceSummary, pagesSummary, projectionSummary, usageTabSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
+import { usageBlockRows } from './usage-block-rows';
 import { ClaudeAccountsComponent } from './claude-accounts/claude-accounts.component';
 import { ConnectionsComponent } from './connections/connections.component';
 import { LaunchAtLoginComponent } from './launch-at-login.component';
@@ -71,12 +80,18 @@ export class SettingsComponent {
   protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
   protected readonly alertRows = computed(() => usageAlertRows(this.settings().usageAlerts));
   protected readonly alertsSummaryText = computed(() => usageAlertsSummary(this.i18n.localizer(), this.settings().usageAlerts));
+  protected readonly blockRows = computed(() => usageBlockRows(this.settings().usageBlocks));
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
   );
   protected readonly usageTabSummaryText = computed(() =>
-    usageTabSummary(this.i18n.localizer(), this.settings().usageChartLine, this.settings().usageDailyHistory),
+    usageTabSummary(
+      this.i18n.localizer(),
+      this.settings().usageChartLine,
+      this.settings().usageDailyHistory,
+      this.settings().usageBlocks,
+    ),
   );
   protected readonly appearanceSummaryText = computed(() =>
     appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
@@ -88,6 +103,10 @@ export class SettingsComponent {
 
   protected toggleAlert(kind: UsageWindowKind, quartile: Quartile, checked: boolean): void {
     this.facade.update({ usageAlerts: { [kind]: toggleQuartile(this.settings().usageAlerts[kind], quartile, checked) } });
+  }
+
+  protected toggleUsageBlock(id: UsageBlockId, enabled: boolean): void {
+    this.facade.update({ usageBlocks: { [id]: enabled } });
   }
 
   protected setDailyHistory(usageDailyHistory: boolean): void {

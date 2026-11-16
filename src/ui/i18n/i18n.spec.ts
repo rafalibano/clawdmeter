@@ -159,6 +159,17 @@ describe('formatters by language', () => {
     expect(es.updatedAgo(0, 12_000)).toBe('actualizado hace 12s');
   });
 
+  it('money turns minor units into the account currency, following the language', () => {
+    expect(en.money(425_000, 'USD')).toBe('$4,250.00');
+    expect(pt.money(425_000, 'BRL')).toMatch(/^R\$\s4\.250,00$/);
+    expect(es.money(1_050, 'MXN')).toBe('$10.50');
+    expect(en.money(1_050, 'EUR', 2)).toBe('€10.50');
+    expect(en.money(1_050, 'JPY', 0)).toBe('¥1,050');
+    expect(en.money(1_050, 'USD', 3)).toBe('$1.050');
+    expect(en.money(0, 'USD')).toBe('$0.00');
+    expect(en.money(1_234.5, 'USD')).toBe('$12.35');
+  });
+
   it('numbers and cost follow the language', () => {
     expect(pt.cost(1234.5)).toBe('US$ 1.234,50');
     expect(en.cost(1234.5)).toBe('US$ 1,234.50');

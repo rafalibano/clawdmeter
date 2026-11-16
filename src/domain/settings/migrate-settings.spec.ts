@@ -48,6 +48,7 @@ describe('migrateSettings', () => {
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
       usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
       usageChartLine: 'smooth',
+      usageBlocks: { modelLimits: false, extraUsage: true, resets: false },
       usageDailyHistory: true,
       claude: {
         useDefaultClientId: false,
@@ -389,7 +390,7 @@ describe('migration 11 -> 12 (last days block)', () => {
       usageAlerts: { fiveHour: [75], sevenDay: [] },
     });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(12);
+    expect(SCHEMA_VERSION).toBe(13);
     expect(MIGRATIONS).toHaveLength(SCHEMA_VERSION);
     expect(migrated.usageDailyHistory).toBe(false);
     expect(migrated.usageChartLine).toBe('smooth');
@@ -413,5 +414,72 @@ describe('migration 11 -> 12 (last days block)', () => {
       expect(migrateSettings({ schemaVersion: 11, usageDailyHistory: value }).usageDailyHistory).toBe(false);
       expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, usageDailyHistory: value }).usageDailyHistory).toBe(false);
     }
+  });
+});
+
+describe('migration 12 -> 13 (usage blocks)', () => {
+  it('a file from version 12 gets the three blocks on and keeps the rest', () => {
+    const migrated = migrateSettings({ schemaVersion: 12, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(13);
+    expect(MIGRATIONS).toHaveLength(SCHEMA_VERSION);
+    expect(migrated.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    expect(migrated.language).toBe('pt-BR');
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
+  });
+
+  it('a file written by the last days version (chart line, last days, no usageBlocks) keeps both fields and gets the block defaults', () => {
+    const migrated = migrateSettings({ schemaVersion: 12, usageChartLine: 'smooth', usageDailyHistory: true });
+    expect(migrated).toMatchObject({
+      schemaVersion: SCHEMA_VERSION,
+      usageChartLine: 'smooth',
+      usageDailyHistory: true,
+      usageBlocks: { modelLimits: true, extraUsage: true, resets: true },
+    });
+  });
+
+  it('a schema 10 file passes through all three steps', () => {
+    const migrated = migrateSettings({ schemaVersion: 10, language: 'es-MX' });
+    expect(migrated).toMatchObject({
+      schemaVersion: SCHEMA_VERSION,
+      language: 'es-MX',
+      usageChartLine: 'stepped',
+      usageDailyHistory: false,
+      usageBlocks: { modelLimits: true, extraUsage: true, resets: true },
+    });
+    const kept = migrateSettings({ schemaVersion: 10, usageChartLine: 'smooth', usageDailyHistory: true, usageBlocks: { resets: false } });
+    expect(kept).toMatchObject({ usageChartLine: 'smooth', usageDailyHistory: true, usageBlocks: { modelLimits: true, extraUsage: true, resets: false } });
+  });
+
+  it('a schema 11 file written by the chart line version goes through the last two steps', () => {
+    const migrated = migrateSettings({ schemaVersion: 11, usageChartLine: 'smooth' });
+    expect(migrated).toMatchObject({
+      usageChartLine: 'smooth',
+      usageDailyHistory: false,
+      usageBlocks: { modelLimits: true, extraUsage: true, resets: true },
+    });
+  });
+
+  it('createDefaultSettings turns the three blocks on and does not share the object between calls', () => {
+    const defaults = createDefaultSettings();
+    expect(defaults.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    defaults.usageBlocks.resets = false;
+    expect(createDefaultSettings().usageBlocks.resets).toBe(true);
+  });
+
+  it('valid flags are kept; invalid or missing ones fall back to on', () => {
+    expect(migrateSettings({ schemaVersion: 13, usageBlocks: { modelLimits: false, extraUsage: 'no', resets: false } }).usageBlocks).toEqual({
+      modelLimits: false,
+      extraUsage: true,
+      resets: false,
+    });
+    for (const usageBlocks of ['x', null, 3, [], undefined]) {
+      expect(migrateSettings({ schemaVersion: 12, usageBlocks }).usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: true });
+    }
+  });
+
+  it('unknown block ids are dropped', () => {
+    const migrated = migrateSettings({ schemaVersion: 13, usageBlocks: { resets: false, lastDays: true } });
+    expect(migrated.usageBlocks).toEqual({ modelLimits: true, extraUsage: true, resets: false });
   });
 });

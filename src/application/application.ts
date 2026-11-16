@@ -14,6 +14,7 @@ import {
   GetLaunchAtLogin,
   GetSettings,
   GetSettingsStatus,
+  LoadUsageResets,
   SetLaunchAtLogin,
   UpdateSettings,
   WatchSettings,
@@ -22,6 +23,7 @@ import { JoinMeeting } from './use-cases/calendar';
 import { OpenGitHubUrl } from './use-cases/pull-requests';
 import type { LoadDailyUsage } from './use-cases/usage';
 import { Updates } from './updates';
+import { UsageResetsMonitor } from './usage-resets';
 
 export interface Application {
   clock: Clock;
@@ -33,6 +35,7 @@ export interface Application {
   openGitHubUrl: OpenGitHubUrl;
   skills: Skills;
   updates: Updates;
+  usageResets: UsageResetsMonitor;
   dailyUsage: DailyUsageHistory;
   language: CurrentLanguage;
   getSettings: GetSettings;
@@ -60,6 +63,7 @@ export interface ApplicationDeps {
   loadDailyUsage?: LoadDailyUsage;
   newAccountId?: () => string;
   updateChecker: UpdateChecker;
+  loadUsageResets?: LoadUsageResets;
   launchAtLogin: LaunchAtLogin;
   skills: Skills | ((context: SkillsContext) => Skills);
   pages: readonly PageModule[] | ((context: PageContext) => readonly PageModule[]);
@@ -94,6 +98,7 @@ export function createApplication(deps: ApplicationDeps): Application {
     openGitHubUrl: new OpenGitHubUrl(deps.connectionAdapters.urlOpener),
     skills,
     updates: new Updates(deps.updateChecker, github, deps.clock),
+    usageResets: new UsageResetsMonitor(deps.loadUsageResets ?? null, deps.clock, connections.monitor),
     dailyUsage: new DailyUsageHistory(deps.loadDailyUsage, deps.clock),
     language: deps.language ?? new CurrentLanguage(),
     getSettings: new GetSettings(deps.settingsStore),

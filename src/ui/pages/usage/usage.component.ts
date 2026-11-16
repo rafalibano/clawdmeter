@@ -11,6 +11,7 @@ import { SettingsFacade } from '../../shell/settings.facade';
 import { chartPalette } from '../../theme/chart-palette';
 import { ThemeService } from '../../theme/theme.service';
 import { buildChartOption } from './usage-chart-option';
+import { toUsageBlocksView } from './usage-blocks-view';
 import { toDailyView } from './usage-daily-view';
 import { USAGE_PAGE } from './usage-page-ref';
 import { UsageDailyComponent } from './usage-daily.component';
@@ -38,6 +39,7 @@ export class UsageComponent {
   private readonly settings = inject(SettingsFacade);
   private readonly theme = inject(ThemeService);
   private readonly now = signal(this.application.clock.now());
+  private readonly resetsData = signal(this.application.usageResets.current);
   protected readonly i18n = inject(I18n);
 
   protected readonly ranges = USAGE_RANGES;
@@ -48,8 +50,29 @@ export class UsageComponent {
     return chartPalette(appearance.accentColor, appearance.popoverBackground, this.theme.resolved(), seriesColors);
   });
 
+  private readonly activeData = computed(() =>
+    activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId),
+  );
+
+  protected readonly blocks = computed(() => {
+    const data = this.activeData();
+    if (data === undefined) return null;
+    const { usageBlocks, claude } = this.settings.settings();
+    return toUsageBlocksView(
+      {
+        snapshot: data.snapshot,
+        at: data.at,
+        now: this.now(),
+        blocks: usageBlocks,
+        resets: this.resetsData(),
+        activeAccountId: claude.activeAccountId,
+      },
+      this.i18n.localizer(),
+    );
+  });
+
   protected readonly view = computed(() => {
-    const data = activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId);
+    const data = this.activeData();
     if (data === undefined) return null;
     const l = this.i18n.localizer();
     const { projectionMethod, usageChartLine } = this.settings.settings();
@@ -85,9 +108,11 @@ export class UsageComponent {
 
   constructor() {
     const stop = this.application.clock.every(CLOCK_TICK_MS, () => this.now.set(this.application.clock.now()));
+    const unsubscribe = this.application.usageResets.subscribe((data) => this.resetsData.set(data));
     const stopDaily = this.application.dailyUsage.subscribe((state) => this.daily.set(state));
     inject(DestroyRef).onDestroy(() => {
       stop();
+      unsubscribe();
       stopDaily();
     });
   }

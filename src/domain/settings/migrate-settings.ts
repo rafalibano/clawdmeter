@@ -3,6 +3,7 @@ import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
 import { defaultUsageAlerts, normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import { normalizeUsageBlocks } from '../usage/usage-blocks';
 import { DEFAULT_USAGE_CHART_LINE, isUsageChartLine } from '../usage/usage-chart-line';
 import { readClaudeSettings } from './claude-accounts';
 import { isHexColor } from './hex-color';
@@ -72,6 +73,11 @@ const addUsageDailyHistory: Migration = (raw) => ({
   usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
 });
 
+const addUsageBlocks: Migration = (raw) => ({
+  ...raw,
+  usageBlocks: normalizeUsageBlocks(raw['usageBlocks']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -85,6 +91,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addClaudeAccounts,
   addUsageChartLine,
   addUsageDailyHistory,
+  addUsageBlocks,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -150,6 +157,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     seriesColors: readSeriesColors(raw['seriesColors']),
     usageAlerts: readUsageAlerts(raw['usageAlerts']),
     usageChartLine: isUsageChartLine(raw['usageChartLine']) ? raw['usageChartLine'] : DEFAULT_USAGE_CHART_LINE,
+    usageBlocks: normalizeUsageBlocks(raw['usageBlocks']),
     usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
     claude: readClaudeSettings(raw['claude']),
   };

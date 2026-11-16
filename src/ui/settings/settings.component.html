@@ -62,6 +62,18 @@
     </div>
     <span class="hint">{{ i18n.t('settings.usageTab.line.hint') }}</span>
   </div>
+
+  <div class="field">
+    <span class="label">{{ i18n.t('settings.usageTab.blocks') }}</span>
+    @for (row of blockRows(); track row.id) {
+      <label class="check" [attr.data-usage-block]="row.id">
+        <input type="checkbox" [checked]="row.checked" (change)="toggleUsageBlock(row.id, checkedOf($event))" />
+        <span>{{ i18n.t(row.labelKey) }}</span>
+      </label>
+    }
+    <span class="hint">{{ i18n.t('settings.usageTab.hint') }}</span>
+  </div>
+
   <label class="check" data-setting="usage-daily-history">
     <input type="checkbox" [checked]="settings().usageDailyHistory" (change)="setDailyHistory(checkedOf($event))" />
     <span>{{ i18n.t('settings.usageTab.daily') }}</span>

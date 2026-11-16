@@ -13,6 +13,8 @@ import {
   usageTabSummary,
 } from './settings-summaries';
 
+const ALL_BLOCKS = { modelLimits: true, extraUsage: true, resets: true };
+
 describe('settings section summaries', () => {
   const pt = new Localizer('pt-BR');
 
@@ -86,8 +88,14 @@ describe('settings section summaries', () => {
   });
 
   it('usage tab: says whether the last days block is on, in the three languages', () => {
-    expect(usageTabSummary(new Localizer('en'), 'smooth', true)).toBe('Smooth · Last days on');
-    expect(usageTabSummary(pt, 'stepped', false)).toBe('Degraus · Últimos dias desligado');
-    expect(usageTabSummary(new Localizer('es-MX'), 'stepped', true)).toBe('Escalones · Últimos días activado');
+    expect(usageTabSummary(new Localizer('en'), 'smooth', true, ALL_BLOCKS)).toBe('Smooth · 3 of 3 blocks on · Last days on');
+    expect(usageTabSummary(pt, 'stepped', false, ALL_BLOCKS)).toBe('Degraus · 3 de 3 blocos ligados · Últimos dias desligado');
+    expect(usageTabSummary(new Localizer('es-MX'), 'stepped', true, ALL_BLOCKS)).toBe('Escalones · 3 de 3 bloques activos · Últimos días activado');
+  });
+
+  it('usage tab: counts the blocks that are on', () => {
+    const en = new Localizer('en');
+    expect(usageTabSummary(en, 'stepped', false, { modelLimits: true, extraUsage: false, resets: false })).toBe('Stepped · 1 of 3 blocks on · Last days off');
+    expect(usageTabSummary(en, 'stepped', false, { modelLimits: false, extraUsage: false, resets: false })).toBe('Stepped · 0 of 3 blocks on · Last days off');
   });
 });

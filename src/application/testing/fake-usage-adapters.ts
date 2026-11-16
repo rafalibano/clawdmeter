@@ -2,6 +2,7 @@ import {
   createEmptyHistory,
   type ExternalUsagePoint,
   type UsageHistory,
+  type UsageResets,
   type UsageSnapshot,
 } from '../../domain/usage';
 import type { SessionUsage } from '../../domain/sessions';
@@ -14,6 +15,7 @@ import type {
   UsageHistoryStore,
   UsageHistoryStores,
   UsageIndicator,
+  UsageResetsGateway,
 } from '../ports';
 
 export const SAMPLE_SNAPSHOT: UsageSnapshot = {
@@ -42,6 +44,19 @@ export class FakeUsageGateway implements UsageGateway {
     this.fetches += 1;
     this.requests.push({ accountId, clientId });
     if (this.held !== null) await this.held;
+    if (this.outcome instanceof Error) throw this.outcome;
+    return this.outcome;
+  }
+}
+
+export class FakeUsageResetsGateway implements UsageResetsGateway {
+  outcome: UsageResets | null | Error = null;
+  fetches = 0;
+  readonly requests: { accountId: string; clientId: string }[] = [];
+
+  async fetch(accountId: string, clientId: string): Promise<UsageResets | null> {
+    this.fetches += 1;
+    this.requests.push({ accountId, clientId });
     if (this.outcome instanceof Error) throw this.outcome;
     return this.outcome;
   }

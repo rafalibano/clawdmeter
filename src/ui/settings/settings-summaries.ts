@@ -1,6 +1,7 @@
 import type { ConnectionTone } from './connections/connection-view';
 import type { Localizer } from '../i18n';
-import type { ProjectionMethod, UsageChartLine } from '../../domain/usage';
+import type { ProjectionMethod, UsageBlockSettings, UsageChartLine } from '../../domain/usage';
+import { usageBlockRows, usageBlocksSummary } from './usage-block-rows';
 import type { ThemeMode } from '../../domain/settings';
 
 export type StatusDot = 'ok' | 'attention' | 'off';
@@ -33,9 +34,9 @@ export function usageChartLineSummary(l: Localizer, line: UsageChartLine): strin
   return l.t(`settings.usageTab.line.${line}`);
 }
 
-export function usageTabSummary(l: Localizer, line: UsageChartLine, dailyHistory: boolean): string {
+export function usageTabSummary(l: Localizer, line: UsageChartLine, dailyHistory: boolean, blocks: UsageBlockSettings): string {
   const daily = l.t(dailyHistory ? 'settings.usageTab.summary.on' : 'settings.usageTab.summary.off');
-  return `${usageChartLineSummary(l, line)} · ${daily}`;
+  return [usageChartLineSummary(l, line), usageBlocksSummary(l, usageBlockRows(blocks)), daily].join(' · ');
 }
 
 export function appearanceSummary(l: Localizer, theme: ThemeMode): string {

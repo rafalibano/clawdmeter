@@ -3,7 +3,14 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { ImportExternalUsageHistory, LoadDailyUsage, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
+import {
+  ImportExternalUsageHistory,
+  LoadDailyUsage,
+  LoadSessions,
+  LoadUsage,
+  LoadUsageResets,
+  NotifyUsageQuartiles,
+} from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoAccountsSettingsStore,
@@ -21,6 +28,7 @@ import {
   DemoUsageGateway,
   DemoUsageHistoryStores,
   DemoUsageIndicator,
+  DemoUsageResetsGateway,
   DemoUsageModels,
   DemoUpdateChecker,
   createDemoConnectionAdapters,
@@ -71,6 +79,7 @@ export function createComposition(): Application {
     usageHistories,
     loadDailyUsage: new LoadDailyUsage(new DemoDailyUsageReader(), clock),
     updateChecker: new DemoUpdateChecker(world.update),
+    loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new DemoUsageResetsGateway(() => clock.now()), clock),
     launchAtLogin: new DemoLaunchAtLogin(),
     skills: ({ connections }) =>
       createSkills(

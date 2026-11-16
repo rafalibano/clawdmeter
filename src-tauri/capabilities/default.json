@@ -77,6 +77,7 @@
     "allow-claude-account-status",
     "allow-claude-account-remove",
     "allow-claude-usage-fetch",
+    "allow-claude-usage-resets-fetch",
     "allow-process-run",
     "allow-process-spawn",
     "allow-process-kill",

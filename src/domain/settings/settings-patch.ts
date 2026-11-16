@@ -3,6 +3,7 @@ import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
 import { isUsageChartLine, type UsageChartLine } from '../usage/usage-chart-line';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import { normalizeUsageBlocks, type UsageBlockSettings } from '../usage/usage-blocks';
 import {
   isUuid,
   normalizeActiveAccountId,
@@ -21,6 +22,7 @@ export interface SettingsPatch {
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
+  usageBlocks?: Partial<UsageBlockSettings>;
   usageChartLine?: UsageChartLine;
   usageDailyHistory?: boolean;
   claude?: Partial<ClaudeSettings>;
@@ -40,6 +42,9 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   }
   if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
     merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
+  }
+  if (first.usageBlocks !== undefined || second.usageBlocks !== undefined) {
+    merged.usageBlocks = { ...first.usageBlocks, ...second.usageBlocks };
   }
   const usageChartLine = second.usageChartLine ?? first.usageChartLine;
   if (usageChartLine !== undefined) merged.usageChartLine = usageChartLine;
@@ -108,6 +113,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
+    usageBlocks: normalizeUsageBlocks(patch.usageBlocks, current.usageBlocks),
     usageChartLine: isUsageChartLine(patch.usageChartLine) ? patch.usageChartLine : current.usageChartLine,
     usageDailyHistory: typeof patch.usageDailyHistory === 'boolean' ? patch.usageDailyHistory : current.usageDailyHistory,
     claude: applyClaude(current.claude, patch.claude ?? {}),
