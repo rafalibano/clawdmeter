@@ -278,7 +278,6 @@ export const en = {
   'usage.reset.in': 'resets in {span}',
   'usage.trend': '{label} trend',
   'usage.rateLimited': 'Anthropic rate limit — trying again in {span}',
-  'usage.models.title': 'Weekly limits by model',
   'usage.extra.title': 'Extra usage',
   'usage.extra.on': 'On',
   'usage.extra.off': 'Off',

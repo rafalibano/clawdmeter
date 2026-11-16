@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Usage: the limits by model (Fable, and the Opus and Sonnet weekly windows when they come) now show as extra bars inside the 5h/7d card, right under 7d, and no longer in a card of their own. The **Limits by model** switch in Settings > Usage tab still hides them.
+
 ## 0.3.0
 
 - Usage: the **Last days** block now starts collapsed, showing only its title; click the title to open or close it. The choice survives switching tabs while the app is open and is not saved in the settings.

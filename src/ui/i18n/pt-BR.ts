@@ -268,7 +268,6 @@ export const ptBR: Record<MessageKey, string> = {
   'usage.reset.in': 'reseta em {span}',
   'usage.trend': '{label} tendência',
   'usage.rateLimited': 'Limite de consultas da Anthropic — tentando de novo em {span}',
-  'usage.models.title': 'Limites semanais por modelo',
   'usage.extra.title': 'Uso extra',
   'usage.extra.on': 'Ligado',
   'usage.extra.off': 'Desligado',
