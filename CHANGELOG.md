@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Reviews and Pull Requests: the tabs no longer fail with "GitHub responded 502 on /graphql" on accounts with many pull requests. The app sent every search of a tab in one GraphQL request, and GitHub answers 502 when a request takes over 10 seconds. Each search now goes in its own request, in pages of 25, with the searches of a tab running in parallel; the lists and totals are the same.
 - Usage: the limits by model (Fable, and the Opus and Sonnet weekly windows when they come) now show as extra bars inside the 5h/7d card, right under 7d, and no longer in a card of their own. The **Limits by model** switch in Settings > Usage tab still hides them.
