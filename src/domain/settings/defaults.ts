@@ -24,6 +24,7 @@ export function createDefaultSettings(): AppSettings {
     usageAlerts: defaultUsageAlerts(),
     usageBlocks: defaultUsageBlocks(),
     usageChartLine: DEFAULT_USAGE_CHART_LINE,
+    usageDailyHistory: false,
     claude: defaultClaudeSettings(),
   };
 }

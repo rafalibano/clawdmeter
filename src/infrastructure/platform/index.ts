@@ -1,6 +1,7 @@
 export * from './system-clock';
 export * from './tauri-claude-account-gateway';
 export * from './tauri-commands';
+export * from './tauri-daily-usage-reader';
 export * from './tauri-fetch';
 export * from './tauri-json-directory';
 export * from './tauri-json-file';

@@ -6,6 +6,7 @@ import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
 import {
   ImportExternalUsageHistory,
+  LoadDailyUsage,
   LoadSessions,
   LoadUsage,
   LoadUsageResets,
@@ -33,6 +34,7 @@ import {
   SystemClock,
   TauriClaudeAccountGateway,
   TauriCommands,
+  TauriDailyUsageReader,
   TauriJsonDirectory,
   TauriJsonFile,
   TauriLaunchAtLogin,
@@ -108,6 +110,7 @@ export function createComposition(): Application {
     settingsStore,
     connectionAdapters,
     usageHistories,
+    loadDailyUsage: new LoadDailyUsage(new TauriDailyUsageReader(commands), clock),
     updateChecker: new TauriUpdateChecker(commands),
     loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new AnthropicUsageResetsGateway(commands), clock),
     launchAtLogin: new TauriLaunchAtLogin(commands),

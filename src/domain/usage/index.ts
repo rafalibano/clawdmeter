@@ -1,4 +1,5 @@
 export * from './consumption-rate';
+export * from './daily-usage';
 export * from './external-history';
 export * from './extra-usage';
 export * from './forecast';

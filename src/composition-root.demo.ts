@@ -5,6 +5,7 @@ import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
 import {
   ImportExternalUsageHistory,
+  LoadDailyUsage,
   LoadSessions,
   LoadUsage,
   LoadUsageResets,
@@ -15,6 +16,7 @@ import {
   DemoAccountsSettingsStore,
   DemoCalendar,
   DemoClaudeAccountGateway,
+  DemoDailyUsageReader,
   applyDemoLanguage,
   DemoExternalUsageHistorySource,
   DemoLaunchAtLogin,
@@ -75,6 +77,7 @@ export function createComposition(): Application {
     settingsStore,
     connectionAdapters,
     usageHistories,
+    loadDailyUsage: new LoadDailyUsage(new DemoDailyUsageReader(), clock),
     updateChecker: new DemoUpdateChecker(world.update),
     loadUsageResets: new LoadUsageResets(connectionAdapters.prefs, new DemoUsageResetsGateway(() => clock.now()), clock),
     launchAtLogin: new DemoLaunchAtLogin(),

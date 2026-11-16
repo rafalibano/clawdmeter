@@ -73,6 +73,12 @@
     }
     <span class="hint">{{ i18n.t('settings.usageTab.hint') }}</span>
   </div>
+
+  <label class="check" data-setting="usage-daily-history">
+    <input type="checkbox" [checked]="settings().usageDailyHistory" (change)="setDailyHistory(checkedOf($event))" />
+    <span>{{ i18n.t('settings.usageTab.daily') }}</span>
+  </label>
+  <span class="hint">{{ i18n.t('settings.usageTab.daily.hint') }}</span>
 </cm-settings-section>
 
 <cm-settings-section name="appearance" [heading]="i18n.t('settings.appearance')">

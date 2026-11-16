@@ -29,6 +29,10 @@ export class SettingsFacade {
       this.app.usageResets.sync(this.state(), isPageEnabled(this.state(), USAGE_PAGE.id));
     });
     effect(() => {
+      const settings = this.state();
+      if (this.loaded()) this.app.dailyUsage.sync(settings, isPageEnabled(settings, USAGE_PAGE.id));
+    });
+    effect(() => {
       const language = this.state().language;
       if (this.app.language.value === language) return;
       this.app.language.set(language);
@@ -38,6 +42,7 @@ export class SettingsFacade {
       this.session.dispose();
       this.app.scheduler.stopAll();
       this.app.usageResets.stop();
+      this.app.dailyUsage.stop();
     });
     void this.session.start();
   }

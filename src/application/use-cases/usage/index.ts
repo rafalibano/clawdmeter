@@ -1,3 +1,4 @@
+export * from './load-daily-usage';
 export * from './load-usage';
 export * from './load-usage-resets';
 export * from './import-external-usage-history';

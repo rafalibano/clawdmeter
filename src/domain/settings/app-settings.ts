@@ -40,5 +40,6 @@ export interface AppSettings {
   usageAlerts: UsageAlertSettings;
   usageBlocks: UsageBlockSettings;
   usageChartLine: UsageChartLine;
+  usageDailyHistory: boolean;
   claude: ClaudeSettings;
 }
