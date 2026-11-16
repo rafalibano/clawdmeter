@@ -14,6 +14,7 @@ use super::transcript::{assistant_reply, read_lines_no_follow, Entry, RunCounts,
 const MAX_DAYS: usize = 30;
 const MAX_TRACKED_FILES: usize = 4096;
 const MAX_MODEL_ID: usize = 80;
+const MAX_MODELS: usize = 256;
 const UNKNOWN_MODEL: &str = "unknown";
 const SCAN_BUDGET: u64 = 1024 * 1024 * 1024;
 const MIN_DAY_SECS: i64 = 22 * 3_600;
@@ -168,6 +169,11 @@ fn model_id(raw: String) -> String {
 
 impl Store {
     fn intern(&mut self, model: String) -> u32 {
+        let model = if self.model_ids.contains_key(&model) || self.models.len() < MAX_MODELS {
+            model
+        } else {
+            UNKNOWN_MODEL.to_owned()
+        };
         if let Some(index) = self.model_ids.get(&model) {
             return *index;
         }
@@ -177,9 +183,17 @@ impl Store {
         index
     }
 
+    fn clear_models(&mut self) {
+        self.models.clear();
+        self.model_ids.clear();
+    }
+
     fn start_window(&mut self, since: i64) {
         match self.covered_from {
-            Some(covered) if since < covered => self.files.clear(),
+            Some(covered) if since < covered => {
+                self.files.clear();
+                self.clear_models();
+            }
             Some(covered) if since > covered => {
                 for state in self.files.values_mut() {
                     state.events.retain(|event| event.at >= since);
@@ -378,10 +392,10 @@ fn validate(day_starts: &[i64], now: i64) -> CommandResult<()> {
 }
 
 #[derive(Default)]
-struct DayAccumulator {
+struct DayAccumulator<'a> {
     tokens: BTreeMap<u32, u64>,
-    sessions: HashSet<String>,
-    peaks: HashMap<String, u64>,
+    sessions: HashSet<&'a str>,
+    peaks: HashMap<&'a str, u64>,
 }
 
 fn aggregate(
@@ -392,7 +406,7 @@ fn aggregate(
     truncated: bool,
 ) -> DailyUsage {
     let days = day_starts.len() - 1;
-    let mut accumulators: Vec<DayAccumulator> =
+    let mut accumulators: Vec<DayAccumulator<'_>> =
         (0..days).map(|_| DayAccumulator::default()).collect();
     for item in found {
         let Some(state) = store.files.get(&item.path) else {
@@ -406,9 +420,9 @@ fn aggregate(
             let day = &mut accumulators[upper - 1];
             let total = day.tokens.entry(event.model).or_default();
             *total = total.saturating_add(event.tokens);
-            day.sessions.insert(item.session.clone());
+            day.sessions.insert(item.session.as_str());
             if let Some(context) = event.context {
-                let peak = day.peaks.entry(item.session.clone()).or_default();
+                let peak = day.peaks.entry(item.session.as_str()).or_default();
                 *peak = (*peak).max(context);
             }
         }
@@ -443,6 +457,15 @@ fn aggregate(
     }
 }
 
+fn lock_store(tallies: &DailyTallies) -> std::sync::MutexGuard<'_, Store> {
+    tallies.0.lock().unwrap_or_else(|poisoned| {
+        let mut store = poisoned.into_inner();
+        *store = Store::default();
+        tallies.0.clear_poison();
+        store
+    })
+}
+
 fn scan(
     tallies: &DailyTallies,
     projects: &Path,
@@ -453,14 +476,14 @@ fn scan(
     validate(day_starts, now)?;
     let since = day_starts[0];
     // The folder walk happens under the lock so a concurrent call never sees stale lengths.
-    let mut store = tallies
-        .0
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut store = lock_store(tallies);
     let (found, truncated) = candidates(projects, since);
     store.start_window(since);
     let kept: HashSet<&PathBuf> = found.iter().map(|item| &item.path).collect();
     store.files.retain(|path, _| kept.contains(path));
+    if store.files.is_empty() {
+        store.clear_models();
+    }
     let mut complete = true;
     for item in &found {
         if budget < 2 * MAX_LINE as u64 {
@@ -1332,5 +1355,104 @@ mod tests {
         ] {
             assert!(validate(&bad, now()).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_poisoned_lock_resets_the_store_and_nothing_is_counted_twice() {
+        let projects = scratch("poison");
+        let path = main_file(&projects, SESSION);
+        append(
+            &path,
+            &[reply(
+                "2026-11-10T12:00:00Z",
+                "a",
+                "claude-opus-5",
+                7,
+                0,
+                0,
+                0,
+            )],
+        );
+        let tallies = DailyTallies::default();
+        let shared = tallies.clone();
+        let broken = path.clone();
+        let outcome = std::thread::spawn(move || {
+            let mut store = shared.0.lock().unwrap();
+            let model = store.intern("claude-opus-5".to_owned());
+            store.files.insert(
+                broken,
+                FileState {
+                    events: vec![Event {
+                        at: at("2026-11-10T12:00:00Z"),
+                        model,
+                        tokens: 7,
+                        context: Some(7),
+                    }],
+                    ..FileState::default()
+                },
+            );
+            panic!("poisoning the lock on purpose");
+        })
+        .join();
+        assert!(outcome.is_err());
+        assert!(tallies.0.is_poisoned());
+        let usage = run(&tallies, &projects);
+        assert_eq!(tokens_of(&usage.days[1], "claude-opus-5"), 7);
+        assert!(!tallies.0.is_poisoned());
+        assert_eq!(
+            bytes_read(&tallies),
+            std::fs::metadata(&path).unwrap().len()
+        );
+    }
+
+    #[test]
+    fn caps_the_distinct_model_ids_and_reports_the_rest_as_unknown() {
+        let projects = scratch("models-cap");
+        let extra = 20;
+        let lines: Vec<String> = (0..MAX_MODELS + extra)
+            .map(|n| {
+                reply(
+                    "2026-11-10T12:00:00Z",
+                    &format!("m{n}"),
+                    &format!("claude-x-{n}"),
+                    1,
+                    0,
+                    0,
+                    0,
+                )
+            })
+            .collect();
+        append(&main_file(&projects, SESSION), &lines);
+        let tallies = DailyTallies::default();
+        let usage = run(&tallies, &projects);
+        assert_eq!(tokens_of(&usage.days[1], "unknown"), extra as u64);
+        assert_eq!(usage.days[1].models.len(), MAX_MODELS + 1);
+        assert_eq!(tokens_of(&usage.days[1], "claude-x-0"), 1);
+        assert!(tallies.0.lock().unwrap().models.len() <= MAX_MODELS + 1);
+    }
+
+    #[test]
+    fn the_model_table_is_cleared_with_the_files() {
+        let projects = scratch("models-clear");
+        let path = main_file(&projects, SESSION);
+        append(
+            &path,
+            &[reply(
+                "2026-11-10T12:00:00Z",
+                "a",
+                "claude-opus-5",
+                1,
+                0,
+                0,
+                0,
+            )],
+        );
+        let tallies = DailyTallies::default();
+        run(&tallies, &projects);
+        assert_eq!(tallies.0.lock().unwrap().models.len(), 1);
+        set_mtime(&path, at("2026-11-01T00:00:00Z"));
+        run(&tallies, &projects);
+        let store = tallies.0.lock().unwrap();
+        assert!(store.files.is_empty() && store.models.is_empty() && store.model_ids.is_empty());
     }
 }
