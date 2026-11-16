@@ -3,6 +3,7 @@ import { DEFAULT_LANGUAGE, THEME_MODES, isAppLanguage } from './app-settings';
 import { createDefaultSettings, DEFAULT_ACCENT_COLOR } from './defaults';
 import { DEFAULT_PROJECTION_METHOD, isProjectionMethod } from '../usage/projection-method';
 import { defaultUsageAlerts, normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
+import { DEFAULT_USAGE_CHART_LINE, isUsageChartLine } from '../usage/usage-chart-line';
 import { readClaudeSettings } from './claude-accounts';
 import { isHexColor } from './hex-color';
 import { maintenancePagesOff } from './maintenance-pages';
@@ -61,6 +62,11 @@ const addClaudeAccounts: Migration = (raw) => ({
   claude: readClaudeSettings(raw['claude']),
 });
 
+const addUsageChartLine: Migration = (raw) => ({
+  ...raw,
+  usageChartLine: isUsageChartLine(raw['usageChartLine']) ? raw['usageChartLine'] : DEFAULT_USAGE_CHART_LINE,
+});
+
 const addUsageDailyHistory: Migration = (raw) => ({
   ...raw,
   usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
@@ -77,6 +83,7 @@ export const MIGRATIONS: readonly Migration[] = [
   adoptSevenDayProjection,
   addUsageAlerts,
   addClaudeAccounts,
+  addUsageChartLine,
   addUsageDailyHistory,
 ];
 
@@ -142,6 +149,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     projectionMethod: isProjectionMethod(raw['projectionMethod']) ? raw['projectionMethod'] : DEFAULT_PROJECTION_METHOD,
     seriesColors: readSeriesColors(raw['seriesColors']),
     usageAlerts: readUsageAlerts(raw['usageAlerts']),
+    usageChartLine: isUsageChartLine(raw['usageChartLine']) ? raw['usageChartLine'] : DEFAULT_USAGE_CHART_LINE,
     usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
     claude: readClaudeSettings(raw['claude']),
   };

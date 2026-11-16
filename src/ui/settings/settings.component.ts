@@ -8,7 +8,7 @@ import {
   type SeriesColorSettings,
   type ThemeMode,
 } from '../../domain/settings';
-import { PROJECTION_METHODS, type ProjectionMethod, type Quartile, type UsageWindowKind } from '../../domain/usage';
+import { PROJECTION_METHODS, USAGE_CHART_LINES, type ProjectionMethod, type Quartile, type UsageChartLine, type UsageWindowKind } from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
@@ -51,6 +51,7 @@ export class SettingsComponent {
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
   protected readonly projectionMethods = PROJECTION_METHODS;
+  protected readonly chartLines = USAGE_CHART_LINES;
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
@@ -70,10 +71,12 @@ export class SettingsComponent {
   protected readonly seriesRows = computed(() => seriesLineRows(this.seriesValues(), this.settings().seriesColors));
   protected readonly alertRows = computed(() => usageAlertRows(this.settings().usageAlerts));
   protected readonly alertsSummaryText = computed(() => usageAlertsSummary(this.i18n.localizer(), this.settings().usageAlerts));
-  protected readonly usageTabSummaryText = computed(() => usageTabSummary(this.i18n.localizer(), this.settings().usageDailyHistory));
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
+  );
+  protected readonly usageTabSummaryText = computed(() =>
+    usageTabSummary(this.i18n.localizer(), this.settings().usageChartLine, this.settings().usageDailyHistory),
   );
   protected readonly appearanceSummaryText = computed(() =>
     appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
@@ -121,6 +124,14 @@ export class SettingsComponent {
 
   protected setProjection(projectionMethod: ProjectionMethod): void {
     this.facade.update({ projectionMethod });
+  }
+
+  protected chartLineLabel(line: UsageChartLine): string {
+    return this.i18n.t(`settings.usageTab.line.${line}`);
+  }
+
+  protected setChartLine(usageChartLine: UsageChartLine): void {
+    this.facade.update({ usageChartLine });
   }
 
   protected setLanguage(language: AppLanguage): void {

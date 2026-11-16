@@ -56,6 +56,18 @@ describe('projection method in the patch', () => {
   });
 });
 
+describe('usage chart line in the patch', () => {
+  it('changes the line and ignores an unknown value', () => {
+    const base = createDefaultSettings();
+    expect(applyPatch(base, { usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');
+    expect(applyPatch(base, { usageChartLine: 'curvy' as never }).usageChartLine).toBe('stepped');
+    expect(applyPatch(base, {}).usageChartLine).toBe('stepped');
+    expect(applyPatch({ ...base, usageChartLine: 'smooth' }, {}).usageChartLine).toBe('smooth');
+    expect(mergePatches({ usageChartLine: 'smooth' }, {}).usageChartLine).toBe('smooth');
+    expect(mergePatches({ usageChartLine: 'smooth' }, { usageChartLine: 'stepped' }).usageChartLine).toBe('stepped');
+  });
+});
+
 describe('mergePatches', () => {
   it('the second patch wins on the same fields', () => {
     const merged = mergePatches(

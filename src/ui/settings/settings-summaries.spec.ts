@@ -9,6 +9,7 @@ import {
   launchAtLoginSummary,
   pagesSummary,
   projectionSummary,
+  usageChartLineSummary,
   usageTabSummary,
 } from './settings-summaries';
 
@@ -45,6 +46,13 @@ describe('settings section summaries', () => {
     expect(appearanceSummary(pt, 'dark')).toBe('Escuro');
   });
 
+  it('usage tab shows the chart line in the three languages', () => {
+    expect(usageChartLineSummary(pt, 'stepped')).toBe('Degraus');
+    expect(usageChartLineSummary(pt, 'smooth')).toBe('Suavizada');
+    expect(usageChartLineSummary(new Localizer('en'), 'smooth')).toBe('Smooth');
+    expect(usageChartLineSummary(new Localizer('es-MX'), 'stepped')).toBe('Escalones');
+  });
+
   describe('launch at login', () => {
     const en = new Localizer('en');
 
@@ -78,8 +86,8 @@ describe('settings section summaries', () => {
   });
 
   it('usage tab: says whether the last days block is on, in the three languages', () => {
-    expect(usageTabSummary(new Localizer('en'), true)).toBe('Last days on');
-    expect(usageTabSummary(pt, false)).toBe('Últimos dias desligado');
-    expect(usageTabSummary(new Localizer('es-MX'), true)).toBe('Últimos días activado');
+    expect(usageTabSummary(new Localizer('en'), 'smooth', true)).toBe('Smooth · Last days on');
+    expect(usageTabSummary(pt, 'stepped', false)).toBe('Degraus · Últimos dias desligado');
+    expect(usageTabSummary(new Localizer('es-MX'), 'stepped', true)).toBe('Escalones · Últimos días activado');
   });
 });

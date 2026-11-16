@@ -1,6 +1,7 @@
 import type { AppLanguage, AppSettings, AppearanceSettings, SeriesColorSettings } from './app-settings';
 import { THEME_MODES, isAppLanguage } from './app-settings';
 import { isProjectionMethod, type ProjectionMethod } from '../usage/projection-method';
+import { isUsageChartLine, type UsageChartLine } from '../usage/usage-chart-line';
 import { normalizeQuartiles, type UsageAlertSettings } from '../usage/usage-alerts';
 import {
   isUuid,
@@ -20,6 +21,7 @@ export interface SettingsPatch {
   projectionMethod?: ProjectionMethod;
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
+  usageChartLine?: UsageChartLine;
   usageDailyHistory?: boolean;
   claude?: Partial<ClaudeSettings>;
 }
@@ -39,6 +41,8 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   if (first.usageAlerts !== undefined || second.usageAlerts !== undefined) {
     merged.usageAlerts = { ...first.usageAlerts, ...second.usageAlerts };
   }
+  const usageChartLine = second.usageChartLine ?? first.usageChartLine;
+  if (usageChartLine !== undefined) merged.usageChartLine = usageChartLine;
   const usageDailyHistory = second.usageDailyHistory ?? first.usageDailyHistory;
   if (usageDailyHistory !== undefined) merged.usageDailyHistory = usageDailyHistory;
   if (first.claude !== undefined || second.claude !== undefined) {
@@ -104,6 +108,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     projectionMethod: isProjectionMethod(patch.projectionMethod) ? patch.projectionMethod : current.projectionMethod,
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
+    usageChartLine: isUsageChartLine(patch.usageChartLine) ? patch.usageChartLine : current.usageChartLine,
     usageDailyHistory: typeof patch.usageDailyHistory === 'boolean' ? patch.usageDailyHistory : current.usageDailyHistory,
     claude: applyClaude(current.claude, patch.claude ?? {}),
   };

@@ -1,11 +1,14 @@
 import {
+  DEFAULT_USAGE_CHART_LINE,
   DEFAULT_USAGE_RANGE,
   isCycleAvailable,
   levelSteps,
+  smoothLevelSteps,
   pointsInRange,
   trendValueAt,
   usageRange,
   type Forecast,
+  type UsageChartLine,
   type UsagePoint,
   type UsageRange,
   type UsageWindowKind,
@@ -131,6 +134,7 @@ export function buildChartModel(
   inputs: readonly WindowInput[],
   range: UsageRange,
   now: number,
+  line: UsageChartLine = DEFAULT_USAGE_CHART_LINE,
 ): UsageChartModel {
   const weeklyResetsAt = inputs.find((input) => input.kind === 'sevenDay')?.resetsAt ?? null;
   const cycle = range.cycle === true && isCycleAvailable(weeklyResetsAt, now);
@@ -138,6 +142,7 @@ export function buildChartModel(
   const xMax = cycle ? (weeklyResetsAt as number) : now + effective.durationMs * FUTURE_SHARE;
   const xMin = cycle ? xMax - CYCLE_MS : now - effective.durationMs;
   const fiveHour = inputs.find((input) => input.kind === 'fiveHour');
+  const steps = line === 'smooth' ? smoothLevelSteps : levelSteps;
   const ahead = fiveHour?.resetsAt != null && fiveHour.resetsAt > now && fiveHour.resetsAt <= xMax ? [fiveHour.resetsAt] : [];
   const windows = inputs.map((input): WindowSeries => {
     const forecast = forecastFor(input, cycle, effective.durationMs);
@@ -147,7 +152,7 @@ export function buildChartModel(
     return {
       kind: input.kind,
       label: input.label,
-      points: withLevels(downsample(visible, xMin, now), levelSteps(input.points, xMin, now, (2 * (now - xMin)) / CHART_BUCKETS)),
+      points: withLevels(downsample(visible, xMin, now), steps(input.points, xMin, now, (2 * (now - xMin)) / CHART_BUCKETS)),
       trend: trendPoints(forecast, xMax, cycle ? MAX_AXIS_MAX : BASE_AXIS_MAX),
       projectAt: cycle && input.kind === 'sevenDay' ? projector(forecast) : null,
       resetsAt: input.resetsAt,
