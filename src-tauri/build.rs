@@ -21,6 +21,7 @@ const APP_COMMANDS: &[&str] = &[
     "notification_permission_state",
     "notification_permission_request",
     "session_usage",
+    "daily_usage",
     "launch_at_login_status",
     "launch_at_login_enable",
     "launch_at_login_disable",

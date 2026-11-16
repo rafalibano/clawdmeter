@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CLAUDE_OAUTH_CLIENT_ID, MAX_CLAUDE_ACCOUNTS } from './claude-accounts';
 import { createDefaultSettings } from './defaults';
-import { migrateSettings, type Migration } from './migrate-settings';
+import { migrateSettings, type Migration, MIGRATIONS } from './migrate-settings';
 import { isPageEnabled } from './page-enabled';
 import { SCHEMA_VERSION } from './schema-version';
 
@@ -48,6 +48,7 @@ describe('migrateSettings', () => {
       seriesColors: { fiveHour: '#0063F7', sevenDay: null },
       usageAlerts: { fiveHour: [25, 100], sevenDay: [] },
       usageChartLine: 'smooth',
+      usageDailyHistory: true,
       claude: {
         useDefaultClientId: false,
         clientId: '11111111-2222-4333-8444-555555555555',
@@ -258,7 +259,6 @@ describe('migration 9 -> 10 (Claude accounts)', () => {
   it('a file from version 9 without claude uses the default client id, with no custom id and zero accounts, keeping the rest', () => {
     const migrated = migrateSettings({ schemaVersion: 9, language: 'pt-BR', usageAlerts: { fiveHour: [25], sevenDay: [] } });
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(11);
     expect(migrated.claude).toEqual({ useDefaultClientId: true, clientId: '', accounts: [], activeAccountId: null });
     expect(migrated.language).toBe('pt-BR');
     expect(migrated.usageAlerts).toEqual({ fiveHour: [25], sevenDay: [] });
@@ -370,12 +370,48 @@ describe('migration 10 -> 11 (usage chart line)', () => {
     expect(migrateSettings({ schemaVersion: 10, usageChartLine: 'curvy' }).usageChartLine).toBe('stepped');
     expect(migrateSettings({ schemaVersion: 10, usageChartLine: 3 }).usageChartLine).toBe('stepped');
     expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, usageChartLine: 'smooth' }).usageChartLine).toBe('smooth');
-    expect(migrateSettings({ schemaVersion: 10 }).schemaVersion).toBe(11);
+    expect(migrateSettings({ schemaVersion: 10 }).schemaVersion).toBe(SCHEMA_VERSION);
     expect(createDefaultSettings().usageChartLine).toBe('stepped');
   });
 
   it('migrating from schema 10 keeps the other settings untouched', () => {
     const migrated = migrateSettings({ schemaVersion: 10, language: 'pt-BR', projectionMethod: '24h' });
     expect(migrated).toMatchObject({ language: 'pt-BR', projectionMethod: '24h', usageChartLine: 'stepped' });
+  });
+});
+
+describe('migration 11 -> 12 (last days block)', () => {
+  it('a file from version 11 gets the block switched off and keeps the rest, the chart line included', () => {
+    const migrated = migrateSettings({
+      schemaVersion: 11,
+      language: 'es-MX',
+      usageChartLine: 'smooth',
+      usageAlerts: { fiveHour: [75], sevenDay: [] },
+    });
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(12);
+    expect(MIGRATIONS).toHaveLength(SCHEMA_VERSION);
+    expect(migrated.usageDailyHistory).toBe(false);
+    expect(migrated.usageChartLine).toBe('smooth');
+    expect(migrated.language).toBe('es-MX');
+    expect(migrated.usageAlerts).toEqual({ fiveHour: [75], sevenDay: [] });
+  });
+
+  it('a file written by the chart line version, with no usageDailyHistory, migrates through both steps from 10', () => {
+    const migrated = migrateSettings({ schemaVersion: 10, language: 'pt-BR' });
+    expect(migrated).toMatchObject({ usageChartLine: 'stepped', usageDailyHistory: false, language: 'pt-BR' });
+  });
+
+  it('is off by default', () => {
+    expect(createDefaultSettings().usageDailyHistory).toBe(false);
+  });
+
+  it('keeps a saved true and turns anything that is not a boolean into false', () => {
+    expect(migrateSettings({ schemaVersion: 11, usageDailyHistory: true }).usageDailyHistory).toBe(true);
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, usageDailyHistory: true }).usageDailyHistory).toBe(true);
+    for (const value of ['yes', 1, null, [], {}]) {
+      expect(migrateSettings({ schemaVersion: 11, usageDailyHistory: value }).usageDailyHistory).toBe(false);
+      expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, usageDailyHistory: value }).usageDailyHistory).toBe(false);
+    }
   });
 });

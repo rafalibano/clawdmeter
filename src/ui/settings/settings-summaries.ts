@@ -33,6 +33,11 @@ export function usageChartLineSummary(l: Localizer, line: UsageChartLine): strin
   return l.t(`settings.usageTab.line.${line}`);
 }
 
+export function usageTabSummary(l: Localizer, line: UsageChartLine, dailyHistory: boolean): string {
+  const daily = l.t(dailyHistory ? 'settings.usageTab.summary.on' : 'settings.usageTab.summary.off');
+  return `${usageChartLineSummary(l, line)} · ${daily}`;
+}
+
 export function appearanceSummary(l: Localizer, theme: ThemeMode): string {
   return l.t(`theme.${theme}`);
 }

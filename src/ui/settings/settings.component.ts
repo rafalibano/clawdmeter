@@ -17,7 +17,7 @@ import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
 import { SettingsSectionComponent } from './settings-section.component';
-import { appearanceSummary, pagesSummary, projectionSummary, usageChartLineSummary } from './settings-summaries';
+import { appearanceSummary, pagesSummary, projectionSummary, usageTabSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
 import { ClaudeAccountsComponent } from './claude-accounts/claude-accounts.component';
@@ -76,7 +76,7 @@ export class SettingsComponent {
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
   );
   protected readonly usageTabSummaryText = computed(() =>
-    usageChartLineSummary(this.i18n.localizer(), this.settings().usageChartLine),
+    usageTabSummary(this.i18n.localizer(), this.settings().usageChartLine, this.settings().usageDailyHistory),
   );
   protected readonly appearanceSummaryText = computed(() =>
     appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
@@ -88,6 +88,10 @@ export class SettingsComponent {
 
   protected toggleAlert(kind: UsageWindowKind, quartile: Quartile, checked: boolean): void {
     this.facade.update({ usageAlerts: { [kind]: toggleQuartile(this.settings().usageAlerts[kind], quartile, checked) } });
+  }
+
+  protected setDailyHistory(usageDailyHistory: boolean): void {
+    this.facade.update({ usageDailyHistory });
   }
 
   protected togglePage(id: string, enabled: boolean): void {

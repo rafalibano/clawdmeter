@@ -22,6 +22,7 @@ export interface SettingsPatch {
   seriesColors?: Partial<SeriesColorSettings>;
   usageAlerts?: Partial<UsageAlertSettings>;
   usageChartLine?: UsageChartLine;
+  usageDailyHistory?: boolean;
   claude?: Partial<ClaudeSettings>;
 }
 
@@ -42,6 +43,8 @@ export function mergePatches(first: SettingsPatch, second: SettingsPatch): Setti
   }
   const usageChartLine = second.usageChartLine ?? first.usageChartLine;
   if (usageChartLine !== undefined) merged.usageChartLine = usageChartLine;
+  const usageDailyHistory = second.usageDailyHistory ?? first.usageDailyHistory;
+  if (usageDailyHistory !== undefined) merged.usageDailyHistory = usageDailyHistory;
   if (first.claude !== undefined || second.claude !== undefined) {
     merged.claude = { ...first.claude, ...second.claude };
   }
@@ -106,6 +109,7 @@ export function applyPatch(current: AppSettings, patch: SettingsPatch): AppSetti
     seriesColors: applySeriesColors(current.seriesColors, patch.seriesColors ?? {}),
     usageAlerts: applyUsageAlerts(current.usageAlerts, patch.usageAlerts ?? {}),
     usageChartLine: isUsageChartLine(patch.usageChartLine) ? patch.usageChartLine : current.usageChartLine,
+    usageDailyHistory: typeof patch.usageDailyHistory === 'boolean' ? patch.usageDailyHistory : current.usageDailyHistory,
     claude: applyClaude(current.claude, patch.claude ?? {}),
   };
 }

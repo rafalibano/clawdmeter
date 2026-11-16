@@ -22,6 +22,7 @@ export function createDefaultSettings(): AppSettings {
     seriesColors: { fiveHour: null, sevenDay: null },
     usageAlerts: defaultUsageAlerts(),
     usageChartLine: DEFAULT_USAGE_CHART_LINE,
+    usageDailyHistory: false,
     claude: defaultClaudeSettings(),
   };
 }

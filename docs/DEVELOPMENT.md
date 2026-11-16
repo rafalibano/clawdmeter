@@ -79,6 +79,7 @@ src/
 │  ├─ pull-requests/  createPullRequests, GitHubSession and the data of the PRs/Reviews pages
 │  ├─ skills/         createSkills and SkillRunBoard (live runs and history)
 │  ├─ updates/        Updates: update check every 6 h, download with progress, install and restart
+│  ├─ daily-usage/    DailyUsageHistory: state and slow timer of the Usage tab's Last days block
 │  ├─ pages/          PageModule (contract) and PageRegistry
 │  ├─ scheduler/      PollingScheduler: only schedules enabled pages
 │  └─ testing/        fakes of the ports, used only in tests
@@ -101,7 +102,7 @@ src/
 ├─ composition-root.ts        manual DI with the real (Tauri) adapters
 └─ composition-root.demo.ts   DI of the demo mode in the browser (localStorage)
 src-tauri/src/
-├─ commands/          thin platform layer: secrets, claude_oauth, claude_usage, process, oauth_loopback, terminal, open_external, updater
+├─ commands/          thin platform layer: secrets, claude_oauth, claude_usage, session_usage and daily_usage (both read transcripts through transcript), process, oauth_loopback, terminal, open_external, updater
 └─ tray.rs, platform.rs   tray and popover
 └─ usage_icon.rs          pure (RGBA) renderer of the tray usage icon
 ```

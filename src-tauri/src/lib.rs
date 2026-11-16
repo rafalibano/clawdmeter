@@ -34,6 +34,7 @@ pub fn run() {
         .manage(AccountLocks::default())
         .manage(PendingUpdate::default())
         .manage(commands::session_usage::TranscriptTallies::default())
+        .manage(commands::daily_usage::DailyTallies::default())
         .invoke_handler(tauri::generate_handler![
             commands::secrets::secret_get,
             commands::secrets::secret_set,
@@ -57,6 +58,7 @@ pub fn run() {
             commands::notification_permission::notification_permission_state,
             commands::notification_permission::notification_permission_request,
             commands::session_usage::session_usage,
+            commands::daily_usage::daily_usage,
             commands::launch_at_login::launch_at_login_status,
             commands::launch_at_login::launch_at_login_enable,
             commands::launch_at_login::launch_at_login_disable,

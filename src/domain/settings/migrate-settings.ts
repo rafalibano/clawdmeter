@@ -67,6 +67,11 @@ const addUsageChartLine: Migration = (raw) => ({
   usageChartLine: isUsageChartLine(raw['usageChartLine']) ? raw['usageChartLine'] : DEFAULT_USAGE_CHART_LINE,
 });
 
+const addUsageDailyHistory: Migration = (raw) => ({
+  ...raw,
+  usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
+});
+
 export const MIGRATIONS: readonly Migration[] = [
   (raw) => ({ ...raw }),
   adoptMottuAccent,
@@ -79,6 +84,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addUsageAlerts,
   addClaudeAccounts,
   addUsageChartLine,
+  addUsageDailyHistory,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +118,10 @@ function readUsageAlerts(value: unknown): UsageAlertSettings {
   };
 }
 
+function readUsageDailyHistory(value: unknown): boolean {
+  return value === true;
+}
+
 function readEnabledPages(value: unknown): Record<string, boolean> {
   if (!isRecord(value)) return {};
   const pages: Record<string, boolean> = {};
@@ -140,6 +150,7 @@ function normalize(raw: Record<string, unknown>): AppSettings {
     seriesColors: readSeriesColors(raw['seriesColors']),
     usageAlerts: readUsageAlerts(raw['usageAlerts']),
     usageChartLine: isUsageChartLine(raw['usageChartLine']) ? raw['usageChartLine'] : DEFAULT_USAGE_CHART_LINE,
+    usageDailyHistory: readUsageDailyHistory(raw['usageDailyHistory']),
     claude: readClaudeSettings(raw['claude']),
   };
 }

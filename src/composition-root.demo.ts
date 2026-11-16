@@ -3,12 +3,13 @@ import { GitHubTokenResolver } from './application/connections/github-token-reso
 import { CurrentLanguage } from './application/language';
 import { createPullRequests } from './application/pull-requests';
 import { createSkills } from './application/skills';
-import { ImportExternalUsageHistory, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
+import { ImportExternalUsageHistory, LoadDailyUsage, LoadSessions, LoadUsage, NotifyUsageQuartiles } from './application/use-cases';
 import { DEFAULT_ATTENTION_CONFIG } from './domain/sessions';
 import {
   DemoAccountsSettingsStore,
   DemoCalendar,
   DemoClaudeAccountGateway,
+  DemoDailyUsageReader,
   applyDemoLanguage,
   DemoExternalUsageHistorySource,
   DemoLaunchAtLogin,
@@ -68,6 +69,7 @@ export function createComposition(): Application {
     settingsStore,
     connectionAdapters,
     usageHistories,
+    loadDailyUsage: new LoadDailyUsage(new DemoDailyUsageReader(), clock),
     updateChecker: new DemoUpdateChecker(world.update),
     launchAtLogin: new DemoLaunchAtLogin(),
     skills: ({ connections }) =>

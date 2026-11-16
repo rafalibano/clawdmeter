@@ -10,6 +10,7 @@ import {
   pagesSummary,
   projectionSummary,
   usageChartLineSummary,
+  usageTabSummary,
 } from './settings-summaries';
 
 describe('settings section summaries', () => {
@@ -82,5 +83,11 @@ describe('settings section summaries', () => {
       expect(launchAtLoginDescribedBy('read')).toBe('launch-at-login-hint launch-at-login-error');
       expect(launchAtLoginDescribedBy('write')).toBe('launch-at-login-hint launch-at-login-error');
     });
+  });
+
+  it('usage tab: says whether the last days block is on, in the three languages', () => {
+    expect(usageTabSummary(new Localizer('en'), 'smooth', true)).toBe('Smooth · Last days on');
+    expect(usageTabSummary(pt, 'stepped', false)).toBe('Degraus · Últimos dias desligado');
+    expect(usageTabSummary(new Localizer('es-MX'), 'stepped', true)).toBe('Escalones · Últimos días activado');
   });
 });

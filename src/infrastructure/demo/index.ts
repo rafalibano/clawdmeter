@@ -1,5 +1,6 @@
 export * from './demo-adapters';
 export * from './demo-claude-accounts';
+export * from './demo-daily-usage';
 export * from './demo-sessions';
 export * from './demo-usage';
 export * from './demo-usage-indicator';
