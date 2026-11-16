@@ -268,7 +268,6 @@ export const esMX: Record<MessageKey, string> = {
   'usage.reset.in': 'se reinicia en {span}',
   'usage.trend': '{label} tendencia',
   'usage.rateLimited': 'Límite de consultas de Anthropic — reintentando en {span}',
-  'usage.models.title': 'Límites semanales por modelo',
   'usage.extra.title': 'Uso extra',
   'usage.extra.on': 'Activado',
   'usage.extra.off': 'Desactivado',

@@ -38,29 +38,24 @@
         </div>
       </div>
     }
+    @for (limit of blocks()?.modelLimits; track limit.name) {
+      <div class="bar" data-window="model">
+        <div class="bar-head">
+          <span class="bar-label">{{ limit.name }}</span>
+          <span class="bar-percent">{{ limit.percent }}</span>
+        </div>
+        <div class="track">
+          <div class="fill" [style.width.%]="limit.fill"></div>
+        </div>
+        <div class="bar-foot">
+          <span class="reset">{{ limit.reset }}</span>
+        </div>
+      </div>
+    }
   </section>
 
   @let extra = blocks()?.extraUsage;
   @let resetsView = blocks()?.resets;
-
-  @if (blocks()?.modelLimits; as limits) {
-    <section class="card bars" data-block="model-limits" [attr.aria-label]="i18n.t('usage.models.title')">
-      @for (limit of limits; track limit.name) {
-        <div class="bar" data-window="model">
-          <div class="bar-head">
-            <span class="bar-label">{{ limit.name }}</span>
-            <span class="bar-percent">{{ limit.percent }}</span>
-          </div>
-          <div class="track">
-            <div class="fill" [style.width.%]="limit.fill"></div>
-          </div>
-          <div class="bar-foot">
-            <span class="reset">{{ limit.reset }}</span>
-          </div>
-        </div>
-      }
-    </section>
-  }
 
   @if (extra) {
     <section class="card extra" data-block="extra-usage" [attr.data-enabled]="extra.enabled" [attr.aria-label]="i18n.t('usage.extra.title')">
