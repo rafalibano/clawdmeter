@@ -8,7 +8,7 @@ import {
   type SeriesColorSettings,
   type ThemeMode,
 } from '../../domain/settings';
-import { PROJECTION_METHODS, type ProjectionMethod, type Quartile, type UsageWindowKind } from '../../domain/usage';
+import { PROJECTION_METHODS, USAGE_CHART_LINES, type ProjectionMethod, type Quartile, type UsageChartLine, type UsageWindowKind } from '../../domain/usage';
 import { I18n } from '../i18n';
 import { SettingsFacade } from '../shell/settings.facade';
 import { ThemeService } from '../theme/theme.service';
@@ -17,7 +17,7 @@ import { seriesLineColors } from '../theme/chart-palette';
 import { THEME_BACKGROUNDS } from '../theme/theme-style';
 import { ColorPickerComponent } from './color-picker.component';
 import { SettingsSectionComponent } from './settings-section.component';
-import { appearanceSummary, pagesSummary, projectionSummary } from './settings-summaries';
+import { appearanceSummary, pagesSummary, projectionSummary, usageChartLineSummary } from './settings-summaries';
 import { seriesLineRows } from './series-lines';
 import { toggleQuartile, usageAlertRows, usageAlertsSummary } from './usage-alert-rows';
 import { ClaudeAccountsComponent } from './claude-accounts/claude-accounts.component';
@@ -51,6 +51,7 @@ export class SettingsComponent {
   protected readonly themes = THEME_MODES;
   protected readonly languages = APP_LANGUAGES;
   protected readonly projectionMethods = PROJECTION_METHODS;
+  protected readonly chartLines = USAGE_CHART_LINES;
   protected readonly pageRows = computed(() =>
     this.facade.pages().map((page) => ({
       id: page.id,
@@ -73,6 +74,9 @@ export class SettingsComponent {
   protected readonly pagesSummaryText = computed(() => pagesSummary(this.i18n.localizer(), this.pageRows()));
   protected readonly projectionSummaryText = computed(() =>
     projectionSummary(this.i18n.localizer(), this.settings().projectionMethod),
+  );
+  protected readonly usageTabSummaryText = computed(() =>
+    usageChartLineSummary(this.i18n.localizer(), this.settings().usageChartLine),
   );
   protected readonly appearanceSummaryText = computed(() =>
     appearanceSummary(this.i18n.localizer(), this.settings().appearance.theme),
@@ -116,6 +120,14 @@ export class SettingsComponent {
 
   protected setProjection(projectionMethod: ProjectionMethod): void {
     this.facade.update({ projectionMethod });
+  }
+
+  protected chartLineLabel(line: UsageChartLine): string {
+    return this.i18n.t(`settings.usageTab.line.${line}`);
+  }
+
+  protected setChartLine(usageChartLine: UsageChartLine): void {
+    this.facade.update({ usageChartLine });
   }
 
   protected setLanguage(language: AppLanguage): void {

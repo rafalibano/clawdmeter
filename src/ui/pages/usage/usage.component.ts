@@ -49,7 +49,8 @@ export class UsageComponent {
     const data = activeUsageData(this.update(), this.lastData(), this.settings.settings().claude.activeAccountId);
     if (data === undefined) return null;
     const l = this.i18n.localizer();
-    const usage = toUsageView(data, this.rangeId(), l, this.settings.settings().projectionMethod);
+    const { projectionMethod, usageChartLine } = this.settings.settings();
+    const usage = toUsageView(data, this.rangeId(), l, projectionMethod, usageChartLine);
     return {
       bars: usage.bars,
       cycleAvailable: usage.cycleAvailable,

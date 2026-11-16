@@ -5,6 +5,7 @@ export * from './projection-days';
 export * from './projection-method';
 export * from './retention';
 export * from './usage-alerts';
+export * from './usage-chart-line';
 export * from './usage-history';
 export * from './usage-level';
 export * from './usage-range';

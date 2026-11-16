@@ -41,6 +41,29 @@
   </div>
 </cm-settings-section>
 
+<cm-settings-section name="usage-tab" [heading]="i18n.t('settings.usageTab')">
+  <span summary>{{ usageTabSummaryText() }}</span>
+  <div class="field">
+    <span class="label">{{ i18n.t('settings.usageTab.line') }}</span>
+    <div class="segmented" role="radiogroup" [attr.aria-label]="i18n.t('settings.usageTab.line')">
+      @for (line of chartLines; track line) {
+        <button
+          type="button"
+          role="radio"
+          class="segment"
+          [attr.data-chart-line]="line"
+          [class.selected]="settings().usageChartLine === line"
+          [attr.aria-checked]="settings().usageChartLine === line"
+          (click)="setChartLine(line)"
+        >
+          {{ chartLineLabel(line) }}
+        </button>
+      }
+    </div>
+    <span class="hint">{{ i18n.t('settings.usageTab.line.hint') }}</span>
+  </div>
+</cm-settings-section>
+
 <cm-settings-section name="appearance" [heading]="i18n.t('settings.appearance')">
   <span summary>
     <span class="dot" [style.background]="settings().appearance.accentColor"></span>
